@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: dotacion-reportes
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dotacion-reportes-db
+          property: connectionString
+      - key: MAX_CONTENT_LENGTH_MB
+        value: 40
+
+databases:
+  - name: dotacion-reportes-db
