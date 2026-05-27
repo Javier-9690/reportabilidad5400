@@ -4,7 +4,9 @@ const body = document.getElementById('reportBody');
 const conclusions = document.getElementById('conclusions');
 const summary = document.getElementById('reportSummary');
 const chartCanvas = document.getElementById('lineChart');
+const managementChartCanvas = document.getElementById('managementLineChart');
 let lineChart = null;
+let managementLineChart = null;
 
 function params() {
     const p = new URLSearchParams();
@@ -153,6 +155,78 @@ function renderLineChart(data) {
     });
 }
 
+function renderManagementLineChart(data) {
+    if (!managementChartCanvas) return;
+    const labels = data.date_labels || [];
+    const palette = [
+        '#B42318', '#175CD3', '#027A48', '#B54708', '#7A5AF8',
+        '#C01048', '#0E9384', '#344054', '#F04438', '#2E90FA',
+        '#12B76A', '#F79009', '#6941C6', '#475467'
+    ];
+
+    const series = (data.rows || [])
+        .filter(row => row.gerencia !== 'SIN MATCH EN CURVA')
+        .filter(row => Number(row.total || 0) > 0)
+        .sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
+
+    if (managementLineChart) {
+        managementLineChart.destroy();
+        managementLineChart = null;
+    }
+
+    managementLineChart = new Chart(managementChartCanvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: series.map((row, index) => ({
+                label: row.gerencia,
+                data: row.values || [],
+                borderColor: palette[index % palette.length],
+                backgroundColor: palette[index % palette.length],
+                pointBackgroundColor: palette[index % palette.length],
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 1,
+                pointRadius: 2.5,
+                pointHoverRadius: 5,
+                borderWidth: index < 5 ? 2.5 : 1.75,
+                tension: 0.26,
+                fill: false,
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 8,
+                        font: { size: 11, weight: '600' }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: ${num(ctx.parsed.y)}`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxRotation: 45, minRotation: 0 }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(16,24,40,.08)' },
+                    ticks: { callback: value => num(value) }
+                }
+            }
+        }
+    });
+}
+
 function renderTable(data) {
     const dates = data.date_labels || [];
     const colCount = dates.length + 5;
@@ -213,6 +287,7 @@ function render(data) {
     renderSummary(data);
     renderConclusions(data);
     renderLineChart(data);
+    renderManagementLineChart(data);
     renderTable(data);
 }
 
@@ -227,6 +302,7 @@ async function load() {
         summary.innerHTML = '';
         conclusions.innerHTML = '';
         if (lineChart) lineChart.destroy();
+        if (managementLineChart) managementLineChart.destroy();
         body.innerHTML = `<tr><td class="text-center text-danger py-4">${error.message}</td></tr>`;
     }
 }

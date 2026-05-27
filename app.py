@@ -1612,9 +1612,9 @@ def format_export_filename(export_mode):
 
 
 def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
-    """Escribe una hoja gerencial con tabla y gráfico de líneas Real vs Plan."""
+    """Escribe una hoja gerencial con tabla y dos gráficos de líneas profesionales."""
     if progress_callback:
-        progress_callback('Generando reporte por gerencia y gráfico de líneas...')
+        progress_callback('Generando reporte por gerencia y gráficos de líneas...')
 
     RED_DARK = '#8F1510'
     RED = '#B42318'
@@ -1632,6 +1632,12 @@ def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
     DARK = '#1D2939'
     BORDER = '#8F1510'
     WHITE = '#FFFFFF'
+    GRID = '#E4E7EC'
+    GERENCIA_COLORS = [
+        '#B42318', '#175CD3', '#027A48', '#B54708', '#7A5AF8', '#C01048',
+        '#0E9384', '#344054', '#F04438', '#2E90FA', '#12B76A', '#F79009',
+        '#6941C6', '#475467', '#A15C07', '#155EEF'
+    ]
 
     def as_int(value):
         try:
@@ -1653,8 +1659,14 @@ def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
     ws.fit_to_pages(1, 0)
     ws.set_margins(left=0.25, right=0.25, top=0.45, bottom=0.45)
 
-    dates = data.get('date_labels', [])
-    rows = data.get('rows', [])
+    dates = data.get('date_labels', []) or []
+    rows = data.get('rows', []) or []
+    gerencia_series = [
+        row for row in rows
+        if row.get('gerencia') != 'SIN MATCH EN CURVA' and as_int(row.get('total')) > 0
+    ]
+    gerencia_series = sorted(gerencia_series, key=lambda item: as_int(item.get('total')), reverse=True)
+
     real_total = float(data.get('grand_total') or 0)
     plan_total = float(data.get('planned_grand_total') or 0)
     diff_total = real_total - plan_total
@@ -1706,45 +1718,83 @@ def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
     ws.merge_range(3, 6, 3, 7, 'CUMPLIMIENTO', fmt_kpi_label)
     ws.merge_range(4, 6, 4, 7, as_pct(real_total, plan_total), fmt_kpi_value_text)
 
-    # Datos ocultos para el gráfico.
-    chart_col = last_col + 3
-    ws.write(2, chart_col, 'Fecha')
-    ws.write(2, chart_col + 1, 'Real')
-    ws.write(2, chart_col + 2, 'Plan')
-    for i, label in enumerate(dates):
-        ws.write(3 + i, chart_col, label)
-        ws.write_number(3 + i, chart_col + 1, as_int((data.get('totals_by_date') or [])[i] if i < len(data.get('totals_by_date') or []) else 0))
-        ws.write_number(3 + i, chart_col + 2, as_int((data.get('planned_totals_by_date') or [])[i] if i < len(data.get('planned_totals_by_date') or []) else 0))
-    ws.set_column(chart_col, chart_col + 2, 0, None, {'hidden': True})
+    # Hoja oculta de datos para gráficos. Esto evita que Excel o visores web oculten series por usar columnas invisibles.
+    chart_data = workbook.add_worksheet('_Datos Graficos')
+    chart_data.hide()
+    chart_data.write(0, 0, 'Fecha')
+    chart_data.write(0, 1, 'Dotación real')
+    chart_data.write(0, 2, 'Plan curva')
+    for i, label in enumerate(dates, 1):
+        chart_data.write(i, 0, label)
+        chart_data.write_number(i, 1, as_int((data.get('totals_by_date') or [])[i - 1] if i - 1 < len(data.get('totals_by_date') or []) else 0))
+        chart_data.write_number(i, 2, as_int((data.get('planned_totals_by_date') or [])[i - 1] if i - 1 < len(data.get('planned_totals_by_date') or []) else 0))
+
+    gerencia_start_col = 5
+    chart_data.write(0, gerencia_start_col, 'Fecha')
+    for i, label in enumerate(dates, 1):
+        chart_data.write(i, gerencia_start_col, label)
+    for series_idx, item in enumerate(gerencia_series, 1):
+        col = gerencia_start_col + series_idx
+        chart_data.write(0, col, item.get('gerencia', ''))
+        values = item.get('values', []) or []
+        for date_idx in range(len(dates)):
+            chart_data.write_number(date_idx + 1, col, as_int(values[date_idx] if date_idx < len(values) else 0))
 
     if dates:
-        ws.merge_range(6, 0, 6, 7, 'TENDENCIA REAL VS PLANIFICADA', fmt_chart_header)
+        first = 1
+        last = len(dates)
+
+        ws.merge_range(6, 0, 6, 8, 'TENDENCIA REAL VS PLANIFICADA', fmt_chart_header)
         chart = workbook.add_chart({'type': 'line'})
-        first = 3
-        last = 3 + len(dates) - 1
         chart.add_series({
-            'name': 'Dotación real',
-            'categories': ['Dotación Gerencia', first, chart_col, last, chart_col],
-            'values': ['Dotación Gerencia', first, chart_col + 1, last, chart_col + 1],
+            'name': ['_Datos Graficos', 0, 1],
+            'categories': ['_Datos Graficos', first, 0, last, 0],
+            'values': ['_Datos Graficos', first, 1, last, 1],
             'line': {'color': RED, 'width': 2.75},
             'marker': {'type': 'circle', 'size': 4, 'border': {'color': RED}, 'fill': {'color': RED}},
         })
         chart.add_series({
-            'name': 'Plan curva',
-            'categories': ['Dotación Gerencia', first, chart_col, last, chart_col],
-            'values': ['Dotación Gerencia', first, chart_col + 2, last, chart_col + 2],
+            'name': ['_Datos Graficos', 0, 2],
+            'categories': ['_Datos Graficos', first, 0, last, 0],
+            'values': ['_Datos Graficos', first, 2, last, 2],
             'line': {'color': BLUE_DARK, 'width': 2.25, 'dash_type': 'dash'},
             'marker': {'type': 'diamond', 'size': 4, 'border': {'color': BLUE_DARK}, 'fill': {'color': BLUE_DARK}},
         })
         chart.set_title({'name': 'Evolución diaria de dotación', 'name_font': {'bold': True, 'size': 12, 'color': DARK}})
         chart.set_x_axis({'name': 'Fecha', 'label_position': 'low', 'num_font': {'size': 8}})
-        chart.set_y_axis({'name': 'Dotación', 'major_gridlines': {'visible': True, 'line': {'color': '#E4E7EC'}}, 'num_font': {'size': 8}})
+        chart.set_y_axis({'name': 'Dotación', 'major_gridlines': {'visible': True, 'line': {'color': GRID}}, 'num_font': {'size': 8}})
+        chart.set_chartarea({'border': {'color': '#D0D5DD'}, 'fill': {'color': WHITE}})
+        chart.set_plotarea({'border': {'color': GRID}, 'fill': {'color': '#FBFCFD'}})
         chart.set_legend({'position': 'bottom'})
         chart.set_style(10)
-        chart.set_size({'width': 760, 'height': 285})
+        chart.set_size({'width': 780, 'height': 250})
+        chart.show_hidden_data()
         ws.insert_chart(7, 0, chart, {'x_offset': 2, 'y_offset': 2})
 
-    header_row = 24 if dates else 7
+        ws.merge_range(22, 0, 22, 8, 'DOTACIÓN DIARIA POR GERENCIA', fmt_chart_header)
+        chart_by_gerencia = workbook.add_chart({'type': 'line'})
+        for series_idx, item in enumerate(gerencia_series, 1):
+            color = GERENCIA_COLORS[(series_idx - 1) % len(GERENCIA_COLORS)]
+            col = gerencia_start_col + series_idx
+            chart_by_gerencia.add_series({
+                'name': ['_Datos Graficos', 0, col],
+                'categories': ['_Datos Graficos', first, gerencia_start_col, last, gerencia_start_col],
+                'values': ['_Datos Graficos', first, col, last, col],
+                'line': {'color': color, 'width': 2.0 if series_idx <= 8 else 1.5},
+                'marker': {'type': 'circle', 'size': 3, 'border': {'color': color}, 'fill': {'color': color}},
+            })
+        chart_by_gerencia.set_title({'name': 'Comportamiento diario por gerencia', 'name_font': {'bold': True, 'size': 12, 'color': DARK}})
+        chart_by_gerencia.set_x_axis({'name': 'Fecha', 'label_position': 'low', 'num_font': {'size': 8}})
+        chart_by_gerencia.set_y_axis({'name': 'Dotación real', 'major_gridlines': {'visible': True, 'line': {'color': GRID}}, 'num_font': {'size': 8}})
+        chart_by_gerencia.set_chartarea({'border': {'color': '#D0D5DD'}, 'fill': {'color': WHITE}})
+        chart_by_gerencia.set_plotarea({'border': {'color': GRID}, 'fill': {'color': '#FBFCFD'}})
+        chart_by_gerencia.set_legend({'position': 'bottom'})
+        chart_by_gerencia.set_style(10)
+        chart_by_gerencia.set_size({'width': 780, 'height': 260})
+        chart_by_gerencia.show_hidden_data()
+        ws.insert_chart(23, 0, chart_by_gerencia, {'x_offset': 2, 'y_offset': 2})
+
+    header_row = 41 if dates else 7
     ws.repeat_rows(header_row)
     ws.freeze_panes(header_row + 1, 1)
 

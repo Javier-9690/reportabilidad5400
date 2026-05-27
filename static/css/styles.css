@@ -629,3 +629,17 @@ body{
     .report-chart-wrapper{height:260px;}
     .report-hero .report-export-btn{width:100%;}
 }
+
+
+.management-chart-card{
+    border-left-color:#F58220;
+}
+.management-chart-card .card-header{
+    background:linear-gradient(90deg,#fff,#fff8f0);
+}
+.management-chart-wrapper{
+    height:360px;
+}
+@media (max-width: 767.98px){
+    .management-chart-wrapper{height:300px;}
+}
