@@ -2525,6 +2525,25 @@ def format_ocupabilidad_filename():
     return f'ocupabilidad_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
 
 
+def ensure_binary_content(content):
+    """Convierte buffers de Excel a bytes antes de guardarlos en PostgreSQL."""
+    if content is None:
+        return None
+    if isinstance(content, bytes):
+        return content
+    if isinstance(content, bytearray):
+        return bytes(content)
+    if hasattr(content, 'getvalue'):
+        return content.getvalue()
+    if hasattr(content, 'read'):
+        try:
+            content.seek(0)
+        except Exception:
+            pass
+        return content.read()
+    return content
+
+
 def build_report_export_job(app, job_id):
     """Genera exportaciones Excel en segundo plano."""
     with app.app_context():
@@ -2564,7 +2583,7 @@ def build_report_export_job(app, job_id):
                 content = report_xlsx_fast(data, progress_callback=progress)
                 job.filename = job.filename or format_export_filename(params.get('export_mode') or 'gerencia')
 
-            job.content = content
+            job.content = ensure_binary_content(content)
             job.content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             job.status = 'completed'
             job.message = 'Archivo Excel listo para descargar.'
