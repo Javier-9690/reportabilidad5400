@@ -974,7 +974,8 @@ def report_xlsx_fast(data, progress_callback=None):
 
     - La hoja "Dotación Gerencia" queda presentable para envío a gerencia.
     - La hoja "Detalle Censos" reconstruye los censos desde los archivos originales
-      almacenados en la base, usando las columnas del archivo de censo y ordenando por fecha.
+      almacenados en la base, usando las columnas del archivo de censo, pero mostrando
+      el ID corregido/aplicado en curva para que concuerde con el reporte.
     - Se escribe en archivo temporal para evitar alto consumo de memoria en Render.
     """
     if progress_callback:
@@ -1284,27 +1285,67 @@ def report_xlsx_fast(data, progress_callback=None):
 
     detail_row = 1
     for censo in censos:
+        # Mapa por censo para reemplazar el ID original del archivo por el ID corregido/aplicado
+        # desde la curva. Esto hace que la hoja "Detalle Censos" concuerde con el reporte
+        # gerencial y con las correcciones realizadas en "Sin match".
+        corrected_id_by_key = {}
+        curve_meta_by_key = {}
+        correction_rows = db.session.query(
+            CensoRecord.solicitud_id.label('id_original'),
+            CurvaItem.solicitud_id.label('id_curva'),
+            CurvaItem.gerencia.label('gerencia_curva'),
+            CurvaItem.area.label('area_curva'),
+            CurvaItem.empresa.label('empresa_curva'),
+        ).outerjoin(
+            CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+        ).filter(
+            CensoRecord.censo_id == censo.id,
+            CurvaItem.id.isnot(None)
+        ).all()
+        for corr in correction_rows:
+            keys = {norm_id(corr.id_original), compact_id(corr.id_original)}
+            for key in keys:
+                if key:
+                    corrected_id_by_key[key] = corr.id_curva or corr.id_original
+                    curve_meta_by_key[key] = {
+                        'gerencia': corr.gerencia_curva or '',
+                        'area': corr.area_curva or '',
+                        'empresa': corr.empresa_curva or '',
+                    }
+
+        def corrected_value_for(row_value, fallback=''):
+            key_norm = norm_id(row_value)
+            key_compact = compact_id(row_value)
+            return corrected_id_by_key.get(key_norm) or corrected_id_by_key.get(key_compact) or fallback or row_value
+
+        def corrected_meta_for(row_value):
+            key_norm = norm_id(row_value)
+            key_compact = compact_id(row_value)
+            return curve_meta_by_key.get(key_norm) or curve_meta_by_key.get(key_compact) or {}
+
         try:
             df, sheet, fecha = read_censo(censo.file.content, censo.file.filename)
         except Exception:
             # Fallback con los datos persistidos si el archivo original no se puede leer.
             fallback_rows = CensoRecord.query.filter_by(censo_id=censo.id).order_by(CensoRecord.id.asc()).all()
             for record in fallback_rows:
+                applied_item = record.curva_item
+                corrected_id = applied_item.solicitud_id if applied_item else record.solicitud_id
                 values = {
                     'Modulo': record.modulo,
                     'Lugar': record.lugar,
                     'Habitacion': record.habitacion,
                     'Empresa': record.empresa,
-                    'Id': record.solicitud_id,
+                    'Id': corrected_id,
                     'Cama': record.cama,
                     'Inicio': '',
                     'Termino': '',
                     'Dia': record.dia,
                     'Camas Ocupdas': record.camas_ocupadas,
                     'Turno': record.turno,
-                    'Gerencia': record.gerencia_censo,
+                    'Gerencia': applied_item.gerencia if applied_item else record.gerencia_censo,
                     'CO MEL': '',
-                    'AREA': record.area,
+                    'AREA': applied_item.area if applied_item else record.area,
                     'SEXO': '',
                     'JORNADA': '',
                     'Rut': record.rut,
@@ -1354,10 +1395,28 @@ def report_xlsx_fast(data, progress_callback=None):
                 sort_cols.append(col)
         df = df.sort_values(sort_cols, kind='mergesort')
 
+        id_src_col = source_col('Id')
         for _, row in df.iterrows():
+            original_id_value = excel_safe(row[id_src_col]) if id_src_col else ''
+            applied_id_value = corrected_value_for(original_id_value, original_id_value)
+            applied_meta = corrected_meta_for(original_id_value)
+
             for col_idx, col_name in enumerate(preferred_cols):
                 src = source_col(col_name)
                 value = excel_safe(row[src]) if src else ''
+
+                # Reemplazar el ID del archivo por el ID corregido/aplicado en curva.
+                # También se actualizan Gerencia, AREA y Empresa cuando existe match con curva,
+                # para que el detalle quede consistente con el reporte.
+                if col_name == 'Id':
+                    value = applied_id_value
+                elif col_name == 'Gerencia' and applied_meta.get('gerencia'):
+                    value = applied_meta['gerencia']
+                elif col_name == 'AREA' and applied_meta.get('area'):
+                    value = applied_meta['area']
+                elif col_name == 'Empresa' and applied_meta.get('empresa'):
+                    value = applied_meta['empresa']
+
                 if col_name == 'Dia' and isinstance(value, str):
                     parsed = parse_date(value)
                     if parsed:
@@ -1382,6 +1441,142 @@ def report_xlsx_fast(data, progress_callback=None):
     # Actualizar autofiltro al rango completo.
     if detail_row > 1:
         detail.autofilter(0, 0, detail_row - 1, len(preferred_cols) - 1)
+
+    # ── Hoja de auditoría del cruce, usando las correcciones aplicadas ────
+    # Esta hoja NO reemplaza el detalle original. Sirve para verificar que las
+    # correcciones hechas en "Sin match" sí están consideradas en el reporte.
+    if progress_callback:
+        progress_callback('Generando auditoría de cruces corregidos...')
+
+    audit = workbook.add_worksheet('Auditoria Cruce')
+    audit.hide_gridlines(2)
+    audit.set_tab_color(BLUE)
+    audit.freeze_panes(1, 0)
+    audit.set_landscape()
+
+    audit_headers = [
+        'Fecha Censo', 'Archivo Censo', 'Modulo', 'Lugar', 'Habitacion', 'Empresa Censo',
+        'ID Censo Original', 'ID Curva Aplicado', 'Gerencia Curva', 'Gerencia Censo',
+        'Área Curva', 'Área Censo', 'Cama', 'Dia', 'Camas Ocupadas', 'Turno Censo',
+        'Rut', 'Estado Censo', 'Estado Match'
+    ]
+    fmt_audit_header = workbook.add_format({
+        'bold': True, 'font_color': WHITE, 'font_size': 9, 'align': 'center', 'valign': 'vcenter',
+        'bg_color': BLUE_DARK, 'border': 1, 'border_color': '#9BBBEA', 'text_wrap': True,
+    })
+    fmt_audit_text = workbook.add_format({
+        'font_size': 8, 'font_color': DARK, 'align': 'left', 'valign': 'vcenter',
+        'border': 1, 'border_color': '#D0D5DD',
+    })
+    fmt_audit_center = workbook.add_format({
+        'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter',
+        'border': 1, 'border_color': '#D0D5DD',
+    })
+    fmt_audit_num = workbook.add_format({
+        'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter',
+        'border': 1, 'border_color': '#D0D5DD', 'num_format': '#,##0.00',
+    })
+    fmt_audit_date = workbook.add_format({
+        'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter',
+        'border': 1, 'border_color': '#D0D5DD', 'num_format': 'yyyy-mm-dd',
+    })
+    fmt_audit_ok = workbook.add_format({
+        'bold': True, 'font_size': 8, 'font_color': GREEN_TEXT, 'align': 'center', 'valign': 'vcenter',
+        'border': 1, 'border_color': '#75E0A7', 'bg_color': GREEN,
+    })
+    fmt_audit_bad = workbook.add_format({
+        'bold': True, 'font_size': 8, 'font_color': DANGER_TEXT, 'align': 'center', 'valign': 'vcenter',
+        'border': 1, 'border_color': '#FDA29B', 'bg_color': DANGER,
+    })
+
+    for col_idx, header in enumerate(audit_headers):
+        audit.write(0, col_idx, header, fmt_audit_header)
+    audit.set_row(0, 30)
+    audit_widths = [13, 34, 12, 14, 12, 28, 20, 20, 30, 30, 24, 24, 9, 13, 15, 14, 15, 16, 15]
+    for col_idx, width in enumerate(audit_widths):
+        audit.set_column(col_idx, col_idx, width)
+
+    audit_row = 1
+    last_seen_id = 0
+    audit_batch_size = 2000
+    while True:
+        rows_batch = db.session.query(
+            CensoRecord.id.label('record_id'),
+            Censo.fecha_censo.label('fecha_censo'),
+            UploadedFile.filename.label('filename'),
+            CensoRecord.modulo.label('modulo'),
+            CensoRecord.lugar.label('lugar'),
+            CensoRecord.habitacion.label('habitacion'),
+            CensoRecord.empresa.label('empresa_censo'),
+            CensoRecord.solicitud_id.label('id_censo'),
+            CurvaItem.solicitud_id.label('id_curva'),
+            CurvaItem.gerencia.label('gerencia_curva'),
+            CensoRecord.gerencia_censo.label('gerencia_censo'),
+            CurvaItem.area.label('area_curva'),
+            CensoRecord.area.label('area_censo'),
+            CensoRecord.cama.label('cama'),
+            CensoRecord.dia.label('dia'),
+            CensoRecord.camas_ocupadas.label('camas_ocupadas'),
+            CensoRecord.turno.label('turno'),
+            CensoRecord.rut.label('rut'),
+            CensoRecord.estado.label('estado'),
+        ).join(
+            Censo, Censo.id == CensoRecord.censo_id
+        ).join(
+            UploadedFile, UploadedFile.id == Censo.file_id
+        ).outerjoin(
+            CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+        ).filter(
+            CensoRecord.id > last_seen_id
+        ).order_by(
+            Censo.fecha_censo.asc(), CensoRecord.id.asc()
+        ).limit(audit_batch_size).all()
+
+        if not rows_batch:
+            break
+
+        for row in rows_batch:
+            last_seen_id = row.record_id
+            matched = bool(row.id_curva)
+            values = [
+                row.fecha_censo,
+                row.filename,
+                row.modulo,
+                row.lugar,
+                row.habitacion,
+                row.empresa_censo,
+                row.id_censo,
+                row.id_curva or '',
+                row.gerencia_curva or '',
+                row.gerencia_censo,
+                row.area_curva or '',
+                row.area_censo,
+                row.cama,
+                row.dia,
+                row.camas_ocupadas or 0,
+                row.turno,
+                row.rut,
+                row.estado,
+                'Cruzado' if matched else 'Sin match',
+            ]
+            for col_idx, value in enumerate(values):
+                if col_idx == 0 and isinstance(value, date):
+                    audit.write_datetime(audit_row, col_idx, datetime(value.year, value.month, value.day), fmt_audit_date)
+                elif col_idx == 14:
+                    audit.write_number(audit_row, col_idx, float(value or 0), fmt_audit_num)
+                elif col_idx == 18:
+                    audit.write(audit_row, col_idx, value, fmt_audit_ok if matched else fmt_audit_bad)
+                elif col_idx in (2, 3, 4, 6, 7, 12, 13, 15, 16, 17):
+                    audit.write(audit_row, col_idx, excel_safe(value), fmt_audit_center)
+                else:
+                    audit.write(audit_row, col_idx, excel_safe(value), fmt_audit_text)
+            audit_row += 1
+
+        if progress_callback:
+            progress_callback(f'Auditoría de cruces: {audit_row - 1:,} filas escritas...'.replace(',', '.'))
+
+    if audit_row > 1:
+        audit.autofilter(0, 0, audit_row - 1, len(audit_headers) - 1)
 
     if progress_callback:
         progress_callback('Comprimiendo archivo Excel...')
