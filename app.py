@@ -857,14 +857,9 @@ def find_curve_item_by_manual_id(curve, manual_id):
     return None
 
 
-def apply_correction_to_same_id(record, item):
-    """
-    Corrige todos los registros sin match que tengan el mismo ID de censo.
-    Se aplica a todos los censos almacenados para evitar corregir uno por uno.
-    """
-    same_id = norm_id(record.solicitud_id)
-    if not same_id:
-        same_id = record.solicitud_id
+def apply_correction_to_solicitud_id(solicitud_id, item):
+    """Corrige todos los registros sin match que tengan el mismo ID de censo."""
+    same_id = norm_id(solicitud_id) or solicitud_id
 
     records = CensoRecord.query.filter(
         CensoRecord.curva_item_id.is_(None),
@@ -873,7 +868,7 @@ def apply_correction_to_same_id(record, item):
 
     # Respaldo por si algún registro quedó con espacios/formato distinto antes de normalizar.
     if not records:
-        target = compact_id(record.solicitud_id)
+        target = compact_id(solicitud_id)
         all_unmatched = CensoRecord.query.filter(CensoRecord.curva_item_id.is_(None)).all()
         records = [r for r in all_unmatched if compact_id(r.solicitud_id) == target]
 
@@ -886,6 +881,14 @@ def apply_correction_to_same_id(record, item):
         recalc_censo_stats(censo_id)
 
     return len(records), censo_ids
+
+
+def apply_correction_to_same_id(record, item):
+    """
+    Corrige todos los registros sin match que tengan el mismo ID de censo.
+    Se aplica a todos los censos almacenados para evitar corregir uno por uno.
+    """
+    return apply_correction_to_solicitud_id(record.solicitud_id, item)
 
 
 def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
@@ -952,6 +955,168 @@ def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
         "limit": limit,
         "rows": rows,
     }
+
+
+
+def refresh_curve_totals(curve_id):
+    """Recalcula totales de una curva después de agregar/editar IDs por pantalla."""
+    curve = CurvaVersion.query.get(curve_id)
+    if not curve:
+        return None
+    curve.total_items = CurvaItem.query.filter_by(curva_version_id=curve.id).count()
+    curve.total_daily_values = db.session.query(func.count(CurvaDailyValue.id)).join(
+        CurvaItem, CurvaItem.id == CurvaDailyValue.curva_item_id
+    ).filter(CurvaItem.curva_version_id == curve.id).scalar() or 0
+    return curve
+
+
+def create_or_update_curve_item_from_form(form):
+    """
+    Crea un nuevo ID en la curva desde pantalla.
+    Si el ID ya existe en la curva seleccionada, actualiza sus datos maestros.
+    Opcionalmente crea valores diarios de planificación para un rango de fechas.
+    """
+    curve_id = form.get('curve_id', type=int)
+    curve = CurvaVersion.query.get(curve_id) if curve_id else get_curve_for_matching(None)
+    if not curve:
+        raise ValueError('No hay una curva disponible. Primero importa una curva planificada.')
+
+    solicitud_id = norm_id(form.get('solicitud_id'))
+    if not solicitud_id:
+        raise ValueError('El ID de solicitud es obligatorio.')
+
+    gerencia = clean(form.get('gerencia')) or 'SIN GERENCIA'
+    area = clean(form.get('area'))
+    empresa = clean(form.get('empresa'))
+    turno = clean(form.get('turno'))
+    tipo_contrato = clean(form.get('tipo_contrato'))
+    formato = clean(form.get('formato'))
+    camp = clean(form.get('camp'))
+
+    item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=solicitud_id).first()
+    created = item is None
+    if created:
+        item = CurvaItem(curva_version_id=curve.id, solicitud_id=solicitud_id)
+        db.session.add(item)
+
+    item.gerencia = gerencia
+    item.area = area
+    item.empresa = empresa
+    item.turno = turno
+    item.tipo_contrato = tipo_contrato
+    item.formato = formato
+    item.camp = camp
+    db.session.flush()
+
+    date_from = parse_date(form.get('date_from'))
+    date_to = parse_date(form.get('date_to'))
+    dotacion = as_number(form.get('dotacion_planificada'))
+    created_values = 0
+
+    if date_from or date_to or dotacion:
+        if not date_from or not date_to:
+            raise ValueError('Para cargar planificación diaria debes indicar fecha desde y hasta.')
+        if date_to < date_from:
+            raise ValueError('La fecha hasta no puede ser menor que la fecha desde.')
+        if dotacion < 0:
+            raise ValueError('La dotación planificada no puede ser negativa.')
+
+        # Reemplaza los valores del rango para este ID y evita duplicados.
+        CurvaDailyValue.query.filter(
+            CurvaDailyValue.curva_item_id == item.id,
+            CurvaDailyValue.fecha >= date_from,
+            CurvaDailyValue.fecha <= date_to,
+        ).delete(synchronize_session=False)
+
+        values = [
+            CurvaDailyValue(curva_item_id=item.id, fecha=d, dotacion_planificada=dotacion)
+            for d in date_span(date_from, date_to)
+        ]
+        if values:
+            db.session.bulk_save_objects(values)
+            created_values = len(values)
+
+    refresh_curve_totals(curve.id)
+    return curve, item, created, created_values
+
+
+def sample_record_context(record_id):
+    """Obtiene un registro sin match para prefijar el formulario de nuevo ID."""
+    if not record_id:
+        return None
+    return CensoRecord.query.get(record_id)
+
+
+def get_curve_items_payload(curve_id=None, search_text='', gerencia='', page=1, per_page=50):
+    """Prepara la vista paginada de datos maestros de la curva."""
+    curve = get_curve_for_matching(curve_id)
+    curves = CurvaVersion.query.order_by(CurvaVersion.is_active.desc(), CurvaVersion.uploaded_at.desc()).all()
+
+    page = max(int(page or 1), 1)
+    per_page = min(max(int(per_page or 50), 10), 200)
+    search_text = (search_text or '').strip()
+    gerencia = (gerencia or '').strip()
+
+    if not curve:
+        return {
+            'curve': None, 'curves': curves, 'items': [], 'stats': {}, 'gerencias': [],
+            'total': 0, 'page': page, 'per_page': per_page, 'pages': 0,
+            'q': search_text, 'selected_gerencia': gerencia,
+        }
+
+    query = CurvaItem.query.filter(CurvaItem.curva_version_id == curve.id)
+    if search_text:
+        like = f'%{search_text}%'
+        query = query.filter(or_(
+            CurvaItem.solicitud_id.ilike(like),
+            CurvaItem.gerencia.ilike(like),
+            CurvaItem.area.ilike(like),
+            CurvaItem.empresa.ilike(like),
+            CurvaItem.turno.ilike(like),
+            CurvaItem.tipo_contrato.ilike(like),
+            CurvaItem.formato.ilike(like),
+            CurvaItem.camp.ilike(like),
+        ))
+    if gerencia:
+        query = query.filter(CurvaItem.gerencia == gerencia)
+
+    total = query.count()
+    pages = (total + per_page - 1) // per_page if total else 0
+    if pages and page > pages:
+        page = pages
+
+    items = query.order_by(CurvaItem.gerencia.asc(), CurvaItem.solicitud_id.asc()).offset((page - 1) * per_page).limit(per_page).all()
+    item_ids = [item.id for item in items]
+
+    stats = {}
+    if item_ids:
+        rows = db.session.query(
+            CurvaDailyValue.curva_item_id,
+            func.sum(CurvaDailyValue.dotacion_planificada).label('plan_total'),
+            func.min(CurvaDailyValue.fecha).label('first_date'),
+            func.max(CurvaDailyValue.fecha).label('last_date'),
+        ).filter(
+            CurvaDailyValue.curva_item_id.in_(item_ids)
+        ).group_by(
+            CurvaDailyValue.curva_item_id
+        ).all()
+        stats = {row.curva_item_id: row for row in rows}
+
+    gerencias = [row[0] for row in db.session.query(CurvaItem.gerencia).filter(
+        CurvaItem.curva_version_id == curve.id
+    ).distinct().order_by(CurvaItem.gerencia.asc()).all()]
+
+    return {
+        'curve': curve, 'curves': curves, 'items': items, 'stats': stats, 'gerencias': gerencias,
+        'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
+        'q': search_text, 'selected_gerencia': gerencia,
+    }
+
+
+def get_curve_item_for_edit(item_id):
+    if not item_id:
+        return None
+    return CurvaItem.query.get_or_404(item_id)
 
 def parse_arg(name):
     v=(request.args.get(name) or '').strip()
@@ -1059,6 +1224,80 @@ def register_routes(app):
             'success'
         )
         return redirect(request.referrer or url_for('no_match_page'))
+
+
+    @app.route('/curva')
+    def curva_page():
+        payload = get_curve_items_payload(
+            curve_id=request.args.get('curve_id', type=int),
+            search_text=request.args.get('q', ''),
+            gerencia=request.args.get('gerencia', ''),
+            page=request.args.get('page', 1, type=int),
+            per_page=request.args.get('per_page', 50, type=int),
+        )
+        return render_template('curva.html', **payload)
+
+    @app.route('/curva/<int:item_id>/editar')
+    def edit_curve_item_page(item_id):
+        item = get_curve_item_for_edit(item_id)
+        curves = CurvaVersion.query.order_by(CurvaVersion.is_active.desc(), CurvaVersion.uploaded_at.desc()).all()
+        return render_template(
+            'curva_item_form.html',
+            curves=curves,
+            record=None,
+            item=item,
+            selected_curve_id=item.curva_version_id,
+            default_curve=item.version,
+        )
+
+    @app.route('/curva/nuevo')
+    def new_curve_item_page():
+        record_id = request.args.get('record_id', type=int)
+        record = sample_record_context(record_id)
+        selected_curve_id = request.args.get('curve_id', type=int)
+        curves = CurvaVersion.query.order_by(CurvaVersion.is_active.desc(), CurvaVersion.uploaded_at.desc()).all()
+        return render_template(
+            'curva_item_form.html',
+            curves=curves,
+            record=record,
+            item=None,
+            selected_curve_id=selected_curve_id,
+            default_curve=get_curve_for_matching(selected_curve_id),
+        )
+
+    @app.post('/api/curva/items')
+    def create_curve_item():
+        record_id = request.form.get('record_id', type=int)
+        apply_to_unmatched = request.form.get('apply_to_unmatched') == '1'
+        try:
+            curve, item, created, created_values = create_or_update_curve_item_from_form(request.form)
+
+            applied_count = 0
+            if apply_to_unmatched:
+                if record_id:
+                    record = CensoRecord.query.get(record_id)
+                    if record:
+                        applied_count, _ = apply_correction_to_same_id(record, item)
+                else:
+                    applied_count, _ = apply_correction_to_solicitud_id(item.solicitud_id, item)
+
+            db.session.commit()
+
+            action = 'creado' if created else 'actualizado'
+            msg = f'ID {item.solicitud_id} {action} en curva {curve.name} / {item.gerencia}.'
+            if created_values:
+                msg += f' Se cargaron {created_values} valores diarios de planificación.'
+            if applied_count:
+                msg += f' Además se corrigieron {applied_count} registro(s) sin match con ese ID.'
+            flash(msg, 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al guardar ID en curva: {e}', 'danger')
+
+        next_url = request.form.get('next') or ''
+        if next_url.startswith('/'):
+            return redirect(next_url)
+        return redirect(url_for('new_curve_item_page'))
 
     @app.route('/censos')
     def censos_page():

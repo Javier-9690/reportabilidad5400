@@ -136,12 +136,15 @@
                                 <span class="text-muted small">Sin propuesta automática</span>
                             {% endif %}
                         </td>
-                        <td style="min-width: 240px;">
-                            <form action="{{ url_for('manual_no_match', record_id=r.id) }}" method="post" class="d-flex gap-1">
+                        <td style="min-width: 280px;">
+                            <form action="{{ url_for('manual_no_match', record_id=r.id) }}" method="post" class="d-flex gap-1 mb-1">
                                 <input type="hidden" name="curve_id" value="{{ selected_curve_id or '' }}">
                                 <input name="manual_id" class="form-control form-control-sm" placeholder="ID exacto curva" required>
                                 <button class="btn btn-sm btn-dark" onclick="return confirm('¿Aplicar corrección manual a todos los registros sin match con el mismo ID?');">OK todos</button>
                             </form>
+                            <a class="btn btn-sm btn-outline-danger w-100" href="{{ url_for('new_curve_item_page', record_id=r.id, curve_id=selected_curve_id or '') }}">
+                                <i class="bi bi-plus-circle"></i> Crear este ID en curva
+                            </a>
                         </td>
                     </tr>
                 {% else %}

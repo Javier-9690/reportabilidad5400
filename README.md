@@ -53,3 +53,16 @@ Manual Deploy -> Clear build cache & deploy
 - La pantalla **Sin match** ahora agrupa por ID de censo para evitar repetir el mismo error muchas veces.
 - Las propuestas ya no comparan cada registro contra toda la curva. Se usa un índice por ID normalizado, dígitos y sufijos.
 - Al aplicar una propuesta o una corrección manual, se actualizan todos los registros sin match que tengan el mismo ID de censo.
+
+## Actualización: visualización y carga manual de curva
+
+Esta versión agrega:
+
+- Pantalla `/curva` para visualizar los datos de la curva por pantalla.
+- Filtros por versión de curva, gerencia y búsqueda libre.
+- Paginación de IDs de curva.
+- Acción para editar un ID existente de la curva.
+- Pantalla `/curva/nuevo` para agregar un nuevo ID manualmente.
+- Opción para cargar planificación diaria simple por rango de fechas.
+- Desde `Sin match`, botón para crear el ID no encontrado directamente en la curva.
+- Al crear o editar un ID, se puede corregir automáticamente todos los registros sin match que tengan ese mismo ID.
