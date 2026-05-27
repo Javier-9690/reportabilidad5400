@@ -643,3 +643,34 @@ body{
 @media (max-width: 767.98px){
     .management-chart-wrapper{height:300px;}
 }
+
+/* ── Reporte Ocupabilidad ───────────────────────────────────────────── */
+.occupancy-page .col-lg-2-4 {
+    flex: 0 0 auto;
+    width: 20%;
+}
+@media (max-width: 991.98px) {
+    .occupancy-page .col-lg-2-4 { width: 50%; }
+}
+.occupancy-chart-wrapper {
+    min-height: 360px;
+}
+.occupancy-tables .report-main-title th,
+.occupancy-table .report-main-title th {
+    background: #b42318 !important;
+    color: #fff !important;
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: .04em;
+}
+.occupancy-table .date-header {
+    min-width: 58px;
+}
+.occupancy-table td,
+.occupancy-table th {
+    font-size: .78rem;
+    white-space: nowrap;
+}
+.occupancy-table .gerencia-col {
+    min-width: 230px;
+}

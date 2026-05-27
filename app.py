@@ -2399,6 +2399,498 @@ def get_curve_item_for_edit(item_id):
     return CurvaItem.query.get_or_404(item_id)
 
 
+
+# ── Reporte: Ocupabilidad ────────────────────────────────────────────────
+
+def parse_beds_payload(value):
+    """
+    Convierte texto/JSON de camas habilitadas por fecha a dict {date: camas}.
+    Acepta formatos:
+      - JSON: {"2026-05-20": 1160}
+      - líneas: 2026-05-20=1160, 20/05/2026:1160, 20-05-26;1160
+    """
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        raw_items = value.items()
+    else:
+        text = str(value).strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                raw_items = parsed.items()
+            else:
+                raw_items = []
+        except Exception:
+            pairs = []
+            for line in re.split(r"[\n,]+", text):
+                line = line.strip()
+                if not line:
+                    continue
+                if '=' in line:
+                    left, right = line.split('=', 1)
+                elif ':' in line:
+                    left, right = line.split(':', 1)
+                elif ';' in line:
+                    left, right = line.split(';', 1)
+                else:
+                    parts = line.split()
+                    if len(parts) < 2:
+                        continue
+                    left, right = parts[0], parts[1]
+                pairs.append((left.strip(), right.strip()))
+            raw_items = pairs
+
+    out = {}
+    for key, val in raw_items:
+        d = parse_date(key)
+        if not d:
+            try:
+                d = datetime.strptime(str(key)[:10], '%Y-%m-%d').date()
+            except Exception:
+                d = None
+        if not d:
+            continue
+        out[d] = as_number(val)
+    return out
+
+
+def resolve_beds_by_date(dates, beds_default=0, beds_by_date=None):
+    beds_by_date = beds_by_date or {}
+    default = as_number(beds_default)
+    return [float(beds_by_date.get(d, default) or 0) for d in dates]
+
+
+def build_series_rows(order, dates, matrix):
+    rows = []
+    for g in order:
+        vals = [float(matrix[g].get(d, 0) or 0) for d in dates]
+        rows.append({'gerencia': g, 'values': vals, 'total': sum(vals)})
+    return rows
+
+
+def occupancy_report_data(start=None, end=None, curve_id=None, beds_default=0, beds_by_date=None):
+    """
+    Reporte de ocupabilidad.
+
+    CURVA: planificación por gerencia desde la curva.
+    RESERVAS: todas las filas del censo con ID, incluyendo Camas Ocupdas = 0.
+    CENSO: ocupación real, suma de Camas Ocupdas.
+    RESERVAS NO PRESENTES: Reservas - Censo.
+    PORCENTAJES:
+      - Ocupación = Censo / Camas habilitadas
+      - Eficiencia = Censo / Reservas
+      - Disponibilidad = (Camas habilitadas - Censo) / Camas habilitadas
+    """
+    if not start or not end:
+        minmax = db.session.query(func.min(Censo.fecha_censo), func.max(Censo.fecha_censo)).one()
+        start = start or minmax[0]
+        end = end or minmax[1]
+    if not start or not end:
+        return {
+            'start_date': '', 'end_date': '', 'dates': [], 'date_labels': [], 'sections': {},
+            'totals': {}, 'percentages': {}, 'beds_by_date': [], 'conclusions': ['No hay censos importados.'],
+            'curve': None,
+        }
+
+    dates = list(date_span(start, end))
+    curve = CurvaVersion.query.get(curve_id) if curve_id else CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
+
+    curva = defaultdict(lambda: defaultdict(float))
+    reservas = defaultdict(lambda: defaultdict(float))
+    censo = defaultdict(lambda: defaultdict(float))
+    gerencias = set()
+
+    if curve:
+        rows_plan = db.session.query(
+            CurvaItem.gerencia,
+            CurvaDailyValue.fecha,
+            func.sum(CurvaDailyValue.dotacion_planificada),
+        ).join(
+            CurvaDailyValue, CurvaDailyValue.curva_item_id == CurvaItem.id
+        ).filter(
+            CurvaItem.curva_version_id == curve.id,
+            CurvaDailyValue.fecha >= start,
+            CurvaDailyValue.fecha <= end,
+        ).group_by(
+            CurvaItem.gerencia, CurvaDailyValue.fecha
+        ).all()
+        for g, d, val in rows_plan:
+            g = g or 'SIN GERENCIA'
+            curva[g][d] += float(val or 0)
+            gerencias.add(g)
+
+    # Reservas: todas las filas con ID. Si ya fueron corregidas en Sin match,
+    # curva_item_id apunta al ID correcto y, por tanto, a la gerencia correcta.
+    rows_res = db.session.query(
+        Censo.fecha_censo,
+        func.coalesce(CurvaItem.gerencia, 'SIN MATCH EN CURVA'),
+        func.count(CensoRecord.id),
+    ).join(
+        CensoRecord, CensoRecord.censo_id == Censo.id
+    ).outerjoin(
+        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+    ).filter(
+        Censo.fecha_censo >= start,
+        Censo.fecha_censo <= end,
+        CensoRecord.solicitud_id.isnot(None),
+        CensoRecord.solicitud_id != '',
+    ).group_by(
+        Censo.fecha_censo, func.coalesce(CurvaItem.gerencia, 'SIN MATCH EN CURVA')
+    ).all()
+    for d, g, val in rows_res:
+        reservas[g][d] += float(val or 0)
+        gerencias.add(g)
+
+    # Censo/Ocupación: suma de Camas Ocupadas.
+    rows_occ = db.session.query(
+        Censo.fecha_censo,
+        func.coalesce(CurvaItem.gerencia, 'SIN MATCH EN CURVA'),
+        func.sum(CensoRecord.camas_ocupadas),
+    ).join(
+        CensoRecord, CensoRecord.censo_id == Censo.id
+    ).outerjoin(
+        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+    ).filter(
+        Censo.fecha_censo >= start,
+        Censo.fecha_censo <= end,
+        CensoRecord.solicitud_id.isnot(None),
+        CensoRecord.solicitud_id != '',
+    ).group_by(
+        Censo.fecha_censo, func.coalesce(CurvaItem.gerencia, 'SIN MATCH EN CURVA')
+    ).all()
+    for d, g, val in rows_occ:
+        censo[g][d] += float(val or 0)
+        gerencias.add(g)
+
+    order = [g for g in DEFAULT_GERENCIAS if g in gerencias]
+    order += sorted([g for g in gerencias if g not in DEFAULT_GERENCIAS and g != 'SIN MATCH EN CURVA'])
+    if 'SIN MATCH EN CURVA' in gerencias:
+        order.append('SIN MATCH EN CURVA')
+
+    no_presentes = defaultdict(lambda: defaultdict(float))
+    for g in order:
+        for d in dates:
+            no_presentes[g][d] = max(float(reservas[g].get(d, 0) or 0) - float(censo[g].get(d, 0) or 0), 0)
+
+    curva_rows = build_series_rows(order, dates, curva)
+    reservas_rows = build_series_rows(order, dates, reservas)
+    censo_rows = build_series_rows(order, dates, censo)
+    no_presentes_rows = build_series_rows(order, dates, no_presentes)
+
+    total_curva = [sum(curva[g].get(d, 0) for g in order) for d in dates]
+    total_reservas = [sum(reservas[g].get(d, 0) for g in order) for d in dates]
+    total_censo = [sum(censo[g].get(d, 0) for g in order) for d in dates]
+    total_no_presentes = [sum(no_presentes[g].get(d, 0) for g in order) for d in dates]
+    beds = resolve_beds_by_date(dates, beds_default, beds_by_date)
+
+    ocupacion_pct = [(total_censo[i] / beds[i] * 100) if beds[i] else 0 for i in range(len(dates))]
+    eficiencia_pct = [(total_censo[i] / total_reservas[i] * 100) if total_reservas[i] else 0 for i in range(len(dates))]
+    disponibilidad_pct = [((beds[i] - total_censo[i]) / beds[i] * 100) if beds[i] else 0 for i in range(len(dates))]
+
+    conclusions = []
+    if dates:
+        max_idx = max(range(len(dates)), key=lambda i: total_censo[i]) if total_censo else 0
+        conclusions.append(f"Mayor ocupación: {dates[max_idx].strftime('%d/%m/%Y')} con {total_censo[max_idx]:.0f} camas ocupadas.")
+    if sum(beds):
+        conclusions.append(f"Ocupación acumulada: {(sum(total_censo) / sum(beds) * 100):.1f}% sobre camas habilitadas informadas.")
+    if sum(total_reservas):
+        conclusions.append(f"Eficiencia acumulada: {(sum(total_censo) / sum(total_reservas) * 100):.1f}% sobre reservas.")
+    if sum(total_no_presentes):
+        conclusions.append(f"Reservas no presentes acumuladas: {sum(total_no_presentes):.0f}.")
+    no_match_total = 0
+    for row in reservas_rows:
+        if row['gerencia'] == 'SIN MATCH EN CURVA':
+            no_match_total = row['total']
+            break
+    if no_match_total:
+        conclusions.append(f"Reservas sin match en curva: {no_match_total:.0f}. Corrige estos IDs para mejorar la clasificación por gerencia.")
+
+    return {
+        'start_date': start.isoformat(),
+        'end_date': end.isoformat(),
+        'dates': [d.isoformat() for d in dates],
+        'date_labels': [d.strftime('%d/%m/%y') for d in dates],
+        'sections': {
+            'curva': curva_rows,
+            'reservas': reservas_rows,
+            'censo': censo_rows,
+            'no_presentes': no_presentes_rows,
+        },
+        'totals': {
+            'curva': total_curva,
+            'reservas': total_reservas,
+            'censo': total_censo,
+            'no_presentes': total_no_presentes,
+            'curva_total': sum(total_curva),
+            'reservas_total': sum(total_reservas),
+            'censo_total': sum(total_censo),
+            'no_presentes_total': sum(total_no_presentes),
+            'beds_total': sum(beds),
+        },
+        'beds_by_date': beds,
+        'percentages': {
+            'ocupacion': ocupacion_pct,
+            'eficiencia': eficiencia_pct,
+            'disponibilidad': disponibilidad_pct,
+        },
+        'conclusions': conclusions,
+        'curve': {'id': curve.id, 'name': curve.name} if curve else None,
+    }
+
+
+def occupancy_xlsx_fast(data, progress_callback=None):
+    """Genera Excel profesional del reporte de ocupabilidad con tablas y gráficos."""
+    if progress_callback:
+        progress_callback('Preparando reporte de ocupabilidad...')
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    tmp_path = tmp.name
+    tmp.close()
+
+    workbook = xlsxwriter.Workbook(tmp_path, {
+        'constant_memory': False,
+        'strings_to_urls': False,
+        'nan_inf_to_errors': True,
+    })
+
+    RED_DARK = '#8F1510'
+    RED = '#B42318'
+    RED_SOFT = '#FFF1F1'
+    YELLOW = '#FFF200'
+    ORANGE = '#F58220'
+    BLUE = '#4472C4'
+    GRAY = '#F2F4F7'
+    DARK = '#1D2939'
+    WHITE = '#FFFFFF'
+    BORDER = '#8F1510'
+
+    fmt_title = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 16, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED_DARK, 'border': 1, 'border_color': BORDER})
+    fmt_meta = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 9, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED_SOFT, 'border': 1, 'border_color': BORDER})
+    fmt_section = workbook.add_format({'bold': True, 'font_color': WHITE, 'bg_color': RED, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER})
+    fmt_head = workbook.add_format({'bold': True, 'font_color': WHITE, 'bg_color': RED, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER})
+    fmt_date = workbook.add_format({'bold': True, 'font_color': WHITE, 'bg_color': RED, 'align': 'center', 'valign': 'vcenter', 'rotation': 90, 'border': 1, 'border_color': BORDER})
+    fmt_text = workbook.add_format({'font_size': 8, 'border': 1, 'border_color': BORDER})
+    fmt_num = workbook.add_format({'font_size': 8, 'align': 'center', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0'})
+    fmt_total = workbook.add_format({'bold': True, 'font_color': WHITE, 'bg_color': RED, 'align': 'center', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0'})
+    fmt_total_y = workbook.add_format({'bold': True, 'font_color': '#000000', 'bg_color': YELLOW, 'align': 'center', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0'})
+    fmt_pct = workbook.add_format({'font_size': 8, 'align': 'center', 'border': 1, 'border_color': BORDER, 'num_format': '0%'})
+    fmt_pct_total = workbook.add_format({'bold': True, 'font_color': WHITE, 'bg_color': RED, 'align': 'center', 'border': 1, 'border_color': BORDER, 'num_format': '0%'})
+    fmt_kpi_label = workbook.add_format({'bold': True, 'font_color': WHITE, 'bg_color': RED_DARK, 'align': 'center', 'border': 1, 'border_color': BORDER})
+    fmt_kpi_val = workbook.add_format({'bold': True, 'font_color': '#000000', 'bg_color': YELLOW, 'align': 'center', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0'})
+
+    ws = workbook.add_worksheet('Ocupabilidad')
+    ws.hide_gridlines(2)
+    ws.freeze_panes(8, 1)
+    dates = data.get('date_labels', [])
+    date_count = len(dates)
+    last_col = max(date_count + 1, 8)
+    ws.set_column(0, 0, 26)
+    if date_count:
+        ws.set_column(1, date_count, 7)
+    ws.set_column(date_count + 1, date_count + 1, 14)
+
+    ws.merge_range(0, 0, 0, last_col, 'REPORTE DE OCUPABILIDAD', fmt_title)
+    curve_name = (data.get('curve') or {}).get('name', 'Sin curva seleccionada')
+    ws.merge_range(1, 0, 1, last_col, f"Período: {data.get('start_date','')} al {data.get('end_date','')} | Curva: {curve_name} | Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", fmt_meta)
+
+    kpis = [
+        ('CURVA ACUM.', data.get('totals', {}).get('curva_total', 0)),
+        ('RESERVAS ACUM.', data.get('totals', {}).get('reservas_total', 0)),
+        ('CENSO ACUM.', data.get('totals', {}).get('censo_total', 0)),
+        ('NO PRESENTES', data.get('totals', {}).get('no_presentes_total', 0)),
+        ('CAMAS HAB.', data.get('totals', {}).get('beds_total', 0)),
+    ]
+    col = 0
+    for label, value in kpis:
+        ws.write(3, col, label, fmt_kpi_label)
+        ws.write_number(4, col, float(value or 0), fmt_kpi_val)
+        col += 2
+
+    current_row = 7
+
+    def write_section(title, rows, total_values, total_label, total_format=fmt_total):
+        nonlocal current_row
+        ws.merge_range(current_row, 0, current_row, date_count + 1, title, fmt_section)
+        current_row += 1
+        ws.write(current_row, 0, 'GERENCIAS', fmt_head)
+        for i, label in enumerate(dates):
+            ws.write(current_row, i + 1, label, fmt_date)
+        ws.write(current_row, date_count + 1, 'TOTAL', fmt_head)
+        current_row += 1
+        for row in rows:
+            ws.write(current_row, 0, row.get('gerencia', ''), fmt_text)
+            for i, val in enumerate(row.get('values', [])):
+                ws.write_number(current_row, i + 1, float(val or 0), fmt_num)
+            ws.write_number(current_row, date_count + 1, float(row.get('total') or 0), fmt_total_y)
+            current_row += 1
+        ws.write(current_row, 0, total_label, total_format)
+        for i, val in enumerate(total_values):
+            ws.write_number(current_row, i + 1, float(val or 0), total_format)
+        ws.write_number(current_row, date_count + 1, float(sum(total_values) or 0), total_format)
+        current_row += 2
+
+    sections = data.get('sections', {})
+    totals = data.get('totals', {})
+    write_section('CURVA', sections.get('curva', []), totals.get('curva', []), 'TOTAL GENERAL CURVA')
+    write_section('RESERVAS', sections.get('reservas', []), totals.get('reservas', []), 'TOTAL RESERVAS')
+    write_section('CENSO', sections.get('censo', []), totals.get('censo', []), 'TOTAL CENSO')
+    write_section('RESERVAS NO PRESENTES', sections.get('no_presentes', []), totals.get('no_presentes', []), 'TOTAL RESERVAS NO PRESENTES')
+
+    # Porcentajes relevantes
+    ws.merge_range(current_row, 0, current_row, date_count, 'PORCENTAJES RELEVANTES', fmt_section)
+    current_row += 1
+    ws.write(current_row, 0, '', fmt_head)
+    for i, label in enumerate(dates):
+        ws.write(current_row, i + 1, label, fmt_date)
+    current_row += 1
+    pct_start_row = current_row
+    pct_rows = [
+        ('CAMAS HABILITADAS', data.get('beds_by_date', []), 'num'),
+        ('OCUPACIÓN', data.get('percentages', {}).get('ocupacion', []), 'pct'),
+        ('EFICIENCIA', data.get('percentages', {}).get('eficiencia', []), 'pct'),
+        ('DISPONIBILIDAD', data.get('percentages', {}).get('disponibilidad', []), 'pct'),
+    ]
+    for label, values, kind in pct_rows:
+        ws.write(current_row, 0, label, fmt_text)
+        for i, val in enumerate(values):
+            if kind == 'pct':
+                ws.write_number(current_row, i + 1, float(val or 0) / 100, fmt_pct)
+            else:
+                ws.write_number(current_row, i + 1, float(val or 0), fmt_num)
+        current_row += 1
+
+    # Datos para gráficos
+    chart_ws = workbook.add_worksheet('_Datos Graficos Ocupabilidad')
+    chart_ws.hide()
+    headers = ['Fecha', 'TOTAL GENERAL CURVA', 'TOTAL RESERVAS', 'TOTAL CENSO', 'TOTAL RESERVAS NO PRESENTES', 'CAMAS HABILITADAS', 'OCUPACIÓN', 'EFICIENCIA', 'DISPONIBILIDAD']
+    for c, h in enumerate(headers):
+        chart_ws.write(0, c, h)
+    for r, label in enumerate(dates, start=1):
+        chart_ws.write(r, 0, label)
+        chart_ws.write_number(r, 1, float(totals.get('curva', [])[r-1] if r-1 < len(totals.get('curva', [])) else 0))
+        chart_ws.write_number(r, 2, float(totals.get('reservas', [])[r-1] if r-1 < len(totals.get('reservas', [])) else 0))
+        chart_ws.write_number(r, 3, float(totals.get('censo', [])[r-1] if r-1 < len(totals.get('censo', [])) else 0))
+        chart_ws.write_number(r, 4, float(totals.get('no_presentes', [])[r-1] if r-1 < len(totals.get('no_presentes', [])) else 0))
+        chart_ws.write_number(r, 5, float(data.get('beds_by_date', [])[r-1] if r-1 < len(data.get('beds_by_date', [])) else 0))
+        chart_ws.write_number(r, 6, float(data.get('percentages', {}).get('ocupacion', [])[r-1] if r-1 < len(data.get('percentages', {}).get('ocupacion', [])) else 0) / 100)
+        chart_ws.write_number(r, 7, float(data.get('percentages', {}).get('eficiencia', [])[r-1] if r-1 < len(data.get('percentages', {}).get('eficiencia', [])) else 0) / 100)
+        chart_ws.write_number(r, 8, float(data.get('percentages', {}).get('disponibilidad', [])[r-1] if r-1 < len(data.get('percentages', {}).get('disponibilidad', [])) else 0) / 100)
+
+    if date_count:
+        chart1 = workbook.add_chart({'type': 'line'})
+        series_info = [
+            (1, 'TOTAL GENERAL CURVA', BLUE),
+            (2, 'TOTAL RESERVAS', ORANGE),
+            (3, 'TOTAL CENSO', '#A6A6A6'),
+            (4, 'TOTAL RESERVAS NO PRESENTES', '#FFC000'),
+            (5, 'CAMAS HABILITADAS', '#5B9BD5'),
+        ]
+        for col_idx, name, color in series_info:
+            chart1.add_series({
+                'name': ['_Datos Graficos Ocupabilidad', 0, col_idx],
+                'categories': ['_Datos Graficos Ocupabilidad', 1, 0, date_count, 0],
+                'values': ['_Datos Graficos Ocupabilidad', 1, col_idx, date_count, col_idx],
+                'line': {'color': color, 'width': 2.25},
+                'marker': {'type': 'circle', 'size': 4, 'border': {'color': color}, 'fill': {'color': color}},
+                'data_labels': {'value': True, 'font': {'size': 8, 'bold': True, 'color': WHITE}, 'position': 'above'},
+            })
+        chart1.set_title({'name': 'RESUMEN GENERAL DE OCUPACIÓN', 'name_font': {'bold': True, 'color': WHITE, 'size': 11}})
+        chart1.set_legend({'position': 'bottom', 'font': {'color': WHITE, 'size': 8}})
+        chart1.set_chartarea({'fill': {'color': '#3A3A3A'}, 'border': {'none': True}})
+        chart1.set_plotarea({'fill': {'color': '#4A4A4A'}, 'border': {'none': True}})
+        chart1.set_x_axis({'label_position': 'low', 'num_font': {'color': WHITE, 'size': 8}, 'line': {'color': '#777777'}})
+        chart1.set_y_axis({'major_gridlines': {'visible': True, 'line': {'color': '#666666'}}, 'num_font': {'color': WHITE, 'size': 8}, 'line': {'color': '#777777'}})
+        chart1.set_size({'width': 900, 'height': 420})
+        ws.insert_chart(current_row + 1, 0, chart1)
+
+        chart2 = workbook.add_chart({'type': 'line'})
+        pct_series = [(6, 'OCUPACIÓN', '#4472C4'), (7, 'EFICIENCIA', '#ED7D31'), (8, 'DISPONIBILIDAD', '#A5A5A5')]
+        for col_idx, name, color in pct_series:
+            chart2.add_series({
+                'name': ['_Datos Graficos Ocupabilidad', 0, col_idx],
+                'categories': ['_Datos Graficos Ocupabilidad', 1, 0, date_count, 0],
+                'values': ['_Datos Graficos Ocupabilidad', 1, col_idx, date_count, col_idx],
+                'line': {'color': color, 'width': 2.5},
+                'marker': {'type': 'circle', 'size': 4, 'border': {'color': color}, 'fill': {'color': color}},
+                'data_labels': {'value': True, 'num_format': '0%', 'font': {'size': 8, 'bold': True, 'color': WHITE}, 'position': 'above'},
+            })
+        chart2.set_title({'name': 'PORCENTAJES RELEVANTES', 'name_font': {'bold': True, 'color': WHITE, 'size': 11}})
+        chart2.set_legend({'position': 'bottom', 'font': {'color': WHITE, 'size': 8}})
+        chart2.set_chartarea({'fill': {'color': '#3A3A3A'}, 'border': {'none': True}})
+        chart2.set_plotarea({'fill': {'color': '#4A4A4A'}, 'border': {'none': True}})
+        chart2.set_x_axis({'label_position': 'low', 'num_font': {'color': WHITE, 'size': 8}, 'line': {'color': '#777777'}})
+        chart2.set_y_axis({'num_format': '0%', 'major_gridlines': {'visible': True, 'line': {'color': '#666666'}}, 'num_font': {'color': WHITE, 'size': 8}, 'line': {'color': '#777777'}, 'min': 0})
+        chart2.set_size({'width': 900, 'height': 380})
+        ws.insert_chart(current_row + 23, 0, chart2)
+
+    ws.set_landscape()
+    ws.fit_to_pages(1, 0)
+    ws.set_margins(left=0.3, right=0.3, top=0.4, bottom=0.4)
+
+    workbook.close()
+    with open(tmp_path, 'rb') as f:
+        content = f.read()
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
+    return content
+
+
+def format_ocupabilidad_filename():
+    return f'ocupabilidad_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+
+
+def build_report_export_job(app, job_id):
+    """Genera exportaciones Excel en segundo plano."""
+    with app.app_context():
+        job = ExportJob.query.get(job_id)
+        if not job:
+            return
+        try:
+            job.status = 'running'
+            job.started_at = now_utc()
+            job.message = 'Preparando datos...'
+            db.session.commit()
+
+            params = json.loads(job.params_json or '{}')
+            start = parse_date(params.get('start_date'))
+            end = parse_date(params.get('end_date'))
+            curve_id = int(params.get('curve_id')) if str(params.get('curve_id') or '').strip() else None
+
+            def progress(message):
+                job.message = message
+                db.session.commit()
+
+            if job.job_type.startswith('ocupabilidad'):
+                beds_default = as_number(params.get('beds_default'))
+                beds_map = parse_beds_payload(params.get('beds_by_date'))
+                data = occupancy_report_data(start, end, curve_id, beds_default, beds_map)
+                content = occupancy_xlsx_fast(data, progress_callback=progress)
+                job.filename = job.filename or format_ocupabilidad_filename()
+            else:
+                data = report_data(start, end, curve_id)
+                content = report_xlsx_fast(data, progress_callback=progress)
+                job.filename = job.filename or format_export_filename(params.get('export_mode') or 'gerencia')
+
+            job.content = content
+            job.content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            job.status = 'completed'
+            job.message = 'Archivo Excel listo para descargar.'
+            job.completed_at = now_utc()
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            job = ExportJob.query.get(job_id)
+            if job:
+                job.status = 'failed'
+                job.message = f'Error al generar Excel: {exc}'
+                job.completed_at = now_utc()
+                db.session.commit()
+
 def parse_arg(name):
     v=(request.args.get(name) or '').strip()
     return datetime.strptime(v,'%Y-%m-%d').date() if v else None
@@ -2602,6 +3094,67 @@ def register_routes(app):
     @app.route('/censos')
     def censos_page():
         return render_template('censos.html', censos=Censo.query.order_by(Censo.fecha_censo.desc()).all())
+
+
+    @app.route('/reports/ocupabilidad')
+    def ocupabilidad_page():
+        return render_template('ocupabilidad.html', curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all())
+
+    @app.route('/api/reports/ocupabilidad')
+    def ocupabilidad_api():
+        beds_default = request.args.get('beds_default', 0)
+        beds_by_date = parse_beds_payload(request.args.get('beds_by_date'))
+        return jsonify(occupancy_report_data(
+            parse_arg('start_date'),
+            parse_arg('end_date'),
+            request.args.get('curve_id', type=int),
+            beds_default=beds_default,
+            beds_by_date=beds_by_date,
+        ))
+
+    @app.post('/api/reports/ocupabilidad/export/start')
+    def ocupabilidad_export_start():
+        payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
+        params = {
+            'start_date': (payload.get('start_date') or '').strip(),
+            'end_date': (payload.get('end_date') or '').strip(),
+            'curve_id': (payload.get('curve_id') or '').strip(),
+            'beds_default': str(payload.get('beds_default') or '').strip(),
+            'beds_by_date': payload.get('beds_by_date') or '',
+        }
+        job = ExportJob(
+            job_type='ocupabilidad',
+            status='pending',
+            message='Exportación de ocupabilidad en cola...',
+            params_json=json.dumps(params),
+            filename=format_ocupabilidad_filename(),
+        )
+        db.session.add(job)
+        db.session.commit()
+        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
+        thread.start()
+        return jsonify({
+            'ok': True,
+            'job_id': job.id,
+            'status_url': url_for('export_job_status', job_id=job.id),
+            'download_url': url_for('export_job_download', job_id=job.id),
+            'page_url': url_for('export_job_page', job_id=job.id),
+        }), 202
+
+    @app.route('/api/reports/ocupabilidad/export')
+    def ocupabilidad_export():
+        job = ExportJob(
+            job_type='ocupabilidad',
+            status='pending',
+            message='Exportación de ocupabilidad en cola...',
+            params_json=json.dumps(request.args.to_dict()),
+            filename=format_ocupabilidad_filename(),
+        )
+        db.session.add(job)
+        db.session.commit()
+        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
+        thread.start()
+        return redirect(url_for('export_job_page', job_id=job.id), code=303)
 
     @app.route('/reports/dotacion-gerencia')
     def report_page():

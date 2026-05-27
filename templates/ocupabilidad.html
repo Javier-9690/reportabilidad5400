@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+{% block content %}
+<div class="report-page occupancy-page">
+    <div class="report-hero d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+        <div>
+            <div class="report-eyebrow"><i class="bi bi-bar-chart-line"></i> Reporte operativo</div>
+            <h4 class="mb-0">Ocupabilidad</h4>
+            <small>Curva, reservas, censo, reservas no presentes y porcentajes relevantes.</small>
+        </div>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <button id="btnExportOcupabilidad" class="btn btn-sm btn-success report-export-btn">
+                <i class="bi bi-file-earmark-bar-graph"></i> Exportar Excel
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3 report-filter-card">
+        <div class="card-body py-3">
+            <form id="filterForm" class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">Desde</label>
+                    <input type="date" id="startDate" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">Hasta</label>
+                    <input type="date" id="endDate" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small mb-1">Curva</label>
+                    <select id="curveId" class="form-select form-select-sm">
+                        <option value="">Curva activa</option>
+                        {% for c in curves %}
+                        <option value="{{ c.id }}">{{ c.name }}{% if c.is_active %} (activa){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">Camas habilitadas</label>
+                    <input type="number" id="bedsDefault" class="form-control form-control-sm" min="0" step="1" placeholder="Ej: 1160">
+                </div>
+                <div class="col-6 col-md-3">
+                    <button class="btn btn-sm btn-danger w-100" type="submit">
+                        <i class="bi bi-arrow-clockwise"></i> Generar
+                    </button>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#bedsByDateBox">
+                        <i class="bi bi-calendar3"></i> Definir camas por fecha
+                    </button>
+                    <small class="text-muted ms-2">Opcional. Si lo dejas vacío, se usa el valor general para todas las fechas.</small>
+                    <div class="collapse mt-2" id="bedsByDateBox">
+                        <textarea id="bedsByDate" class="form-control form-control-sm" rows="3" placeholder="Ejemplo:\n20/05/2026=1160\n21/05/2026=1160\n23/05/2026=840"></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="reportSummary" class="row g-2 mb-3"></div>
+    <div id="conclusions" class="mb-3"></div>
+
+    <div class="card shadow-sm mb-3 report-chart-card">
+        <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+            <div>
+                <div class="fw-bold"><i class="bi bi-graph-up"></i> Resumen general de ocupación</div>
+                <small class="text-muted">Curva, reservas, censo, reservas no presentes y camas habilitadas</small>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="report-chart-wrapper occupancy-chart-wrapper">
+                <canvas id="generalChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3 report-chart-card">
+        <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+            <div>
+                <div class="fw-bold"><i class="bi bi-percent"></i> Porcentajes relevantes</div>
+                <small class="text-muted">Ocupación, eficiencia y disponibilidad</small>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="report-chart-wrapper occupancy-chart-wrapper">
+                <canvas id="percentChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="tablesContainer" class="occupancy-tables"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/ocupabilidad.js') }}?v=20260527_ocupabilidad_1"></script>
+{% endblock %}
