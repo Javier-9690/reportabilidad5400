@@ -581,41 +581,305 @@ def report_data(start=None, end=None, curve_id=None):
 
 
 def report_xlsx(data):
-    wb=Workbook(); ws=wb.active; ws.title='Dotación Gerencia'
-    dates=data.get('date_labels',[]); rows=data.get('rows',[]); total_cols=len(dates)+2
-    red='FF0000'; pink='F8C9CD'; yellow='FFFF00'; white='FFFFFF'; black='000000'
-    border=Border(left=Side(style='thin',color=black),right=Side(style='thin',color=black),top=Side(style='thin',color=black),bottom=Side(style='thin',color=black))
-    ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=total_cols)
-    ws.cell(1,1,'RESUMEN DE DOTACIÓN POR GERENCIA')
-    ws.cell(1,1).fill=PatternFill('solid',fgColor=red); ws.cell(1,1).font=Font(color=white,bold=True,size=14); ws.cell(1,1).alignment=Alignment(horizontal='center')
-    ws.row_dimensions[1].height=30
-    ws.cell(2,1,'GERENCIAS')
-    for i,d in enumerate(dates,2): ws.cell(2,i,d)
-    ws.cell(2,total_cols,'TOTAL GENERAL')
-    for c in range(1,total_cols+1):
-        cell=ws.cell(2,c); cell.fill=PatternFill('solid',fgColor=red); cell.font=Font(color=white,bold=True,size=8); cell.border=border; cell.alignment=Alignment(horizontal='center',vertical='center',text_rotation=90 if 1<c<total_cols else 0)
-    ws.row_dimensions[2].height=75
-    for r,item in enumerate(rows,3):
-        ws.cell(r,1,item['gerencia'])
-        for c,val in enumerate(item['values'],2): ws.cell(r,c,int(round(val)))
-        ws.cell(r,total_cols,int(round(item['total'])))
-        for c in range(1,total_cols+1):
-            cell=ws.cell(r,c); cell.border=border; cell.font=Font(size=8,bold=(c in [1,total_cols])); cell.alignment=Alignment(horizontal='left' if c==1 else 'center')
-            if 1<c<total_cols: cell.fill=PatternFill('solid',fgColor=pink)
-            if c==total_cols: cell.fill=PatternFill('solid',fgColor=yellow if item['total'] else pink)
-    tr=len(rows)+3; ws.cell(tr,1,'TOTAL')
-    for c,val in enumerate(data.get('totals_by_date',[]),2): ws.cell(tr,c,int(round(val)))
-    ws.cell(tr,total_cols,int(round(data.get('grand_total',0))))
-    for c in range(1,total_cols+1):
-        cell=ws.cell(tr,c); cell.border=border; cell.fill=PatternFill('solid',fgColor=yellow if c==total_cols else red); cell.font=Font(color=black if c==total_cols else white,bold=True,size=8); cell.alignment=Alignment(horizontal='left' if c==1 else 'center')
-    ws.column_dimensions['A'].width=28
-    for c in range(2,total_cols): ws.column_dimensions[get_column_letter(c)].width=5
-    ws.column_dimensions[get_column_letter(total_cols)].width=14
-    ws.freeze_panes='B3'
-    rr=tr+3; ws.cell(rr,1,'CONCLUSIONES'); ws.cell(rr,1).font=Font(bold=True,color='B00000')
-    for i,text in enumerate(data.get('conclusions',[]),rr+1):
-        ws.cell(i,1,'• '+text); ws.merge_cells(start_row=i,start_column=1,end_row=i,end_column=min(total_cols,8)); ws.cell(i,1).alignment=Alignment(wrap_text=True)
-    bio=BytesIO(); wb.save(bio); bio.seek(0); return bio
+    """Genera el Excel del reporte y agrega detalle completo de todos los censos importados."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Dotacion Gerencia'
+
+    dates = data.get('date_labels', [])
+    rows = data.get('rows', [])
+    total_cols = len(dates) + 5  # Gerencia + fechas + Total Real + Total Plan + Diferencia + Cumplimiento
+
+    colors = {
+        'red': 'B42318',
+        'red_dark': '7A1712',
+        'pink': 'F8C9CD',
+        'pink_soft': 'FFF0F0',
+        'yellow': 'FFF200',
+        'white': 'FFFFFF',
+        'black': '111111',
+        'gray': 'F2F4F7',
+        'blue': 'E8F1FF',
+        'green': 'D1FADF',
+        'green_text': '027A48',
+        'danger': 'FEE4E2',
+        'danger_text': 'B42318',
+        'warning': 'FFF3CD',
+        'orange_text': 'B54708',
+        'border': '7A1712',
+    }
+
+    thin_border = Border(
+        left=Side(style='thin', color=colors['border']),
+        right=Side(style='thin', color=colors['border']),
+        top=Side(style='thin', color=colors['border']),
+        bottom=Side(style='thin', color=colors['border']),
+    )
+    thick_top = Border(
+        left=Side(style='thin', color=colors['border']),
+        right=Side(style='thin', color=colors['border']),
+        top=Side(style='medium', color=colors['border']),
+        bottom=Side(style='thin', color=colors['border']),
+    )
+
+    def fill(color):
+        return PatternFill('solid', fgColor=color)
+
+    def safe_num(value):
+        return int(round(float(value or 0)))
+
+    def safe_pct(real, plan):
+        real = float(real or 0)
+        plan = float(plan or 0)
+        if not plan:
+            return 'Sin plan' if real else '0%'
+        return f'{(real / plan) * 100:.1f}%'
+
+    def apply_header(cell, rotate=False):
+        cell.fill = fill(colors['red'])
+        cell.font = Font(color=colors['white'], bold=True, size=8)
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal='center', vertical='center', text_rotation=90 if rotate else 0, wrap_text=True)
+
+    ws.sheet_view.showGridLines = False
+
+    # Título principal
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+    title = ws.cell(1, 1, 'RESUMEN DE DOTACIÓN POR GERENCIA')
+    title.fill = fill(colors['red_dark'])
+    title.font = Font(color=colors['white'], bold=True, size=16)
+    title.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 28
+
+    # Metadata
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
+    curve_name = (data.get('curve') or {}).get('name', 'Sin curva seleccionada')
+    meta = ws.cell(2, 1, f"Período: {data.get('start_date', '')} al {data.get('end_date', '')} | Curva: {curve_name} | Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    meta.fill = fill(colors['pink_soft'])
+    meta.font = Font(color=colors['black'], bold=True, size=9)
+    meta.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[2].height = 22
+
+    # KPIs
+    real_total = float(data.get('grand_total') or 0)
+    plan_total = float(data.get('planned_grand_total') or 0)
+    diff_total = real_total - plan_total
+    kpis = [
+        ('REAL ACUMULADO', safe_num(real_total), colors['pink']),
+        ('PLAN ACUMULADO', safe_num(plan_total), colors['blue']),
+        ('DIFERENCIA', safe_num(diff_total), colors['green'] if diff_total >= 0 else colors['danger']),
+        ('CUMPLIMIENTO', safe_pct(real_total, plan_total), colors['gray']),
+    ]
+    start_kpi_col = 1
+    for label, value, color in kpis:
+        ws.merge_cells(start_row=4, start_column=start_kpi_col, end_row=4, end_column=start_kpi_col + 1)
+        cell = ws.cell(4, start_kpi_col, label)
+        cell.fill = fill(colors['red'])
+        cell.font = Font(color=colors['white'], bold=True, size=8)
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
+        ws.cell(4, start_kpi_col + 1).border = thin_border
+
+        ws.merge_cells(start_row=5, start_column=start_kpi_col, end_row=5, end_column=start_kpi_col + 1)
+        cell = ws.cell(5, start_kpi_col, value)
+        cell.fill = fill(color)
+        cell.font = Font(color=colors['black'], bold=True, size=12)
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
+        ws.cell(5, start_kpi_col + 1).border = thin_border
+        start_kpi_col += 2
+
+    # Tabla principal
+    table_header_row = 7
+    headers = ['GERENCIAS'] + dates + ['TOTAL REAL', 'TOTAL PLAN', 'DIF.', 'CUMP.']
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(table_header_row, col_idx, header)
+        apply_header(cell, rotate=1 < col_idx <= len(dates) + 1)
+    ws.row_dimensions[table_header_row].height = 82
+
+    for row_idx, item in enumerate(rows, table_header_row + 1):
+        is_unmatched = item.get('gerencia') == 'SIN MATCH EN CURVA'
+        ws.cell(row_idx, 1, item.get('gerencia', ''))
+        for col_idx, value in enumerate(item.get('values', []), 2):
+            ws.cell(row_idx, col_idx, safe_num(value))
+
+        total_real_col = len(dates) + 2
+        total_plan_col = len(dates) + 3
+        diff_col = len(dates) + 4
+        pct_col = len(dates) + 5
+        real = float(item.get('total') or 0)
+        plan = float(item.get('planned_total') or 0)
+        diff = real - plan
+        ws.cell(row_idx, total_real_col, safe_num(real))
+        ws.cell(row_idx, total_plan_col, safe_num(plan))
+        ws.cell(row_idx, diff_col, safe_num(diff))
+        ws.cell(row_idx, pct_col, safe_pct(real, plan))
+
+        for col_idx in range(1, total_cols + 1):
+            cell = ws.cell(row_idx, col_idx)
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='left' if col_idx == 1 else 'center', vertical='center')
+            cell.font = Font(size=8, bold=col_idx in (1, total_real_col, total_plan_col, diff_col, pct_col))
+            if col_idx == 1:
+                cell.fill = fill(colors['warning'] if is_unmatched else colors['white'])
+                if is_unmatched:
+                    cell.font = Font(size=8, bold=True, color=colors['orange_text'])
+            elif 2 <= col_idx <= len(dates) + 1:
+                cell.fill = fill(colors['warning'] if is_unmatched else (colors['white'] if safe_num(cell.value) == 0 else colors['pink']))
+            elif col_idx == total_real_col:
+                cell.fill = fill(colors['yellow'] if real else colors['pink'])
+            elif col_idx == total_plan_col:
+                cell.fill = fill(colors['blue'])
+            elif col_idx == diff_col:
+                cell.fill = fill(colors['green'] if diff >= 0 else colors['danger'])
+                cell.font = Font(size=8, bold=True, color=colors['green_text'] if diff >= 0 else colors['danger_text'])
+            elif col_idx == pct_col:
+                cell.fill = fill(colors['gray'])
+
+    total_row = table_header_row + len(rows) + 1
+    ws.cell(total_row, 1, 'TOTAL')
+    for col_idx, value in enumerate(data.get('totals_by_date', []), 2):
+        ws.cell(total_row, col_idx, safe_num(value))
+    ws.cell(total_row, len(dates) + 2, safe_num(real_total))
+    ws.cell(total_row, len(dates) + 3, safe_num(plan_total))
+    ws.cell(total_row, len(dates) + 4, safe_num(diff_total))
+    ws.cell(total_row, len(dates) + 5, safe_pct(real_total, plan_total))
+
+    for col_idx in range(1, total_cols + 1):
+        cell = ws.cell(total_row, col_idx)
+        cell.border = thick_top
+        cell.alignment = Alignment(horizontal='left' if col_idx == 1 else 'center', vertical='center')
+        cell.font = Font(size=8, bold=True, color=colors['white'])
+        cell.fill = fill(colors['red'])
+        if col_idx == len(dates) + 2:
+            cell.fill = fill(colors['yellow'])
+            cell.font = Font(size=8, bold=True, color=colors['black'])
+        elif col_idx == len(dates) + 3:
+            cell.fill = fill(colors['blue'])
+            cell.font = Font(size=8, bold=True, color=colors['black'])
+        elif col_idx == len(dates) + 4:
+            cell.fill = fill(colors['green'] if diff_total >= 0 else colors['danger'])
+            cell.font = Font(size=8, bold=True, color=colors['green_text'] if diff_total >= 0 else colors['danger_text'])
+        elif col_idx == len(dates) + 5:
+            cell.fill = fill(colors['gray'])
+            cell.font = Font(size=8, bold=True, color=colors['black'])
+
+    conclusion_row = total_row + 3
+    ws.cell(conclusion_row, 1, 'CONCLUSIONES')
+    ws.cell(conclusion_row, 1).font = Font(bold=True, color=colors['red'], size=11)
+    for idx, text in enumerate(data.get('conclusions', []), conclusion_row + 1):
+        ws.cell(idx, 1, '• ' + str(text))
+        ws.merge_cells(start_row=idx, start_column=1, end_row=idx, end_column=min(total_cols, 10))
+        ws.cell(idx, 1).alignment = Alignment(wrap_text=True, vertical='top')
+
+    ws.column_dimensions['A'].width = 32
+    for col_idx in range(2, len(dates) + 2):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 5
+    for col_idx in range(len(dates) + 2, total_cols + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 13
+    ws.freeze_panes = 'B8'
+    ws.auto_filter.ref = f'A{table_header_row}:{get_column_letter(total_cols)}{total_row}'
+
+    # Pestaña con detalle completo de todos los censos importados previamente
+    detail = wb.create_sheet('Detalle Censos')
+    detail.sheet_view.showGridLines = False
+    detail_headers = [
+        'Censo ID', 'Fecha Censo', 'Hoja Censo', 'Importado Censo',
+        'Total Registros Censo', 'Total Ocupado Censo', 'Cruzados Censo', 'Sin Match Censo',
+        'Archivo ID', 'Archivo Nombre', 'Archivo Tipo', 'Archivo Tamaño Bytes', 'Archivo SHA256', 'Archivo Subido',
+        'Registro ID', 'Solicitud ID', 'Módulo', 'Lugar', 'Habitación', 'Empresa Censo', 'Cama', 'Día',
+        'Camas Ocupadas', 'Turno Censo', 'Gerencia Censo', 'Área Censo', 'RUT', 'Estado',
+        'Curva Item ID', 'Curva Versión ID', 'Curva Versión', 'Gerencia Curva', 'Área Curva', 'Empresa Curva',
+        'Turno Curva', 'Tipo Contrato Curva', 'Formato Curva', 'Camp Curva', 'Estado Match'
+    ]
+    for col_idx, header in enumerate(detail_headers, 1):
+        cell = detail.cell(1, col_idx, header)
+        cell.fill = fill(colors['red'])
+        cell.font = Font(color=colors['white'], bold=True, size=9)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = thin_border
+    detail.row_dimensions[1].height = 32
+
+    query = db.session.query(CensoRecord, Censo, UploadedFile, CurvaItem, CurvaVersion).join(
+        Censo, Censo.id == CensoRecord.censo_id
+    ).join(
+        UploadedFile, UploadedFile.id == Censo.file_id
+    ).outerjoin(
+        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+    ).outerjoin(
+        CurvaVersion, CurvaVersion.id == CurvaItem.curva_version_id
+    ).order_by(
+        Censo.fecha_censo.desc(), CensoRecord.id.asc()
+    )
+
+    row_idx = 2
+    for record, censo, file_obj, item, version in query.yield_per(1000):
+        values = [
+            censo.id,
+            censo.fecha_censo.strftime('%Y-%m-%d') if censo.fecha_censo else '',
+            censo.sheet_name or '',
+            censo.imported_at.strftime('%Y-%m-%d %H:%M:%S') if censo.imported_at else '',
+            censo.total_records,
+            censo.total_occupied,
+            censo.matched_count,
+            censo.unmatched_count,
+            file_obj.id if file_obj else '',
+            file_obj.filename if file_obj else '',
+            file_obj.file_type if file_obj else '',
+            file_obj.size_bytes if file_obj else '',
+            file_obj.sha256 if file_obj else '',
+            file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if file_obj and file_obj.uploaded_at else '',
+            record.id,
+            record.solicitud_id or '',
+            record.modulo or '',
+            record.lugar or '',
+            record.habitacion or '',
+            record.empresa or '',
+            record.cama or '',
+            record.dia or '',
+            record.camas_ocupadas,
+            record.turno or '',
+            record.gerencia_censo or '',
+            record.area or '',
+            record.rut or '',
+            record.estado or '',
+            item.id if item else '',
+            version.id if version else '',
+            version.name if version else '',
+            item.gerencia if item else '',
+            item.area if item else '',
+            item.empresa if item else '',
+            item.turno if item else '',
+            item.tipo_contrato if item else '',
+            item.formato if item else '',
+            item.camp if item else '',
+            'Cruzado' if item else 'Sin match',
+        ]
+        for col_idx, value in enumerate(values, 1):
+            cell = detail.cell(row_idx, col_idx, value)
+            cell.alignment = Alignment(vertical='center')
+            if col_idx == len(values):
+                cell.fill = fill(colors['green'] if item else colors['danger'])
+                cell.font = Font(bold=True, color=colors['green_text'] if item else colors['danger_text'])
+        row_idx += 1
+
+    detail.freeze_panes = 'A2'
+    if row_idx > 2:
+        detail.auto_filter.ref = f'A1:{get_column_letter(len(detail_headers))}{row_idx - 1}'
+    widths = {
+        1: 10, 2: 13, 3: 14, 4: 20, 5: 18, 6: 18, 7: 15, 8: 15,
+        9: 10, 10: 34, 11: 12, 12: 18, 13: 24, 14: 20, 15: 12, 16: 18,
+        17: 14, 18: 18, 19: 14, 20: 24, 21: 12, 22: 14, 23: 16, 24: 16,
+        25: 24, 26: 20, 27: 14, 28: 18, 29: 14, 30: 16, 31: 30, 32: 28,
+        33: 24, 34: 24, 35: 16, 36: 20, 37: 16, 38: 16, 39: 14,
+    }
+    for col_idx in range(1, len(detail_headers) + 1):
+        detail.column_dimensions[get_column_letter(col_idx)].width = widths.get(col_idx, 16)
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio
 
 
 

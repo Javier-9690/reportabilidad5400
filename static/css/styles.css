@@ -265,3 +265,280 @@ body{
         max-width:170px;
     }
 }
+
+/* Reporte dotación por gerencia - vista mejorada */
+.report-page{
+    --report-red:#b42318;
+    --report-red-dark:#8f1510;
+    --report-red-soft:#fff0f0;
+    --report-orange:#f58220;
+    --report-yellow:#fff200;
+    --report-blue:#e8f1ff;
+    --report-green:#e8f6ef;
+    --report-danger:#fde8e8;
+}
+
+.report-hero{
+    background:linear-gradient(90deg,#ffffff 0%,#fff7f7 55%,#fff0e8 100%);
+    border:1px solid #ead4d2;
+    border-left:6px solid var(--report-red);
+    border-radius:.85rem;
+    padding:1rem 1.1rem;
+    box-shadow:0 .25rem .75rem rgba(0,0,0,.05);
+}
+
+.report-hero h4{
+    color:var(--report-red-dark);
+    font-weight:800;
+    letter-spacing:.01em;
+}
+
+.report-hero small,
+.report-eyebrow{
+    color:#667085;
+}
+
+.report-eyebrow{
+    font-size:.76rem;
+    text-transform:uppercase;
+    font-weight:800;
+    letter-spacing:.08em;
+}
+
+.report-export-btn{
+    border-radius:999px;
+    padding:.42rem .9rem;
+    font-weight:700;
+}
+
+.report-filter-card{
+    border-left:5px solid var(--report-red);
+}
+
+.report-filter-card .form-label{
+    font-weight:700;
+    color:#384250;
+}
+
+.report-metric{
+    border:1px solid #e4e7ec;
+    border-left:5px solid var(--report-red);
+    min-height:76px;
+}
+
+.report-metric i{
+    font-size:1.65rem;
+    opacity:.88;
+}
+
+.report-metric.metric-real{border-left-color:var(--report-red)}
+.report-metric.metric-plan{border-left-color:#2e90fa}
+.report-metric.metric-up{border-left-color:#12b76a}
+.report-metric.metric-down{border-left-color:#f04438}
+.report-metric.metric-compliance{border-left-color:var(--report-orange)}
+
+.report-metric.metric-real i{color:var(--report-red)}
+.report-metric.metric-plan i{color:#2e90fa}
+.report-metric.metric-up i{color:#12b76a}
+.report-metric.metric-down i{color:#f04438}
+.report-metric.metric-compliance i{color:var(--report-orange)}
+
+.report-legend{
+    color:#475467;
+    align-items:center;
+}
+
+.legend-dot{
+    display:inline-block;
+    width:.7rem;
+    height:.7rem;
+    border-radius:50%;
+    margin-right:.25rem;
+    vertical-align:-.05rem;
+}
+
+.legend-dot.real{background:#f8c9cd;border:1px solid #eaa2a8}
+.legend-dot.plan{background:#e8f1ff;border:1px solid #abc7f8}
+.legend-dot.diff-pos{background:#d1fadf;border:1px solid #75e0a7}
+.legend-dot.diff-neg{background:#fee4e2;border:1px solid #fda29b}
+.legend-dot.unmatched{background:#fff3cd;border:1px solid #ffd666}
+
+.report-table-wrapper{
+    max-height:74vh;
+    border:1px solid #7a1712;
+    background:#fff;
+    border-radius:.75rem;
+    overflow:auto;
+}
+
+.report-table{
+    font-size:.78rem;
+    white-space:nowrap;
+    border-collapse:separate;
+    border-spacing:0;
+}
+
+.report-table thead th{
+    position:sticky;
+    top:0;
+    z-index:3;
+    background:var(--report-red)!important;
+    color:#fff;
+    border-color:#7a1712!important;
+    text-align:center;
+    vertical-align:middle;
+}
+
+.report-table thead tr:nth-child(2) th{
+    top:35px;
+}
+
+.report-table .report-main-title th{
+    top:0;
+    background:linear-gradient(90deg,var(--report-red-dark),var(--report-red))!important;
+    color:#fff;
+    font-size:1rem;
+    letter-spacing:.08em;
+    padding:.55rem;
+}
+
+.report-table .report-main-title span{
+    display:block;
+    font-size:.68rem;
+    font-weight:500;
+    letter-spacing:.04em;
+    margin-top:.15rem;
+    opacity:.9;
+}
+
+.report-table .date-header{
+    height:96px;
+    min-width:34px;
+    writing-mode:vertical-rl;
+    transform:rotate(180deg);
+    font-size:.72rem;
+    line-height:1;
+    padding:.4rem .15rem;
+}
+
+.report-table .sticky-col{
+    position:sticky;
+    left:0;
+    z-index:2;
+}
+
+.report-table thead .sticky-col{
+    z-index:4;
+}
+
+.report-table .gerencia-col{
+    min-width:235px;
+    max-width:280px;
+    background:#fff!important;
+    color:#111!important;
+    text-align:left!important;
+    font-weight:800;
+}
+
+.report-table tbody td{
+    background:#f8c9cd;
+    border-color:#9f322c!important;
+    text-align:center;
+    vertical-align:middle;
+}
+
+.report-table tbody td.gerencia-col{
+    border-right:2px solid #7a1712!important;
+}
+
+.report-table tbody tr:hover td{
+    filter:brightness(.98);
+}
+
+.report-table .actual-cell.zero-cell{
+    background:#ffffff!important;
+    color:#98a2b3;
+}
+
+.report-table .total-col,
+.report-table .total-col-head{
+    background:var(--report-yellow)!important;
+    color:#111!important;
+    font-weight:900;
+}
+
+.report-table .plan-col,
+.report-table .plan-col-head{
+    background:var(--report-blue)!important;
+    color:#111!important;
+    font-weight:800;
+}
+
+.report-table .diff-col-head,
+.report-table .cumpl-col-head{
+    background:#6f120d!important;
+    color:#fff!important;
+}
+
+.report-table .diff-positive{
+    background:#d1fadf!important;
+    color:#027a48!important;
+    font-weight:900;
+}
+
+.report-table .diff-negative{
+    background:#fee4e2!important;
+    color:#b42318!important;
+    font-weight:900;
+}
+
+.report-table .diff-neutral,
+.report-table .cumpl-col{
+    background:#f2f4f7!important;
+    color:#344054!important;
+    font-weight:800;
+}
+
+.report-table .unmatched-row td{
+    background:#fff3cd!important;
+}
+
+.report-table .unmatched-row .gerencia-col{
+    color:#b54708!important;
+}
+
+.report-table .total-row td{
+    background:var(--report-red)!important;
+    color:#fff!important;
+    font-weight:900;
+    border-top:3px solid #7a1712!important;
+}
+
+.report-table .total-row td.total-col{
+    background:var(--report-yellow)!important;
+    color:#111!important;
+}
+
+.report-table .total-row td.plan-col{
+    background:var(--report-blue)!important;
+    color:#111!important;
+}
+
+.conclusion-card{
+    border-left:5px solid var(--report-orange);
+    background:linear-gradient(90deg,#fff 0%,#fff9f2 100%);
+}
+
+.conclusion-bullet{
+    color:var(--report-red);
+    font-weight:900;
+}
+
+@media (max-width: 767.98px){
+    .report-table .gerencia-col{
+        min-width:190px;
+    }
+    .report-table{
+        font-size:.72rem;
+    }
+}
