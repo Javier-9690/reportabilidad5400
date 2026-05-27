@@ -58,7 +58,7 @@ El fallback SQLite queda solo para desarrollo local. En Render, PostgreSQL es ob
 
 ## Corrección importación de Excel en Render
 
-La importación de la curva usa `python-calamine` como motor principal para leer Excel.
+La importación de la curva lee el `.xlsx` directamente desde el XML interno del archivo, sin `python-calamine` ni `openpyxl` para esa lectura. Esto evita cargar estilos pesados y funciona mejor en Render.
 Este motor evita cargar los estilos pesados del archivo, que con `openpyxl` puede provocar `WORKER TIMEOUT` u OOM en Render.
 
 El arranque recomendado en Render es:
@@ -67,4 +67,4 @@ El arranque recomendado en Render es:
 gunicorn app:app --workers 1 --threads 2 --timeout 300 --graceful-timeout 300
 ```
 
-Después de actualizar el repositorio, ejecuta **Clear build cache & deploy** en Render para que instale `python-calamine`.
+Después de actualizar el repositorio, ejecuta **Clear build cache & deploy** en Render para limpiar dependencias anteriores, especialmente si el build previo quedó intentando instalar `python-calamine`.

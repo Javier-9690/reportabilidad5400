@@ -142,7 +142,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = get_database_url(app)
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "40")) * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "80")) * 1024 * 1024
     db.init_app(app)
     with app.app_context():
         db.create_all()
@@ -258,69 +258,197 @@ def save_upload(file, file_type):
     return f, content
 
 
-def excel_engines_for(filename):
-    """
-    Orden de motores para leer Excel.
 
-    En Render conviene usar python-calamine porque no carga estilos pesados
-    de Excel como openpyxl. Esto evita timeouts y consumo excesivo de memoria
-    al importar la curva de poblamiento.
+def xlsx_sheet_paths(content):
     """
+    Lee los nombres de hojas de un .xlsx directamente desde el ZIP interno.
+    No usa openpyxl para evitar cargar estilos pesados en Render.
+    """
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    ns_main = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    ns_rel = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
+
+    with zipfile.ZipFile(BytesIO(content)) as zf:
+        workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+        rels = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+
+        rel_map = {}
+        for rel in rels.findall("r:Relationship", ns_rel):
+            target = rel.attrib.get("Target", "")
+            if not target.startswith("/"):
+                target = "xl/" + target
+            else:
+                target = target.lstrip("/")
+            rel_map[rel.attrib.get("Id")] = target
+
+        sheets = []
+        for sheet in workbook.findall("a:sheets/a:sheet", ns_main):
+            name = sheet.attrib.get("name")
+            rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            path = rel_map.get(rel_id)
+            if name and path:
+                sheets.append((name, path))
+        return sheets
+
+
+def get_sheet_names(content, filename):
     name = (filename or "").lower()
-    engines = ["calamine"]
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        return [name for name, _ in xlsx_sheet_paths(content)]
     if name.endswith(".xlsb"):
-        engines.append("pyxlsb")
-    else:
-        engines.append("openpyxl")
-    return engines
+        return pd.ExcelFile(BytesIO(content), engine="pyxlsb").sheet_names
+    return pd.ExcelFile(BytesIO(content)).sheet_names
 
 
-def open_excel(content, filename):
-    last_error = None
-    for engine in excel_engines_for(filename):
+def column_index_from_cell_ref(cell_ref):
+    letters = "".join(ch for ch in str(cell_ref or "") if ch.isalpha()).upper()
+    if not letters:
+        return 0
+    idx = 0
+    for ch in letters:
+        idx = idx * 26 + (ord(ch) - ord("A") + 1)
+    return idx - 1
+
+
+def read_xlsx_shared_strings(zf):
+    import xml.etree.ElementTree as ET
+    try:
+        data = zf.read("xl/sharedStrings.xml")
+    except KeyError:
+        return []
+
+    ns = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    root = ET.fromstring(data)
+    values = []
+    for si in root.findall("a:si", ns):
+        texts = [node.text or "" for node in si.findall(".//a:t", ns)]
+        values.append("".join(texts))
+    return values
+
+
+def parse_xlsx_cell(cell, shared_strings):
+    import xml.etree.ElementTree as ET
+    cell_type = cell.attrib.get("t")
+    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+
+    if cell_type == "inlineStr":
+        texts = [node.text or "" for node in cell.findall(f".//{ns}t")]
+        return "".join(texts)
+
+    value_node = cell.find(f"{ns}v")
+    if value_node is None or value_node.text is None:
+        return ""
+
+    raw = value_node.text
+    if cell_type == "s":
         try:
-            return pd.ExcelFile(BytesIO(content), engine=engine), engine
-        except Exception as exc:
-            last_error = exc
-    raise ValueError(f"No se pudo abrir el archivo Excel: {last_error}")
+            return shared_strings[int(raw)]
+        except Exception:
+            return ""
+    if cell_type == "b":
+        return raw == "1"
+
+    try:
+        num = float(raw)
+        return int(num) if num.is_integer() else num
+    except Exception:
+        return raw
+
+
+def read_xlsx_sheet_df(content, sheet_name, header=None, nrows=None):
+    """
+    Convierte una hoja .xlsx a DataFrame leyendo XML crudo.
+    Esto evita openpyxl/pandas para la curva, que en Render puede morir por estilos.
+    """
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    sheet_map = dict(xlsx_sheet_paths(content))
+    if sheet_name not in sheet_map:
+        raise ValueError(f"La hoja {sheet_name} no existe en el archivo.")
+
+    rows = []
+    max_cols = 0
+    with zipfile.ZipFile(BytesIO(content)) as zf:
+        shared_strings = read_xlsx_shared_strings(zf)
+        sheet_path = sheet_map[sheet_name]
+        with zf.open(sheet_path) as fh:
+            context = ET.iterparse(fh, events=("end",))
+            ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+            for _, elem in context:
+                if elem.tag != f"{ns}row":
+                    continue
+                row_values = []
+                for cell in elem.findall(f"{ns}c"):
+                    col_idx = column_index_from_cell_ref(cell.attrib.get("r"))
+                    while len(row_values) <= col_idx:
+                        row_values.append("")
+                    row_values[col_idx] = parse_xlsx_cell(cell, shared_strings)
+                max_cols = max(max_cols, len(row_values))
+                rows.append(row_values)
+                elem.clear()
+                if nrows is not None and len(rows) >= nrows:
+                    break
+
+    if not rows:
+        return pd.DataFrame()
+
+    for row in rows:
+        if len(row) < max_cols:
+            row.extend([""] * (max_cols - len(row)))
+
+    if header is None:
+        return pd.DataFrame(rows)
+
+    header = int(header)
+    columns = rows[header]
+    # Asegura nombres únicos para columnas vacías o repetidas.
+    cleaned_columns = []
+    seen = {}
+    for i, col in enumerate(columns):
+        # Mantiene los encabezados numéricos de fecha como número Excel.
+        # Así parse_date(46083) los convierte correctamente a fecha real.
+        if col is None or col == "" or pd.isna(col):
+            name = f"col_{i + 1}"
+        else:
+            name = col
+
+        key = str(name)
+        if key in seen:
+            seen[key] += 1
+            name = f"{key}_{seen[key]}"
+        else:
+            seen[key] = 0
+        cleaned_columns.append(name)
+
+    data_rows = rows[header + 1:]
+    return pd.DataFrame(data_rows, columns=cleaned_columns)
 
 
 def read_excel_df(content, filename, sheet_name, header=None, nrows=None):
-    last_error = None
-    for engine in excel_engines_for(filename):
-        try:
-            kwargs = {
-                "io": BytesIO(content),
-                "sheet_name": sheet_name,
-                "header": header,
-                "engine": engine,
-            }
-            if nrows is not None:
-                kwargs["nrows"] = nrows
-            if engine == "openpyxl":
-                kwargs["engine_kwargs"] = {"read_only": True, "data_only": True}
-            return pd.read_excel(**kwargs)
-        except TypeError:
-            # Algunas versiones de pandas/openpyxl no aceptan engine_kwargs.
-            try:
-                return pd.read_excel(
-                    BytesIO(content),
-                    sheet_name=sheet_name,
-                    header=header,
-                    engine=engine,
-                    nrows=nrows,
-                )
-            except Exception as exc:
-                last_error = exc
-        except Exception as exc:
-            last_error = exc
-    raise ValueError(f"No se pudo leer la hoja {sheet_name}: {last_error}")
+    name = (filename or "").lower()
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        return read_xlsx_sheet_df(content, sheet_name=sheet_name, header=header, nrows=nrows)
+
+    engine = "pyxlsb" if name.endswith(".xlsb") else None
+    kwargs = {
+        "io": BytesIO(content),
+        "sheet_name": sheet_name,
+        "header": header,
+    }
+    if engine:
+        kwargs["engine"] = engine
+    if nrows is not None:
+        kwargs["nrows"] = nrows
+    return pd.read_excel(**kwargs)
 
 
 def import_curva(file, sheet_name="Fcst_5400", version_name=None):
     uploaded, content = save_upload(file, "curva")
-    excel, engine = open_excel(content, uploaded.filename)
-    sheet = sheet_name if sheet_name in excel.sheet_names else next((s for s in excel.sheet_names if "5400" in s), excel.sheet_names[0])
+    sheet_names = get_sheet_names(content, uploaded.filename)
+    sheet = sheet_name if sheet_name in sheet_names else next((s for s in sheet_names if "5400" in s), sheet_names[0])
     raw = read_excel_df(content, uploaded.filename, sheet_name=sheet, header=None, nrows=80)
     header = find_header(raw, ["ID de la solicitud", "Gerencia General"])
     df = read_excel_df(content, uploaded.filename, sheet_name=sheet, header=header).dropna(how="all")
@@ -357,8 +485,8 @@ def import_curva(file, sheet_name="Fcst_5400", version_name=None):
 
 
 def read_censo(content, filename):
-    excel, engine = open_excel(content, filename)
-    sheet = next((s for s in excel.sheet_names if date_from_text(s)), excel.sheet_names[0])
+    sheet_names = get_sheet_names(content, filename)
+    sheet = next((s for s in sheet_names if date_from_text(s)), sheet_names[0])
     detected_date = date_from_text(sheet) or date_from_text(filename)
     raw = read_excel_df(content, filename, sheet_name=sheet, header=None, nrows=80)
     header = find_header(raw, ["Id", "Camas Ocupadas"])
