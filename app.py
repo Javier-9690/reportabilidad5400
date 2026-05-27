@@ -869,8 +869,6 @@ def report_xlsx(data):
         CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
     ).outerjoin(
         CurvaVersion, CurvaVersion.id == CurvaItem.curva_version_id
-    ).order_by(
-        Censo.fecha_censo.desc(), CensoRecord.id.asc()
     )
 
     row_idx = 2
@@ -1172,56 +1170,68 @@ def report_xlsx_fast(data, progress_callback=None):
         CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
     ).outerjoin(
         CurvaVersion, CurvaVersion.id == CurvaItem.curva_version_id
-    ).order_by(
-        Censo.fecha_censo.desc(), CensoRecord.id.asc()
     )
 
     processed = 0
-    for row in query.yield_per(2000):
-        is_matched = bool(row.curva_item_id)
-        detail.append([
-            row.censo_id,
-            row.fecha_censo.strftime('%Y-%m-%d') if row.fecha_censo else '',
-            row.censo_sheet_name or '',
-            row.censo_imported_at.strftime('%Y-%m-%d %H:%M:%S') if row.censo_imported_at else '',
-            row.censo_total_records,
-            row.censo_total_occupied,
-            row.censo_matched_count,
-            row.censo_unmatched_count,
-            row.file_id or '',
-            row.file_filename or '',
-            row.file_type or '',
-            row.file_size_bytes or '',
-            row.file_sha256 or '',
-            row.file_uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if row.file_uploaded_at else '',
-            row.record_id,
-            row.record_solicitud_id or '',
-            row.record_modulo or '',
-            row.record_lugar or '',
-            row.record_habitacion or '',
-            row.record_empresa or '',
-            row.record_cama or '',
-            row.record_dia or '',
-            row.record_camas_ocupadas,
-            row.record_turno or '',
-            row.record_gerencia_censo or '',
-            row.record_area or '',
-            row.record_rut or '',
-            row.record_estado or '',
-            row.curva_item_id or '',
-            row.curva_version_id or '',
-            row.curva_version_name or '',
-            row.curva_gerencia or '',
-            row.curva_area or '',
-            row.curva_empresa or '',
-            row.curva_turno or '',
-            row.curva_tipo_contrato or '',
-            row.curva_formato or '',
-            row.curva_camp or '',
-            'Cruzado' if is_matched else 'Sin match',
-        ])
-        processed += 1
-        if progress_callback and processed % 5000 == 0:
+    last_record_id = 0
+    chunk_size = 2000
+
+    # No usar yield_per con PostgreSQL aquí: SQLAlchemy/psycopg2 usa cursores
+    # nombrados y cualquier commit de progreso invalida el cursor activo.
+    # En Render eso produce: "named cursor isn't valid anymore". En su lugar
+    # se pagina por ID; cada lote cierra la consulta antes de actualizar progreso.
+    while True:
+        rows = query.filter(CensoRecord.id > last_record_id).order_by(CensoRecord.id.asc()).limit(chunk_size).all()
+        if not rows:
+            break
+
+        for row in rows:
+            is_matched = bool(row.curva_item_id)
+            detail.append([
+                row.censo_id,
+                row.fecha_censo.strftime('%Y-%m-%d') if row.fecha_censo else '',
+                row.censo_sheet_name or '',
+                row.censo_imported_at.strftime('%Y-%m-%d %H:%M:%S') if row.censo_imported_at else '',
+                row.censo_total_records,
+                row.censo_total_occupied,
+                row.censo_matched_count,
+                row.censo_unmatched_count,
+                row.file_id or '',
+                row.file_filename or '',
+                row.file_type or '',
+                row.file_size_bytes or '',
+                row.file_sha256 or '',
+                row.file_uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if row.file_uploaded_at else '',
+                row.record_id,
+                row.record_solicitud_id or '',
+                row.record_modulo or '',
+                row.record_lugar or '',
+                row.record_habitacion or '',
+                row.record_empresa or '',
+                row.record_cama or '',
+                row.record_dia or '',
+                row.record_camas_ocupadas,
+                row.record_turno or '',
+                row.record_gerencia_censo or '',
+                row.record_area or '',
+                row.record_rut or '',
+                row.record_estado or '',
+                row.curva_item_id or '',
+                row.curva_version_id or '',
+                row.curva_version_name or '',
+                row.curva_gerencia or '',
+                row.curva_area or '',
+                row.curva_empresa or '',
+                row.curva_turno or '',
+                row.curva_tipo_contrato or '',
+                row.curva_formato or '',
+                row.curva_camp or '',
+                'Cruzado' if is_matched else 'Sin match',
+            ])
+            processed += 1
+            last_record_id = row.record_id
+
+        if progress_callback:
             progress_callback(f'Escribiendo detalle de censos: {processed:,} registros...'.replace(',', '.'))
 
     if progress_callback:
