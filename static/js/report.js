@@ -3,6 +3,8 @@ const head = document.getElementById('reportHead');
 const body = document.getElementById('reportBody');
 const conclusions = document.getElementById('conclusions');
 const summary = document.getElementById('reportSummary');
+const chartCanvas = document.getElementById('lineChart');
+let lineChart = null;
 
 function params() {
     const p = new URLSearchParams();
@@ -76,6 +78,81 @@ function renderConclusions(data) {
         </div>`;
 }
 
+function renderLineChart(data) {
+    if (!chartCanvas) return;
+    const labels = data.date_labels || [];
+    const real = data.totals_by_date || [];
+    const plan = data.planned_totals_by_date || [];
+
+    if (lineChart) {
+        lineChart.destroy();
+        lineChart = null;
+    }
+
+    lineChart = new Chart(chartCanvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Dotación real',
+                    data: real,
+                    borderColor: '#B42318',
+                    backgroundColor: 'rgba(180, 35, 24, 0.08)',
+                    pointBackgroundColor: '#B42318',
+                    pointBorderColor: '#B42318',
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    borderWidth: 3,
+                    tension: 0.28,
+                    fill: true,
+                },
+                {
+                    label: 'Plan curva',
+                    data: plan,
+                    borderColor: '#175CD3',
+                    backgroundColor: 'rgba(23, 92, 211, 0.05)',
+                    pointBackgroundColor: '#175CD3',
+                    pointBorderColor: '#175CD3',
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    borderWidth: 2.5,
+                    tension: 0.28,
+                    borderDash: [7, 5],
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, boxWidth: 8, font: { weight: '600' } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: ${num(ctx.parsed.y)}`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxRotation: 45, minRotation: 0 }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(16,24,40,.08)' },
+                    ticks: { callback: value => num(value) }
+                }
+            }
+        }
+    });
+}
+
 function renderTable(data) {
     const dates = data.date_labels || [];
     const colCount = dates.length + 5;
@@ -135,6 +212,7 @@ function renderTable(data) {
 function render(data) {
     renderSummary(data);
     renderConclusions(data);
+    renderLineChart(data);
     renderTable(data);
 }
 
@@ -148,6 +226,7 @@ async function load() {
     } catch (error) {
         summary.innerHTML = '';
         conclusions.innerHTML = '';
+        if (lineChart) lineChart.destroy();
         body.innerHTML = `<tr><td class="text-center text-danger py-4">${error.message}</td></tr>`;
     }
 }
@@ -156,7 +235,6 @@ form.addEventListener('submit', event => {
     event.preventDefault();
     load();
 });
-
 
 function ensureExportStatusBox() {
     let box = document.getElementById('exportStatusBox');
@@ -176,7 +254,13 @@ function setExportStatus(message, type = 'info') {
     box.innerHTML = message;
 }
 
-async function pollExport(jobId, button) {
+function buttonText(mode) {
+    return mode === 'censos'
+        ? '<i class="bi bi-file-earmark-spreadsheet"></i> Exportar censos acumulados'
+        : '<i class="bi bi-file-earmark-bar-graph"></i> Exportar reporte gerencia';
+}
+
+async function pollExport(jobId, button, mode) {
     const statusUrl = `/api/exports/${jobId}/status`;
     for (let attempt = 0; attempt < 240; attempt++) {
         const response = await fetch(statusUrl);
@@ -185,7 +269,7 @@ async function pollExport(jobId, button) {
         if (job.status === 'completed') {
             setExportStatus(`<i class="bi bi-check-circle"></i> ${job.message || 'Excel listo.'} Descargando...`, 'success');
             button.disabled = false;
-            button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+            button.innerHTML = buttonText(mode);
             window.location.href = job.download_url;
             return;
         }
@@ -193,7 +277,7 @@ async function pollExport(jobId, button) {
         if (job.status === 'failed') {
             setExportStatus(`<i class="bi bi-exclamation-triangle"></i> ${job.message || 'Error al generar Excel.'}`, 'danger');
             button.disabled = false;
-            button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+            button.innerHTML = buttonText(mode);
             return;
         }
 
@@ -203,29 +287,38 @@ async function pollExport(jobId, button) {
 
     setExportStatus('<i class="bi bi-clock-history"></i> La exportación sigue en proceso. Espera unos segundos y vuelve a intentar descargar desde el aviso.', 'warning');
     button.disabled = false;
-    button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+    button.innerHTML = buttonText(mode);
 }
 
-document.getElementById('btnExport').addEventListener('click', async () => {
-    const button = document.getElementById('btnExport');
+async function startExport(mode, button) {
     button.disabled = true;
     button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparando Excel...';
     setExportStatus('<i class="bi bi-hourglass-split"></i> Iniciando exportación en segundo plano...', 'info');
 
     try {
+        const payload = Object.fromEntries(params());
+        payload.export_mode = mode;
         const response = await fetch('/api/reports/dotacion-gerencia/export/start', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(Object.fromEntries(params())),
+            body: JSON.stringify(payload),
         });
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo iniciar la exportación');
-        pollExport(data.job_id, button);
+        pollExport(data.job_id, button, mode);
     } catch (error) {
         setExportStatus(`<i class="bi bi-exclamation-triangle"></i> ${error.message}`, 'danger');
         button.disabled = false;
-        button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+        button.innerHTML = buttonText(mode);
     }
+}
+
+document.getElementById('btnExportGerencia').addEventListener('click', () => {
+    startExport('gerencia', document.getElementById('btnExportGerencia'));
+});
+
+document.getElementById('btnExportCensos').addEventListener('click', () => {
+    startExport('censos', document.getElementById('btnExportCensos'));
 });
 
 load();

@@ -13,6 +13,7 @@ from io import BytesIO
 
 import pandas as pd
 import xlsxwriter
+from xlsxwriter.utility import xl_rowcol_to_cell
 from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -1592,6 +1593,348 @@ def report_xlsx_fast(data, progress_callback=None):
 
 
 
+
+
+def resolve_report_dates(start=None, end=None):
+    """Devuelve rango de fechas válido para reportes/exportaciones."""
+    if not start or not end:
+        minmax = db.session.query(func.min(Censo.fecha_censo), func.max(Censo.fecha_censo)).one()
+        start = start or minmax[0]
+        end = end or minmax[1]
+    return start, end
+
+
+def format_export_filename(export_mode):
+    stamp = datetime.now().strftime('%Y%m%d_%H%M')
+    if export_mode == 'censos':
+        return f'censos_acumulados_{stamp}.xlsx'
+    return f'dotacion_gerencia_{stamp}.xlsx'
+
+
+def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
+    """Escribe una hoja gerencial con tabla y gráfico de líneas Real vs Plan."""
+    if progress_callback:
+        progress_callback('Generando reporte por gerencia y gráfico de líneas...')
+
+    RED_DARK = '#8F1510'
+    RED = '#B42318'
+    RED_SOFT = '#FFF1F1'
+    RED_CELL = '#FFF7F7'
+    YELLOW = '#FFF200'
+    ORANGE = '#F58220'
+    BLUE = '#E8F1FF'
+    BLUE_DARK = '#175CD3'
+    GREEN = '#D1FADF'
+    GREEN_TEXT = '#027A48'
+    DANGER = '#FEE4E2'
+    DANGER_TEXT = '#B42318'
+    GRAY = '#F2F4F7'
+    DARK = '#1D2939'
+    BORDER = '#8F1510'
+    WHITE = '#FFFFFF'
+
+    def as_int(value):
+        try:
+            return int(round(float(value or 0)))
+        except Exception:
+            return 0
+
+    def as_pct(real, plan):
+        real = float(real or 0)
+        plan = float(plan or 0)
+        if plan <= 0:
+            return 'Sin plan' if real else '0%'
+        return f'{real / plan * 100:.1f}%'
+
+    ws = workbook.add_worksheet('Dotación Gerencia')
+    ws.hide_gridlines(2)
+    ws.set_tab_color(RED)
+    ws.set_landscape()
+    ws.fit_to_pages(1, 0)
+    ws.set_margins(left=0.25, right=0.25, top=0.45, bottom=0.45)
+
+    dates = data.get('date_labels', [])
+    rows = data.get('rows', [])
+    real_total = float(data.get('grand_total') or 0)
+    plan_total = float(data.get('planned_grand_total') or 0)
+    diff_total = real_total - plan_total
+    curve_name = (data.get('curve') or {}).get('name', 'Sin curva seleccionada')
+    generated_at = datetime.now().strftime('%d/%m/%Y %H:%M')
+    total_cols = 1 + len(dates) + 4
+    last_col = max(total_cols - 1, 8)
+
+    fmt_title = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 16, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED_DARK, 'border': 1, 'border_color': BORDER})
+    fmt_subtitle = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 9, 'align': 'left', 'valign': 'vcenter', 'bg_color': RED_SOFT, 'border': 1, 'border_color': '#E4B6B2'})
+    fmt_header = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 8, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER, 'text_wrap': True})
+    fmt_header_left = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 8, 'align': 'left', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER})
+    fmt_date_header = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 8, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER, 'rotation': 90})
+    fmt_text = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#E7B6B2'})
+    fmt_num = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E7B6B2', 'num_format': '#,##0', 'bg_color': RED_CELL})
+    fmt_zero = workbook.add_format({'font_size': 8, 'font_color': '#98A2B3', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E4E7EC', 'num_format': '#,##0', 'bg_color': WHITE})
+    fmt_total_real = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': '#111111', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0', 'bg_color': YELLOW})
+    fmt_total_plan = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': '#111111', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#9BBBEA', 'num_format': '#,##0', 'bg_color': BLUE})
+    fmt_diff_pos = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': GREEN_TEXT, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#75E0A7', 'num_format': '#,##0', 'bg_color': GREEN})
+    fmt_diff_neg = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': DANGER_TEXT, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#FDA29B', 'num_format': '#,##0', 'bg_color': DANGER})
+    fmt_pct = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD', 'bg_color': GRAY})
+    fmt_total_row = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': WHITE, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0', 'bg_color': RED})
+    fmt_total_row_left = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': WHITE, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER, 'bg_color': RED})
+    fmt_kpi_label = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 9, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED_DARK, 'border': 1, 'border_color': BORDER})
+    fmt_kpi_value_yellow = workbook.add_format({'bold': True, 'font_color': '#111111', 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'bg_color': YELLOW, 'border': 1, 'border_color': BORDER, 'num_format': '#,##0'})
+    fmt_kpi_value_blue = workbook.add_format({'bold': True, 'font_color': '#111111', 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'bg_color': BLUE, 'border': 1, 'border_color': '#9BBBEA', 'num_format': '#,##0'})
+    fmt_kpi_value_text = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'bg_color': GRAY, 'border': 1, 'border_color': '#D0D5DD'})
+    fmt_note_title = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 10, 'align': 'left', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER})
+    fmt_note = workbook.add_format({'font_color': DARK, 'font_size': 9, 'align': 'left', 'valign': 'top', 'bg_color': WHITE, 'border': 1, 'border_color': '#E4E7EC', 'text_wrap': True})
+    fmt_unmatched = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': '#B54708', 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#FEC84B', 'bg_color': '#FFF3CD'})
+    fmt_chart_header = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 10, 'align': 'left', 'bg_color': WHITE})
+
+    ws.set_column(0, 0, 30)
+    if dates:
+        ws.set_column(1, len(dates), 5)
+    ws.set_column(len(dates) + 1, len(dates) + 4, 13)
+
+    ws.merge_range(0, 0, 0, last_col, 'RESUMEN DE DOTACIÓN POR GERENCIA', fmt_title)
+    ws.merge_range(1, 0, 1, last_col, f"Período: {data.get('start_date', '')} al {data.get('end_date', '')}   |   Curva: {curve_name}   |   Generado: {generated_at}", fmt_subtitle)
+    ws.set_row(0, 28)
+    ws.set_row(1, 21)
+
+    ws.merge_range(3, 0, 3, 1, 'REAL ACUMULADO', fmt_kpi_label)
+    ws.merge_range(4, 0, 4, 1, as_int(real_total), fmt_kpi_value_yellow)
+    ws.merge_range(3, 2, 3, 3, 'PLAN ACUMULADO', fmt_kpi_label)
+    ws.merge_range(4, 2, 4, 3, as_int(plan_total), fmt_kpi_value_blue)
+    ws.merge_range(3, 4, 3, 5, 'DIFERENCIA', fmt_kpi_label)
+    ws.merge_range(4, 4, 4, 5, as_int(diff_total), fmt_diff_pos if diff_total >= 0 else fmt_diff_neg)
+    ws.merge_range(3, 6, 3, 7, 'CUMPLIMIENTO', fmt_kpi_label)
+    ws.merge_range(4, 6, 4, 7, as_pct(real_total, plan_total), fmt_kpi_value_text)
+
+    # Datos ocultos para el gráfico.
+    chart_col = last_col + 3
+    ws.write(2, chart_col, 'Fecha')
+    ws.write(2, chart_col + 1, 'Real')
+    ws.write(2, chart_col + 2, 'Plan')
+    for i, label in enumerate(dates):
+        ws.write(3 + i, chart_col, label)
+        ws.write_number(3 + i, chart_col + 1, as_int((data.get('totals_by_date') or [])[i] if i < len(data.get('totals_by_date') or []) else 0))
+        ws.write_number(3 + i, chart_col + 2, as_int((data.get('planned_totals_by_date') or [])[i] if i < len(data.get('planned_totals_by_date') or []) else 0))
+    ws.set_column(chart_col, chart_col + 2, 0, None, {'hidden': True})
+
+    if dates:
+        ws.merge_range(6, 0, 6, 7, 'TENDENCIA REAL VS PLANIFICADA', fmt_chart_header)
+        chart = workbook.add_chart({'type': 'line'})
+        first = 3
+        last = 3 + len(dates) - 1
+        chart.add_series({
+            'name': 'Dotación real',
+            'categories': ['Dotación Gerencia', first, chart_col, last, chart_col],
+            'values': ['Dotación Gerencia', first, chart_col + 1, last, chart_col + 1],
+            'line': {'color': RED, 'width': 2.75},
+            'marker': {'type': 'circle', 'size': 4, 'border': {'color': RED}, 'fill': {'color': RED}},
+        })
+        chart.add_series({
+            'name': 'Plan curva',
+            'categories': ['Dotación Gerencia', first, chart_col, last, chart_col],
+            'values': ['Dotación Gerencia', first, chart_col + 2, last, chart_col + 2],
+            'line': {'color': BLUE_DARK, 'width': 2.25, 'dash_type': 'dash'},
+            'marker': {'type': 'diamond', 'size': 4, 'border': {'color': BLUE_DARK}, 'fill': {'color': BLUE_DARK}},
+        })
+        chart.set_title({'name': 'Evolución diaria de dotación', 'name_font': {'bold': True, 'size': 12, 'color': DARK}})
+        chart.set_x_axis({'name': 'Fecha', 'label_position': 'low', 'num_font': {'size': 8}})
+        chart.set_y_axis({'name': 'Dotación', 'major_gridlines': {'visible': True, 'line': {'color': '#E4E7EC'}}, 'num_font': {'size': 8}})
+        chart.set_legend({'position': 'bottom'})
+        chart.set_style(10)
+        chart.set_size({'width': 760, 'height': 285})
+        ws.insert_chart(7, 0, chart, {'x_offset': 2, 'y_offset': 2})
+
+    header_row = 24 if dates else 7
+    ws.repeat_rows(header_row)
+    ws.freeze_panes(header_row + 1, 1)
+
+    ws.write(header_row, 0, 'GERENCIAS', fmt_header_left)
+    for idx, label in enumerate(dates, 1):
+        ws.write(header_row, idx, label, fmt_date_header)
+    ws.write(header_row, len(dates) + 1, 'TOTAL REAL', fmt_header)
+    ws.write(header_row, len(dates) + 2, 'TOTAL PLAN', fmt_header)
+    ws.write(header_row, len(dates) + 3, 'DIF.', fmt_header)
+    ws.write(header_row, len(dates) + 4, 'CUMP.', fmt_header)
+    ws.set_row(header_row, 74)
+
+    row_num = header_row + 1
+    for item in rows:
+        is_unmatched = item.get('gerencia') == 'SIN MATCH EN CURVA'
+        real = float(item.get('total') or 0)
+        plan = float(item.get('planned_total') or 0)
+        diff = real - plan
+        ws.write(row_num, 0, item.get('gerencia', ''), fmt_unmatched if is_unmatched else fmt_text)
+        for idx, value in enumerate(item.get('values', []), 1):
+            val = as_int(value)
+            ws.write_number(row_num, idx, val, fmt_zero if val == 0 else fmt_num)
+        ws.write_number(row_num, len(dates) + 1, as_int(real), fmt_total_real)
+        ws.write_number(row_num, len(dates) + 2, as_int(plan), fmt_total_plan)
+        ws.write_number(row_num, len(dates) + 3, as_int(diff), fmt_diff_pos if diff >= 0 else fmt_diff_neg)
+        ws.write(row_num, len(dates) + 4, as_pct(real, plan), fmt_pct)
+        row_num += 1
+
+    total_row = row_num
+    ws.write(total_row, 0, 'TOTAL', fmt_total_row_left)
+    for idx, value in enumerate(data.get('totals_by_date', []), 1):
+        ws.write_number(total_row, idx, as_int(value), fmt_total_row)
+    ws.write_number(total_row, len(dates) + 1, as_int(real_total), fmt_total_real)
+    ws.write_number(total_row, len(dates) + 2, as_int(plan_total), fmt_total_plan)
+    ws.write_number(total_row, len(dates) + 3, as_int(diff_total), fmt_diff_pos if diff_total >= 0 else fmt_diff_neg)
+    ws.write(total_row, len(dates) + 4, as_pct(real_total, plan_total), fmt_pct)
+
+    if total_row > header_row:
+        ws.autofilter(header_row, 0, total_row, last_col)
+
+    notes_start = total_row + 3
+    ws.merge_range(notes_start, 0, notes_start, min(last_col, 7), 'CONCLUSIONES AUTOMÁTICAS', fmt_note_title)
+    for i, text in enumerate(data.get('conclusions', []), notes_start + 1):
+        ws.merge_range(i, 0, i, min(last_col, 7), '• ' + str(text), fmt_note)
+        ws.set_row(i, 22)
+
+
+def write_censos_acumulados_sheet(workbook, start_date=None, end_date=None, progress_callback=None):
+    """Escribe los censos acumulados del rango con IDs ya corregidos contra curva."""
+    if progress_callback:
+        progress_callback('Generando censos acumulados con IDs corregidos...')
+
+    RED = '#B42318'
+    RED_DARK = '#8F1510'
+    WHITE = '#FFFFFF'
+    DARK = '#1D2939'
+    BORDER = '#8F1510'
+    GREEN = '#D1FADF'
+    GREEN_TEXT = '#027A48'
+    DANGER = '#FEE4E2'
+    DANGER_TEXT = '#B42318'
+
+    ws = workbook.add_worksheet('Censos Acumulados')
+    ws.hide_gridlines(2)
+    ws.set_tab_color('#F58220')
+    ws.freeze_panes(1, 0)
+    ws.set_landscape()
+
+    headers = [
+        'Modulo', 'Lugar', 'Habitacion', 'Empresa', 'Id', 'Cama', 'Inicio', 'Termino', 'Dia',
+        'Camas Ocupdas', 'Turno', 'Gerencia', 'CO MEL', 'AREA', 'SEXO', 'JORNADA', 'Rut', 'PAB', 'ESTADO'
+    ]
+
+    fmt_header = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 9, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER, 'text_wrap': True})
+    fmt_text = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD'})
+    fmt_center = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD'})
+    fmt_num = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD', 'num_format': '#,##0.00'})
+    fmt_date = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD', 'num_format': 'yyyy-mm-dd'})
+
+    for col_idx, header in enumerate(headers):
+        ws.write(0, col_idx, header, fmt_header)
+    ws.set_row(0, 28)
+    widths = [12,14,12,28,18,9,12,12,13,15,14,30,18,24,10,14,15,14,16]
+    for col_idx, width in enumerate(widths):
+        ws.set_column(col_idx, col_idx, width)
+
+    query = db.session.query(
+        CensoRecord.id.label('record_id'),
+        Censo.fecha_censo.label('fecha_censo'),
+        CensoRecord.modulo.label('modulo'),
+        CensoRecord.lugar.label('lugar'),
+        CensoRecord.habitacion.label('habitacion'),
+        CensoRecord.empresa.label('empresa_censo'),
+        CensoRecord.solicitud_id.label('id_censo'),
+        CensoRecord.cama.label('cama'),
+        CensoRecord.dia.label('dia'),
+        CensoRecord.camas_ocupadas.label('camas_ocupadas'),
+        CensoRecord.turno.label('turno'),
+        CensoRecord.gerencia_censo.label('gerencia_censo'),
+        CensoRecord.area.label('area_censo'),
+        CensoRecord.rut.label('rut'),
+        CensoRecord.estado.label('estado'),
+        CurvaItem.solicitud_id.label('id_curva'),
+        CurvaItem.gerencia.label('gerencia_curva'),
+        CurvaItem.area.label('area_curva'),
+        CurvaItem.empresa.label('empresa_curva'),
+    ).join(
+        Censo, Censo.id == CensoRecord.censo_id
+    ).outerjoin(
+        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+    )
+    if start_date:
+        query = query.filter(Censo.fecha_censo >= start_date)
+    if end_date:
+        query = query.filter(Censo.fecha_censo <= end_date)
+
+    row_idx = 1
+    batch_size = 2500
+    offset = 0
+    ordered_query = query.order_by(
+        Censo.fecha_censo.asc(), CensoRecord.modulo.asc(), CensoRecord.lugar.asc(),
+        CensoRecord.habitacion.asc(), CensoRecord.cama.asc(), CensoRecord.id.asc()
+    )
+    while True:
+        batch = ordered_query.offset(offset).limit(batch_size).all()
+        if not batch:
+            break
+        offset += len(batch)
+        for row in batch:
+            corrected_id = row.id_curva or row.id_censo or ''
+            values = [
+                row.modulo or '',
+                row.lugar or '',
+                row.habitacion or '',
+                row.empresa_curva or row.empresa_censo or '',
+                corrected_id,
+                row.cama or '',
+                '',
+                '',
+                row.fecha_censo or row.dia or '',
+                float(row.camas_ocupadas or 0),
+                row.turno or '',
+                row.gerencia_curva or row.gerencia_censo or '',
+                '',
+                row.area_curva or row.area_censo or '',
+                '',
+                '',
+                row.rut or '',
+                '',
+                row.estado or '',
+            ]
+            for col_idx, value in enumerate(values):
+                if col_idx == 8 and isinstance(value, date):
+                    ws.write_datetime(row_idx, col_idx, datetime(value.year, value.month, value.day), fmt_date)
+                elif col_idx == 9:
+                    ws.write_number(row_idx, col_idx, float(value or 0), fmt_num)
+                elif col_idx in (0,1,2,4,5,8,10,12,14,15,16,17,18):
+                    ws.write(row_idx, col_idx, value, fmt_center)
+                else:
+                    ws.write(row_idx, col_idx, value, fmt_text)
+            row_idx += 1
+        if progress_callback:
+            progress_callback(f'Censos acumulados: {row_idx - 1:,} filas escritas...'.replace(',', '.'))
+
+    if row_idx > 1:
+        ws.autofilter(0, 0, row_idx - 1, len(headers) - 1)
+
+
+def report_xlsx_fast(data, progress_callback=None, export_mode='gerencia', start_date=None, end_date=None):
+    """Exportador ágil con opciones: gerencia o censos."""
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    tmp_path = tmp.name
+    tmp.close()
+    workbook = xlsxwriter.Workbook(tmp_path, {'strings_to_urls': False, 'nan_inf_to_errors': True})
+    try:
+        if export_mode in ('gerencia', 'full'):
+            write_dotacion_gerencia_sheet(workbook, data, progress_callback)
+        if export_mode in ('censos', 'full'):
+            write_censos_acumulados_sheet(workbook, start_date, end_date, progress_callback)
+    finally:
+        workbook.close()
+    with open(tmp_path, 'rb') as fh:
+        content = fh.read()
+    try:
+        os.remove(tmp_path)
+    except OSError:
+        pass
+    return BytesIO(content)
+
+
 def build_report_export_job(app, job_id):
     """Genera el Excel en segundo plano para evitar 502 durante la petición HTTP."""
     with app.app_context():
@@ -1608,20 +1951,30 @@ def build_report_export_job(app, job_id):
         try:
             job.status = 'running'
             job.started_at = now_utc()
-            job.message = 'Generando datos del reporte...'
+            job.message = 'Preparando exportación...'
             db.session.commit()
 
             params = json.loads(job.params_json or '{}')
             start = parse_date_text(params.get('start_date'))
             end = parse_date_text(params.get('end_date'))
             curve_id = int(params['curve_id']) if params.get('curve_id') else None
+            export_mode = (params.get('export_mode') or 'gerencia').strip().lower()
+            if export_mode not in {'gerencia', 'censos', 'full'}:
+                export_mode = 'gerencia'
+            start, end = resolve_report_dates(start, end)
 
             data = report_data(start, end, curve_id)
-            bio = report_xlsx_fast(data, progress_callback=progress)
+            bio = report_xlsx_fast(
+                data,
+                progress_callback=progress,
+                export_mode=export_mode,
+                start_date=start,
+                end_date=end,
+            )
 
             job = ExportJob.query.get(job_id)
             job.content = bio.getvalue()
-            job.filename = f"dotacion_gerencia_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            job.filename = format_export_filename(export_mode)
             job.status = 'completed'
             job.message = 'Archivo Excel listo para descargar.'
             job.completed_at = now_utc()
@@ -2328,17 +2681,21 @@ def register_routes(app):
         return jsonify(report_data(parse_arg('start_date'), parse_arg('end_date'), request.args.get('curve_id', type=int)))
 
     def create_report_export_job_from_payload(payload):
+        export_mode = (payload.get('export_mode') or payload.get('mode') or 'gerencia').strip().lower()
+        if export_mode not in {'gerencia', 'censos', 'full'}:
+            export_mode = 'gerencia'
         params = {
             'start_date': (payload.get('start_date') or '').strip(),
             'end_date': (payload.get('end_date') or '').strip(),
             'curve_id': (payload.get('curve_id') or '').strip(),
+            'export_mode': export_mode,
         }
         job = ExportJob(
-            job_type='dotacion_gerencia',
+            job_type=f'dotacion_gerencia_{export_mode}',
             status='pending',
             message='Exportación en cola...',
             params_json=json.dumps(params),
-            filename=f'dotacion_gerencia_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+            filename=format_export_filename(export_mode),
         )
         db.session.add(job)
         db.session.commit()
