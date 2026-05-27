@@ -3231,6 +3231,15 @@ def parse_arg(name):
     return parse_date(v)
 
 
+def parse_arg_any(*names):
+    """Lee fechas aceptando nombres nuevos y antiguos de filtros."""
+    for name in names:
+        value = (request.args.get(name) or '').strip()
+        if value:
+            return parse_date(value)
+    return None
+
+
 def register_routes(app):
     @app.route('/')
     def dashboard():
@@ -3444,7 +3453,7 @@ def register_routes(app):
     def area_report_api(kind):
         if kind not in {'egp', 'fa'}:
             return jsonify({'error': 'Reporte no soportado'}), 404
-        return jsonify(area_report_data(kind, parse_arg('start_date'), parse_arg('end_date'), request.args.get('curve_id', type=int)))
+        return jsonify(area_report_data(kind, parse_arg_any('start_date', 'date_from', 'desde', 'from'), parse_arg_any('end_date', 'date_to', 'hasta', 'to'), request.args.get('curve_id', type=int) or request.args.get('curveId', type=int) or request.args.get('curva_id', type=int)))
 
     @app.post('/api/reports/<kind>/export/start')
     def area_report_export_start(kind):
@@ -3483,8 +3492,8 @@ def register_routes(app):
     def area_report_export_redirect(kind):
         if kind not in {'egp', 'fa'}:
             return jsonify({'error': 'Reporte no soportado'}), 404
-        start_parsed = parse_arg('start_date')
-        end_parsed = parse_arg('end_date')
+        start_parsed = parse_arg_any('start_date', 'date_from', 'desde', 'from')
+        end_parsed = parse_arg_any('end_date', 'date_to', 'hasta', 'to')
         if not start_parsed or not end_parsed:
             flash('Debes indicar Desde y Hasta antes de exportar. El Excel no se genera con rango histórico automático.', 'warning')
             return redirect(url_for('egp_report_page' if kind == 'egp' else 'fa_report_page'))
@@ -3494,7 +3503,7 @@ def register_routes(app):
             'kind': kind,
             'start_date': start_parsed.isoformat(),
             'end_date': end_parsed.isoformat(),
-            'curve_id': (request.args.get('curve_id') or '').strip(),
+            'curve_id': (request.args.get('curve_id') or request.args.get('curveId') or request.args.get('curva_id') or '').strip(),
         }
         job = ExportJob(
             job_type=f'area_report_{kind}',

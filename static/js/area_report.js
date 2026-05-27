@@ -2,6 +2,7 @@ const reportKind = document.querySelector('.area-report-page')?.dataset.kind || 
 let areaData = null;
 let mainChart = null;
 let topChart = null;
+let filterTimer = null;
 
 function fmt(n) {
     const v = Number(n || 0);
@@ -13,32 +14,69 @@ function pct(n) {
     return `${Number(n).toFixed(1)}%`;
 }
 
+function qs(id) {
+    return document.getElementById(id);
+}
+
 function getParams() {
     const params = new URLSearchParams();
-    const start = document.getElementById('startDate').value;
-    const end = document.getElementById('endDate').value;
-    const curve = document.getElementById('curveId').value;
+    const start = qs('startDate')?.value || '';
+    const end = qs('endDate')?.value || '';
+    const curve = qs('curveId')?.value || '';
+
     if (start) params.set('start_date', start);
     if (end) params.set('end_date', end);
     if (curve) params.set('curve_id', curve);
     return params;
 }
 
+function getParamAny(params, names) {
+    for (const name of names) {
+        const value = params.get(name);
+        if (value) return value;
+    }
+    return '';
+}
+
 function hydrateFiltersFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const start = params.get('start_date') || '';
-    const end = params.get('end_date') || '';
-    const curve = params.get('curve_id') || '';
-    if (start) document.getElementById('startDate').value = start;
-    if (end) document.getElementById('endDate').value = end;
-    if (curve) document.getElementById('curveId').value = curve;
+    const start = getParamAny(params, ['start_date', 'date_from', 'desde', 'from']);
+    const end = getParamAny(params, ['end_date', 'date_to', 'hasta', 'to']);
+    const curve = getParamAny(params, ['curve_id', 'curveId', 'curva_id']);
+
+    if (start && qs('startDate')) qs('startDate').value = start;
+    if (end && qs('endDate')) qs('endDate').value = end;
+    if (curve && qs('curveId')) qs('curveId').value = curve;
 }
 
 function syncUrlWithFilters() {
     const params = getParams();
-    const qs = params.toString();
-    const nextUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    const qsText = params.toString();
+    const nextUrl = qsText ? `${window.location.pathname}?${qsText}` : window.location.pathname;
     window.history.replaceState({}, '', nextUrl);
+}
+
+function renderLoading() {
+    document.getElementById('reportSummary').innerHTML = `
+        <div class="col-12">
+            <div class="alert alert-light border shadow-sm mb-0 py-2">
+                <span class="spinner-border spinner-border-sm me-2"></span> Generando reporte con los filtros seleccionados...
+            </div>
+        </div>`;
+}
+
+function renderError(message) {
+    document.getElementById('reportSummary').innerHTML = `
+        <div class="col-12">
+            <div class="alert alert-warning border shadow-sm mb-0 py-2">
+                <i class="bi bi-exclamation-triangle"></i> ${message || 'No fue posible generar el reporte.'}
+            </div>
+        </div>`;
+    document.getElementById('conclusions').innerHTML = '';
+    document.getElementById('summaryHead').innerHTML = '';
+    document.getElementById('summaryBody').innerHTML = '';
+    document.getElementById('sectionsContainer').innerHTML = '';
+    destroyCharts();
 }
 
 function renderSummary(data) {
@@ -126,7 +164,7 @@ function renderSummaryTable(data) {
     document.getElementById('summaryBody').innerHTML = (data.rows || []).map(r => `<tr>
         <td class="fw-bold">${r.id}</td><td>${r.empresa || '-'}</td><td>${r.area || '-'}</td><td>${r.turno || '-'}</td><td>${r.tipo_contrato || '-'}</td><td>${r.formato || '-'}</td>
         <td class="text-end">${fmt(r.total_plan)}</td><td class="text-end">${fmt(r.total_reservas)}</td><td class="text-end">${fmt(r.total_censo)}</td><td class="text-end">${fmt(r.no_show_reservas)}</td><td class="text-end">${pct(r.cumplimiento)}</td>
-    </tr>`).join('') || `<tr><td colspan="11" class="text-center text-muted py-3">Sin datos</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="11" class="text-center text-muted py-3">Sin datos para el rango seleccionado</td></tr>`;
 }
 
 function sectionTable(title, key, totalKey, data) {
@@ -154,14 +192,29 @@ function renderSections(data) {
 async function loadReport() {
     const params = getParams();
     syncUrlWithFilters();
-    const resp = await fetch(`/api/reports/${reportKind}?${params.toString()}`);
-    const data = await resp.json();
-    areaData = data;
-    renderSummary(data);
-    renderConclusions(data);
-    renderCharts(data);
-    renderSummaryTable(data);
-    renderSections(data);
+
+    if (!params.get('start_date') || !params.get('end_date')) {
+        renderError('Selecciona Desde y Hasta, luego presiona Generar. El reporte no usa histórico automático.');
+        return;
+    }
+
+    renderLoading();
+    try {
+        const resp = await fetch(`/api/reports/${reportKind}?${params.toString()}`, { cache: 'no-store' });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            renderError(data.error || 'Error al consultar el reporte.');
+            return;
+        }
+        areaData = data;
+        renderSummary(data);
+        renderConclusions(data);
+        renderCharts(data);
+        renderSummaryTable(data);
+        renderSections(data);
+    } catch (err) {
+        renderError(`Error al aplicar filtros: ${err.message}`);
+    }
 }
 
 function exportCurrentRange() {
@@ -174,6 +227,11 @@ function exportCurrentRange() {
     window.location.href = `/api/reports/${reportKind}/export?${params.toString()}`;
 }
 
+function scheduleLoadReport() {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(loadReport, 250);
+}
+
 document.getElementById('filterForm').addEventListener('submit', e => {
     e.preventDefault();
     loadReport();
@@ -183,7 +241,10 @@ document.getElementById('btnExportArea').addEventListener('click', exportCurrent
 
 ['startDate', 'endDate', 'curveId'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', syncUrlWithFilters);
+    if (el) {
+        el.addEventListener('change', scheduleLoadReport);
+        el.addEventListener('input', syncUrlWithFilters);
+    }
 });
 
 hydrateFiltersFromUrl();
