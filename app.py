@@ -258,14 +258,72 @@ def save_upload(file, file_type):
     return f, content
 
 
+def excel_engines_for(filename):
+    """
+    Orden de motores para leer Excel.
+
+    En Render conviene usar python-calamine porque no carga estilos pesados
+    de Excel como openpyxl. Esto evita timeouts y consumo excesivo de memoria
+    al importar la curva de poblamiento.
+    """
+    name = (filename or "").lower()
+    engines = ["calamine"]
+    if name.endswith(".xlsb"):
+        engines.append("pyxlsb")
+    else:
+        engines.append("openpyxl")
+    return engines
+
+
+def open_excel(content, filename):
+    last_error = None
+    for engine in excel_engines_for(filename):
+        try:
+            return pd.ExcelFile(BytesIO(content), engine=engine), engine
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(f"No se pudo abrir el archivo Excel: {last_error}")
+
+
+def read_excel_df(content, filename, sheet_name, header=None, nrows=None):
+    last_error = None
+    for engine in excel_engines_for(filename):
+        try:
+            kwargs = {
+                "io": BytesIO(content),
+                "sheet_name": sheet_name,
+                "header": header,
+                "engine": engine,
+            }
+            if nrows is not None:
+                kwargs["nrows"] = nrows
+            if engine == "openpyxl":
+                kwargs["engine_kwargs"] = {"read_only": True, "data_only": True}
+            return pd.read_excel(**kwargs)
+        except TypeError:
+            # Algunas versiones de pandas/openpyxl no aceptan engine_kwargs.
+            try:
+                return pd.read_excel(
+                    BytesIO(content),
+                    sheet_name=sheet_name,
+                    header=header,
+                    engine=engine,
+                    nrows=nrows,
+                )
+            except Exception as exc:
+                last_error = exc
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(f"No se pudo leer la hoja {sheet_name}: {last_error}")
+
+
 def import_curva(file, sheet_name="Fcst_5400", version_name=None):
     uploaded, content = save_upload(file, "curva")
-    buffer = BytesIO(content)
-    excel = pd.ExcelFile(buffer, engine="openpyxl")
+    excel, engine = open_excel(content, uploaded.filename)
     sheet = sheet_name if sheet_name in excel.sheet_names else next((s for s in excel.sheet_names if "5400" in s), excel.sheet_names[0])
-    buffer.seek(0); raw = pd.read_excel(buffer, sheet_name=sheet, header=None, engine="openpyxl")
+    raw = read_excel_df(content, uploaded.filename, sheet_name=sheet, header=None, nrows=80)
     header = find_header(raw, ["ID de la solicitud", "Gerencia General"])
-    buffer.seek(0); df = pd.read_excel(buffer, sheet_name=sheet, header=header, engine="openpyxl").dropna(how="all")
+    df = read_excel_df(content, uploaded.filename, sheet_name=sheet, header=header).dropna(how="all")
     cm = colmap(df.columns)
     if "id" not in cm or "gerencia" not in cm:
         raise ValueError("No se encontraron columnas ID de la solicitud y Gerencia General en la curva.")
@@ -299,14 +357,12 @@ def import_curva(file, sheet_name="Fcst_5400", version_name=None):
 
 
 def read_censo(content, filename):
-    engine = "pyxlsb" if filename.lower().endswith(".xlsb") else "openpyxl"
-    buffer = BytesIO(content)
-    excel = pd.ExcelFile(buffer, engine=engine)
+    excel, engine = open_excel(content, filename)
     sheet = next((s for s in excel.sheet_names if date_from_text(s)), excel.sheet_names[0])
     detected_date = date_from_text(sheet) or date_from_text(filename)
-    buffer.seek(0); raw = pd.read_excel(buffer, sheet_name=sheet, header=None, engine=engine)
+    raw = read_excel_df(content, filename, sheet_name=sheet, header=None, nrows=80)
     header = find_header(raw, ["Id", "Camas Ocupadas"])
-    buffer.seek(0); df = pd.read_excel(buffer, sheet_name=sheet, header=header, engine=engine).dropna(how="all")
+    df = read_excel_df(content, filename, sheet_name=sheet, header=header).dropna(how="all")
     return df, sheet, detected_date
 
 

@@ -3,7 +3,7 @@ services:
     name: dotacion-reportes
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --workers 1 --threads 2 --timeout 300 --graceful-timeout 300
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -12,7 +12,7 @@ services:
           name: dotacion-reportes-db
           property: connectionString
       - key: MAX_CONTENT_LENGTH_MB
-        value: 40
+        value: 80
 
 databases:
   - name: dotacion-reportes-db

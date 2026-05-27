@@ -54,3 +54,17 @@ Para Render usa una de estas opciones:
 4. Reinicia el servicio.
 
 El fallback SQLite queda solo para desarrollo local. En Render, PostgreSQL es obligatorio si quieres conservar los censos y curvas importadas.
+
+
+## Corrección importación de Excel en Render
+
+La importación de la curva usa `python-calamine` como motor principal para leer Excel.
+Este motor evita cargar los estilos pesados del archivo, que con `openpyxl` puede provocar `WORKER TIMEOUT` u OOM en Render.
+
+El arranque recomendado en Render es:
+
+```bash
+gunicorn app:app --workers 1 --threads 2 --timeout 300 --graceful-timeout 300
+```
+
+Después de actualizar el repositorio, ejecuta **Clear build cache & deploy** en Render para que instale `python-calamine`.
