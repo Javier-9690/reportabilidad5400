@@ -1943,6 +1943,462 @@ def iter_censos_acumulados_csv(start_date=None, end_date=None, batch_size=10):
             last_id = censo.id
 
 
+
+def compact_id(value):
+    """Normaliza un ID para comparación flexible: quita espacios, guiones y símbolos."""
+    return re.sub(r"[^A-Z0-9]", "", norm_id(value))
+
+
+def digits_id(value):
+    """Retorna solo los dígitos del ID para detectar diferencias por ceros, puntos o guiones."""
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def recalc_censo_stats(censo_id):
+    """Alias compatible: recalcula métricas del censo sobre reservas, no solo ocupados."""
+    return recalc_censo_totals(censo_id)
+
+
+def set_latest_curve_active_if_needed():
+    active = CurvaVersion.query.filter_by(is_active=True).first()
+    if active:
+        return active
+    latest = CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).first()
+    if latest:
+        latest.is_active = True
+    return latest
+
+
+def delete_uploaded_file_data(file_id):
+    """
+    Elimina un archivo subido y toda la información derivada.
+
+    - Si es censo: elimina sus reservas/registros y el censo.
+    - Si es curva: elimina versiones, IDs y planificación; los registros de censo que
+      apuntaban a esa curva quedan como sin match para poder corregirlos con otra curva.
+    """
+    uploaded = UploadedFile.query.get_or_404(file_id)
+    impacted_censo_ids = set()
+
+    if uploaded.file_type == "censo":
+        censos = Censo.query.filter_by(file_id=uploaded.id).all()
+        censo_ids = [c.id for c in censos]
+        if censo_ids:
+            CensoRecord.query.filter(CensoRecord.censo_id.in_(censo_ids)).delete(synchronize_session=False)
+            Censo.query.filter(Censo.id.in_(censo_ids)).delete(synchronize_session=False)
+
+    elif uploaded.file_type == "curva":
+        curves = CurvaVersion.query.filter_by(file_id=uploaded.id).all()
+        for curve in curves:
+            item_ids = [row[0] for row in db.session.query(CurvaItem.id).filter_by(curva_version_id=curve.id).all()]
+            if item_ids:
+                impacted_censo_ids.update(
+                    row[0] for row in db.session.query(CensoRecord.censo_id)
+                    .filter(CensoRecord.curva_item_id.in_(item_ids))
+                    .distinct()
+                    .all()
+                )
+                CensoRecord.query.filter(CensoRecord.curva_item_id.in_(item_ids)).update(
+                    {CensoRecord.curva_item_id: None}, synchronize_session=False
+                )
+                CurvaDailyValue.query.filter(CurvaDailyValue.curva_item_id.in_(item_ids)).delete(synchronize_session=False)
+                CurvaItem.query.filter(CurvaItem.id.in_(item_ids)).delete(synchronize_session=False)
+            db.session.delete(curve)
+    else:
+        raise ValueError("Tipo de archivo no reconocido.")
+
+    db.session.delete(uploaded)
+    db.session.flush()
+
+    for censo_id in impacted_censo_ids:
+        recalc_censo_totals(censo_id)
+
+    set_latest_curve_active_if_needed()
+    db.session.commit()
+    return uploaded
+
+
+def get_curve_for_matching(curve_id=None):
+    if curve_id:
+        return CurvaVersion.query.get(curve_id)
+    return CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
+
+
+def build_curve_candidates(curve):
+    if not curve:
+        return []
+    return CurvaItem.query.filter_by(curva_version_id=curve.id).all()
+
+
+def build_curve_match_index(curve):
+    """
+    Índice rápido para proponer correcciones Sin match sin comparar cada reserva
+    contra toda la curva. Usa ID compacto, dígitos y sufijos.
+    """
+    items = build_curve_candidates(curve)
+    index = {
+        "items": items,
+        "by_compact": defaultdict(list),
+        "by_digits": defaultdict(list),
+        "by_suffix": defaultdict(list),
+    }
+
+    for item in items:
+        compact = compact_id(item.solicitud_id)
+        digits = digits_id(item.solicitud_id).lstrip("0")
+
+        if compact:
+            index["by_compact"][compact].append(item)
+        if digits:
+            index["by_digits"][digits].append(item)
+            for n in range(4, min(len(digits), 12) + 1):
+                index["by_suffix"][(n, digits[-n:])].append(item)
+
+    return index
+
+
+def candidate_score(record, item):
+    target = compact_id(record.solicitud_id)
+    candidate = compact_id(item.solicitud_id)
+    target_digits = digits_id(record.solicitud_id).lstrip("0")
+    candidate_digits = digits_id(item.solicitud_id).lstrip("0")
+
+    if not target or not candidate:
+        return 0, ""
+
+    score = 0
+    reason = "Similitud de texto"
+
+    if target == candidate:
+        score, reason = 100, "Coincidencia exacta ignorando formato"
+    elif target_digits and candidate_digits and target_digits == candidate_digits:
+        score, reason = 98, "Coinciden los dígitos ignorando ceros o símbolos"
+    elif target in candidate or candidate in target:
+        score, reason = 90, "Un ID contiene al otro"
+    elif target_digits and candidate_digits:
+        max_suffix = 0
+        for n in range(min(len(target_digits), len(candidate_digits)), 3, -1):
+            if target_digits[-n:] == candidate_digits[-n:]:
+                max_suffix = n
+                break
+        if max_suffix:
+            score = min(88, 70 + max_suffix * 2)
+            reason = f"Coinciden los últimos {max_suffix} dígitos"
+
+    ratio = SequenceMatcher(None, target, candidate).ratio()
+    if ratio >= 0.70 and int(ratio * 85) > score:
+        score = int(ratio * 85)
+        reason = f"Similitud de ID {ratio * 100:.0f}%"
+
+    if record.empresa and item.empresa and norm(record.empresa) == norm(item.empresa):
+        score += 4
+        reason += " + misma empresa"
+    if record.gerencia_censo and item.gerencia and norm(record.gerencia_censo) == norm(item.gerencia):
+        score += 4
+        reason += " + misma gerencia"
+
+    return min(score, 100), reason
+
+
+def candidate_pool_for_record(record, match_index, max_candidates=250):
+    if not match_index:
+        return []
+
+    target = compact_id(record.solicitud_id)
+    target_digits = digits_id(record.solicitud_id).lstrip("0")
+    pool = []
+    seen = set()
+
+    def add(items):
+        for item in items or []:
+            if item.id not in seen:
+                seen.add(item.id)
+                pool.append(item)
+                if len(pool) >= max_candidates:
+                    return
+
+    if target:
+        add(match_index["by_compact"].get(target))
+    if target_digits:
+        add(match_index["by_digits"].get(target_digits))
+        for n in range(min(len(target_digits), 12), 3, -1):
+            add(match_index["by_suffix"].get((n, target_digits[-n:])))
+            if len(pool) >= max_candidates:
+                break
+
+    if not pool and target:
+        for item in match_index["items"][:max_candidates]:
+            candidate = compact_id(item.solicitud_id)
+            if candidate and (candidate[:4] == target[:4] or candidate[-4:] == target[-4:]):
+                add([item])
+
+    return pool[:max_candidates]
+
+
+def suggestions_for_record(record, match_index, limit=3):
+    suggestions = []
+    for item in candidate_pool_for_record(record, match_index):
+        score, reason = candidate_score(record, item)
+        if score >= 60:
+            suggestions.append({
+                "item": item,
+                "score": score,
+                "reason": reason,
+            })
+    suggestions.sort(key=lambda x: x["score"], reverse=True)
+    return suggestions[:limit]
+
+
+def find_curve_item_by_manual_id(curve, manual_id):
+    """Busca un ID manual en la curva, aceptando diferencias simples de formato."""
+    if not curve or not manual_id:
+        return None
+
+    manual_id = norm_id(manual_id)
+    item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=manual_id).first()
+    if item:
+        return item
+
+    target = compact_id(manual_id)
+    target_digits = digits_id(manual_id).lstrip("0")
+    for item in CurvaItem.query.filter_by(curva_version_id=curve.id).all():
+        if target and compact_id(item.solicitud_id) == target:
+            return item
+        if target_digits and digits_id(item.solicitud_id).lstrip("0") == target_digits:
+            return item
+    return None
+
+
+def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
+    curve = get_curve_for_matching(curve_id)
+    match_index = build_curve_match_index(curve)
+
+    base_query = CensoRecord.query.join(Censo, Censo.id == CensoRecord.censo_id).filter(
+        CensoRecord.curva_item_id.is_(None),
+        CensoRecord.solicitud_id.isnot(None),
+        CensoRecord.solicitud_id != '',
+    )
+    if censo_id:
+        base_query = base_query.filter(CensoRecord.censo_id == censo_id)
+
+    search_text = (search_text or "").strip()
+    if search_text:
+        like = f"%{search_text}%"
+        base_query = base_query.filter(
+            or_(
+                CensoRecord.solicitud_id.ilike(like),
+                CensoRecord.empresa.ilike(like),
+                CensoRecord.gerencia_censo.ilike(like),
+                CensoRecord.rut.ilike(like),
+                CensoRecord.habitacion.ilike(like),
+            )
+        )
+
+    total_records = base_query.count()
+    total_ids = base_query.with_entities(CensoRecord.solicitud_id).distinct().count()
+
+    grouped = base_query.with_entities(
+        CensoRecord.solicitud_id.label("solicitud_id"),
+        func.count(CensoRecord.id).label("same_id_count"),
+        func.min(Censo.fecha_censo).label("first_date"),
+        func.max(Censo.fecha_censo).label("last_date"),
+        func.min(CensoRecord.id).label("sample_id"),
+    ).group_by(
+        CensoRecord.solicitud_id
+    ).order_by(
+        func.max(Censo.fecha_censo).desc(),
+        CensoRecord.solicitud_id.asc()
+    ).limit(limit).all()
+
+    sample_ids = [row.sample_id for row in grouped]
+    sample_records = {
+        record.id: record
+        for record in CensoRecord.query.filter(CensoRecord.id.in_(sample_ids)).all()
+    } if sample_ids else {}
+
+    rows = []
+    for group in grouped:
+        record = sample_records.get(group.sample_id)
+        if not record:
+            continue
+        rows.append({
+            "record": record,
+            "censo": record.censo,
+            "same_id_count": int(group.same_id_count or 0),
+            "first_date": group.first_date,
+            "last_date": group.last_date,
+            "suggestions": suggestions_for_record(record, match_index),
+        })
+
+    return {
+        "curve": curve,
+        "total": total_ids,
+        "total_records": total_records,
+        "limit": limit,
+        "rows": rows,
+    }
+
+
+def refresh_curve_totals(curve_id):
+    """Recalcula totales de una curva después de agregar/editar IDs por pantalla."""
+    curve = CurvaVersion.query.get(curve_id)
+    if not curve:
+        return None
+    curve.total_items = CurvaItem.query.filter_by(curva_version_id=curve.id).count()
+    curve.total_daily_values = db.session.query(func.count(CurvaDailyValue.id)).join(
+        CurvaItem, CurvaItem.id == CurvaDailyValue.curva_item_id
+    ).filter(CurvaItem.curva_version_id == curve.id).scalar() or 0
+    return curve
+
+
+def create_or_update_curve_item_from_form(form):
+    """
+    Crea un nuevo ID en la curva desde pantalla.
+    Si el ID ya existe en la curva seleccionada, actualiza sus datos maestros.
+    Opcionalmente crea valores diarios de planificación para un rango de fechas.
+    """
+    curve_id = form.get('curve_id', type=int)
+    curve = CurvaVersion.query.get(curve_id) if curve_id else get_curve_for_matching(None)
+    if not curve:
+        raise ValueError('No hay una curva disponible. Primero importa una curva planificada.')
+
+    solicitud_id = norm_id(form.get('solicitud_id'))
+    if not solicitud_id:
+        raise ValueError('El ID de solicitud es obligatorio.')
+
+    gerencia = clean(form.get('gerencia')) or 'SIN GERENCIA'
+    area = clean(form.get('area'))
+    empresa = clean(form.get('empresa'))
+    turno = clean(form.get('turno'))
+    tipo_contrato = clean(form.get('tipo_contrato'))
+    formato = clean(form.get('formato'))
+    camp = clean(form.get('camp'))
+
+    item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=solicitud_id).first()
+    created = item is None
+    if created:
+        item = CurvaItem(curva_version_id=curve.id, solicitud_id=solicitud_id)
+        db.session.add(item)
+
+    item.gerencia = gerencia
+    item.area = area
+    item.empresa = empresa
+    item.turno = turno
+    item.tipo_contrato = tipo_contrato
+    item.formato = formato
+    item.camp = camp
+    db.session.flush()
+
+    date_from = parse_date(form.get('date_from'))
+    date_to = parse_date(form.get('date_to'))
+    dotacion = as_number(form.get('dotacion_planificada'))
+    created_values = 0
+
+    if date_from or date_to or dotacion:
+        if not date_from or not date_to:
+            raise ValueError('Para cargar planificación diaria debes indicar fecha desde y hasta.')
+        if date_to < date_from:
+            raise ValueError('La fecha hasta no puede ser menor que la fecha desde.')
+        if dotacion < 0:
+            raise ValueError('La dotación planificada no puede ser negativa.')
+
+        CurvaDailyValue.query.filter(
+            CurvaDailyValue.curva_item_id == item.id,
+            CurvaDailyValue.fecha >= date_from,
+            CurvaDailyValue.fecha <= date_to,
+        ).delete(synchronize_session=False)
+
+        values = [
+            CurvaDailyValue(curva_item_id=item.id, fecha=d, dotacion_planificada=dotacion)
+            for d in date_span(date_from, date_to)
+        ]
+        if values:
+            db.session.bulk_save_objects(values)
+            created_values = len(values)
+
+    refresh_curve_totals(curve.id)
+    return curve, item, created, created_values
+
+
+def sample_record_context(record_id):
+    """Obtiene un registro sin match para prefijar el formulario de nuevo ID."""
+    if not record_id:
+        return None
+    return CensoRecord.query.get(record_id)
+
+
+def get_curve_items_payload(curve_id=None, search_text='', gerencia='', page=1, per_page=50):
+    """Prepara la vista paginada de datos maestros de la curva."""
+    curve = get_curve_for_matching(curve_id)
+    curves = CurvaVersion.query.order_by(CurvaVersion.is_active.desc(), CurvaVersion.uploaded_at.desc()).all()
+
+    page = max(int(page or 1), 1)
+    per_page = min(max(int(per_page or 50), 10), 200)
+    search_text = (search_text or '').strip()
+    gerencia = (gerencia or '').strip()
+
+    if not curve:
+        return {
+            'curve': None, 'curves': curves, 'items': [], 'stats': {}, 'gerencias': [],
+            'total': 0, 'page': page, 'per_page': per_page, 'pages': 0,
+            'q': search_text, 'selected_gerencia': gerencia,
+        }
+
+    query = CurvaItem.query.filter(CurvaItem.curva_version_id == curve.id)
+    if search_text:
+        like = f'%{search_text}%'
+        query = query.filter(or_(
+            CurvaItem.solicitud_id.ilike(like),
+            CurvaItem.gerencia.ilike(like),
+            CurvaItem.area.ilike(like),
+            CurvaItem.empresa.ilike(like),
+            CurvaItem.turno.ilike(like),
+            CurvaItem.tipo_contrato.ilike(like),
+            CurvaItem.formato.ilike(like),
+            CurvaItem.camp.ilike(like),
+        ))
+    if gerencia:
+        query = query.filter(CurvaItem.gerencia == gerencia)
+
+    total = query.count()
+    pages = (total + per_page - 1) // per_page if total else 0
+    if pages and page > pages:
+        page = pages
+
+    items = query.order_by(CurvaItem.gerencia.asc(), CurvaItem.solicitud_id.asc()).offset((page - 1) * per_page).limit(per_page).all()
+    item_ids = [item.id for item in items]
+
+    stats = {}
+    if item_ids:
+        rows = db.session.query(
+            CurvaDailyValue.curva_item_id,
+            func.sum(CurvaDailyValue.dotacion_planificada).label('plan_total'),
+            func.min(CurvaDailyValue.fecha).label('first_date'),
+            func.max(CurvaDailyValue.fecha).label('last_date'),
+        ).filter(
+            CurvaDailyValue.curva_item_id.in_(item_ids)
+        ).group_by(
+            CurvaDailyValue.curva_item_id
+        ).all()
+        stats = {row.curva_item_id: row for row in rows}
+
+    gerencias = [row[0] for row in db.session.query(CurvaItem.gerencia).filter(
+        CurvaItem.curva_version_id == curve.id
+    ).distinct().order_by(CurvaItem.gerencia.asc()).all()]
+
+    return {
+        'curve': curve, 'curves': curves, 'items': items, 'stats': stats, 'gerencias': gerencias,
+        'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
+        'q': search_text, 'selected_gerencia': gerencia,
+    }
+
+
+def get_curve_item_for_edit(item_id):
+    if not item_id:
+        return None
+    return CurvaItem.query.get_or_404(item_id)
+
+
 def parse_arg(name):
     v=(request.args.get(name) or '').strip()
     return datetime.strptime(v,'%Y-%m-%d').date() if v else None
