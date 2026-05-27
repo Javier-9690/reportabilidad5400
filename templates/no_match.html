@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Corrección de sin match{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h4 class="text-primary-red mb-0"><i class="bi bi-magic"></i> Corrección de registros sin match</h4>
+        <small class="text-muted">El sistema compara el ID del censo contra la curva y propone posibles correcciones.</small>
+    </div>
+    <a href="{{ url_for('report_page') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-table"></i> Ir a reporte</a>
+</div>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-0">Censo</label>
+                <select name="censo_id" class="form-select form-select-sm">
+                    <option value="">Todos los censos</option>
+                    {% for c in censos %}
+                        <option value="{{ c.id }}" {% if selected_censo_id == c.id %}selected{% endif %}>{{ c.fecha_label }} · {{ c.file.filename }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-0">Curva para comparar</label>
+                <select name="curve_id" class="form-select form-select-sm">
+                    <option value="">Curva activa</option>
+                    {% for c in curves %}
+                        <option value="{{ c.id }}" {% if selected_curve_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.is_active %} (activa){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-0">Buscar</label>
+                <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="ID, empresa, gerencia, habitación">
+            </div>
+            <div class="col-6 col-md-1">
+                <label class="form-label small mb-0">Límite</label>
+                <input type="number" name="limit" value="{{ limit }}" min="10" max="1000" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-2">
+                <button class="btn btn-sm btn-danger w-100">Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="card kpi-card border-danger">
+            <div class="card-body py-2">
+                <div class="text-muted small">Sin match encontrados</div>
+                <div class="fs-4 fw-bold text-danger">{{ total }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-5">
+        <div class="card kpi-card border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small">Curva usada para sugerencias</div>
+                <div class="fw-bold text-truncate">{{ curve.name if curve else 'Sin curva disponible' }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="alert alert-warning py-2 mb-0 small">
+            Revisa la propuesta antes de aplicar. La corrección cambia la gerencia del registro según la curva seleccionada.
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle mb-0 no-match-table">
+            <thead class="table-dark">
+                <tr>
+                    <th>Fecha</th>
+                    <th>ID censo</th>
+                    <th>Datos censo</th>
+                    <th>Propuestas</th>
+                    <th>Manual</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                    {% set r = row.record %}
+                    <tr>
+                        <td class="small fw-bold text-nowrap">{{ row.censo.fecha_label }}</td>
+                        <td>
+                            <div class="fw-bold text-danger">{{ r.solicitud_id }}</div>
+                            <div class="small text-muted">Hab: {{ r.habitacion or '-' }} · Cama: {{ r.cama or '-' }}</div>
+                        </td>
+                        <td class="small">
+                            <div><strong>Empresa:</strong> {{ r.empresa or '-' }}</div>
+                            <div><strong>Gerencia censo:</strong> {{ r.gerencia_censo or '-' }}</div>
+                            <div><strong>Área:</strong> {{ r.area or '-' }}</div>
+                            <div><strong>Rut:</strong> {{ r.rut or '-' }}</div>
+                        </td>
+                        <td>
+                            {% if row.suggestions %}
+                                <div class="d-flex flex-column gap-1">
+                                    {% for s in row.suggestions %}
+                                        <div class="border rounded p-1 bg-white">
+                                            <div class="d-flex justify-content-between gap-2 flex-wrap">
+                                                <div>
+                                                    <span class="badge bg-danger">{{ s.score }}%</span>
+                                                    <strong>{{ s.item.solicitud_id }}</strong>
+                                                    <span class="text-muted small">{{ s.reason }}</span>
+                                                </div>
+                                                <form action="{{ url_for('apply_no_match', record_id=r.id) }}" method="post">
+                                                    <input type="hidden" name="curva_item_id" value="{{ s.item.id }}">
+                                                    <button class="btn btn-sm btn-outline-success py-0" onclick="return confirm('¿Aplicar esta corrección?');">
+                                                        Aplicar
+                                                    </button>
+                                                </form>
+                                            </div>
+                                            <div class="small text-muted">
+                                                Gerencia curva: <strong>{{ s.item.gerencia }}</strong> · Empresa: {{ s.item.empresa or '-' }} · Área: {{ s.item.area or '-' }}
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <span class="text-muted small">Sin propuesta automática</span>
+                            {% endif %}
+                        </td>
+                        <td style="min-width: 220px;">
+                            <form action="{{ url_for('manual_no_match', record_id=r.id) }}" method="post" class="d-flex gap-1">
+                                <input type="hidden" name="curve_id" value="{{ selected_curve_id or '' }}">
+                                <input name="manual_id" class="form-control form-control-sm" placeholder="ID exacto curva" required>
+                                <button class="btn btn-sm btn-dark" onclick="return confirm('¿Aplicar corrección manual?');">OK</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            No hay registros sin match para los filtros seleccionados.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if total > limit %}
+        <div class="card-footer small text-muted">
+            Mostrando {{ limit }} de {{ total }} registros. Usa filtros para acotar la revisión.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

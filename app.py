@@ -4,6 +4,7 @@ import os
 import re
 import unicodedata
 from collections import defaultdict
+from difflib import SequenceMatcher
 from datetime import date, datetime, timedelta
 from io import BytesIO
 
@@ -14,7 +15,7 @@ from flask_sqlalchemy import SQLAlchemy
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 load_dotenv()
 db = SQLAlchemy()
@@ -617,6 +618,195 @@ def report_xlsx(data):
     bio=BytesIO(); wb.save(bio); bio.seek(0); return bio
 
 
+
+def compact_id(value):
+    """Normaliza un ID para comparación flexible: quita espacios, guiones y símbolos."""
+    return re.sub(r"[^A-Z0-9]", "", norm_id(value))
+
+
+def digits_id(value):
+    """Retorna solo los dígitos del ID para detectar diferencias por ceros, puntos o guiones."""
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def recalc_censo_stats(censo_id):
+    censo = Censo.query.get(censo_id)
+    if not censo:
+        return None
+    records = CensoRecord.query.filter_by(censo_id=censo_id).all()
+    censo.total_records = len(records)
+    censo.total_occupied = sum(float(r.camas_ocupadas or 0) for r in records)
+    censo.matched_count = sum(1 for r in records if r.curva_item_id)
+    censo.unmatched_count = sum(1 for r in records if not r.curva_item_id)
+    return censo
+
+
+def set_latest_curve_active_if_needed():
+    active = CurvaVersion.query.filter_by(is_active=True).first()
+    if active:
+        return active
+    latest = CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).first()
+    if latest:
+        latest.is_active = True
+    return latest
+
+
+def delete_uploaded_file_data(file_id):
+    """
+    Elimina un archivo subido y toda la información derivada.
+
+    - Si es censo: elimina registros del censo y el censo.
+    - Si es curva: elimina versiones, items y valores diarios; los registros de censo que
+      apuntaban a esa curva quedan como sin match para poder corregirlos con otra curva.
+    """
+    uploaded = UploadedFile.query.get_or_404(file_id)
+    impacted_censo_ids = set()
+
+    if uploaded.file_type == "censo":
+        censos = Censo.query.filter_by(file_id=uploaded.id).all()
+        censo_ids = [c.id for c in censos]
+        if censo_ids:
+            CensoRecord.query.filter(CensoRecord.censo_id.in_(censo_ids)).delete(synchronize_session=False)
+            Censo.query.filter(Censo.id.in_(censo_ids)).delete(synchronize_session=False)
+
+    elif uploaded.file_type == "curva":
+        curves = CurvaVersion.query.filter_by(file_id=uploaded.id).all()
+        for curve in curves:
+            item_ids = [row[0] for row in db.session.query(CurvaItem.id).filter_by(curva_version_id=curve.id).all()]
+            if item_ids:
+                impacted_censo_ids.update(
+                    row[0] for row in db.session.query(CensoRecord.censo_id)
+                    .filter(CensoRecord.curva_item_id.in_(item_ids))
+                    .distinct()
+                    .all()
+                )
+                CensoRecord.query.filter(CensoRecord.curva_item_id.in_(item_ids)).update(
+                    {CensoRecord.curva_item_id: None}, synchronize_session=False
+                )
+                CurvaDailyValue.query.filter(CurvaDailyValue.curva_item_id.in_(item_ids)).delete(synchronize_session=False)
+                CurvaItem.query.filter(CurvaItem.id.in_(item_ids)).delete(synchronize_session=False)
+            db.session.delete(curve)
+    else:
+        raise ValueError("Tipo de archivo no reconocido.")
+
+    db.session.delete(uploaded)
+    db.session.flush()
+
+    for censo_id in impacted_censo_ids:
+        recalc_censo_stats(censo_id)
+
+    set_latest_curve_active_if_needed()
+    db.session.commit()
+    return uploaded
+
+
+def get_curve_for_matching(curve_id=None):
+    if curve_id:
+        return CurvaVersion.query.get(curve_id)
+    return CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
+
+
+def build_curve_candidates(curve):
+    if not curve:
+        return []
+    return CurvaItem.query.filter_by(curva_version_id=curve.id).all()
+
+
+def candidate_score(record, item):
+    target = compact_id(record.solicitud_id)
+    candidate = compact_id(item.solicitud_id)
+    target_digits = digits_id(record.solicitud_id).lstrip("0")
+    candidate_digits = digits_id(item.solicitud_id).lstrip("0")
+
+    if not target or not candidate:
+        return 0, ""
+
+    score = 0
+    reason = "Similitud de texto"
+
+    if target == candidate:
+        score, reason = 100, "Coincidencia exacta ignorando formato"
+    elif target_digits and candidate_digits and target_digits == candidate_digits:
+        score, reason = 98, "Coinciden los dígitos ignorando ceros o símbolos"
+    elif target in candidate or candidate in target:
+        score, reason = 90, "Un ID contiene al otro"
+    elif target_digits and candidate_digits:
+        max_suffix = 0
+        for n in range(min(len(target_digits), len(candidate_digits)), 3, -1):
+            if target_digits[-n:] == candidate_digits[-n:]:
+                max_suffix = n
+                break
+        if max_suffix:
+            score = min(88, 70 + max_suffix * 2)
+            reason = f"Coinciden los últimos {max_suffix} dígitos"
+
+    ratio = SequenceMatcher(None, target, candidate).ratio()
+    if ratio >= 0.70 and int(ratio * 85) > score:
+        score = int(ratio * 85)
+        reason = f"Similitud de ID {ratio * 100:.0f}%"
+
+    # Pequeños refuerzos si además coinciden datos descriptivos.
+    if record.empresa and item.empresa and norm(record.empresa) == norm(item.empresa):
+        score += 4
+        reason += " + misma empresa"
+    if record.gerencia_censo and item.gerencia and norm(record.gerencia_censo) == norm(item.gerencia):
+        score += 4
+        reason += " + misma gerencia"
+
+    return min(score, 100), reason
+
+
+def suggestions_for_record(record, candidates, limit=3):
+    suggestions = []
+    for item in candidates:
+        score, reason = candidate_score(record, item)
+        if score >= 60:
+            suggestions.append({
+                "item": item,
+                "score": score,
+                "reason": reason,
+            })
+    suggestions.sort(key=lambda x: x["score"], reverse=True)
+    return suggestions[:limit]
+
+
+def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
+    curve = get_curve_for_matching(curve_id)
+    candidates = build_curve_candidates(curve)
+
+    query = CensoRecord.query.join(Censo, Censo.id == CensoRecord.censo_id).filter(CensoRecord.curva_item_id.is_(None))
+    if censo_id:
+        query = query.filter(CensoRecord.censo_id == censo_id)
+
+    search_text = (search_text or "").strip()
+    if search_text:
+        like = f"%{search_text}%"
+        query = query.filter(
+            or_(
+                CensoRecord.solicitud_id.ilike(like),
+                CensoRecord.empresa.ilike(like),
+                CensoRecord.gerencia_censo.ilike(like),
+                CensoRecord.rut.ilike(like),
+                CensoRecord.habitacion.ilike(like),
+            )
+        )
+
+    total = query.count()
+    records = query.order_by(Censo.fecha_censo.desc(), CensoRecord.solicitud_id.asc()).limit(limit).all()
+    rows = []
+    for record in records:
+        rows.append({
+            "record": record,
+            "censo": record.censo,
+            "suggestions": suggestions_for_record(record, candidates),
+        })
+    return {
+        "curve": curve,
+        "total": total,
+        "limit": limit,
+        "rows": rows,
+    }
+
 def parse_arg(name):
     v=(request.args.get(name) or '').strip()
     return datetime.strptime(v,'%Y-%m-%d').date() if v else None
@@ -627,7 +817,7 @@ def register_routes(app):
     def dashboard():
         active=CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
         latest=Censo.query.order_by(Censo.fecha_censo.desc()).first()
-        return render_template('dashboard.html', active=active, latest=latest, total_censos=Censo.query.count(), total_files=UploadedFile.query.count())
+        return render_template('dashboard.html', active=active, latest=latest, total_censos=Censo.query.count(), total_files=UploadedFile.query.count(), total_unmatched=db.session.query(func.sum(Censo.unmatched_count)).scalar() or 0)
 
     @app.route('/imports')
     def imports_page():
@@ -657,6 +847,67 @@ def register_routes(app):
     @app.post('/api/curves/<int:curve_id>/activate')
     def activate_curve(curve_id):
         CurvaVersion.query.update({CurvaVersion.is_active: False}); curve=CurvaVersion.query.get_or_404(curve_id); curve.is_active=True; db.session.commit(); flash(f'Curva activa: {curve.name}', 'success'); return redirect(url_for('imports_page'))
+
+
+    @app.post('/api/files/<int:file_id>/delete')
+    def delete_file(file_id):
+        try:
+            uploaded = delete_uploaded_file_data(file_id)
+            flash(f'Archivo eliminado: {uploaded.filename}', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al eliminar archivo: {e}', 'danger')
+        return redirect(request.referrer or url_for('imports_page'))
+
+    @app.route('/no-match')
+    def no_match_page():
+        censo_id = request.args.get('censo_id', type=int)
+        curve_id = request.args.get('curve_id', type=int)
+        search_text = request.args.get('q', '')
+        limit = min(request.args.get('limit', 200, type=int) or 200, 1000)
+        payload = no_match_payload(censo_id=censo_id, curve_id=curve_id, search_text=search_text, limit=limit)
+        return render_template(
+            'no_match.html',
+            rows=payload['rows'],
+            curve=payload['curve'],
+            total=payload['total'],
+            limit=payload['limit'],
+            censos=Censo.query.order_by(Censo.fecha_censo.desc()).all(),
+            curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all(),
+            selected_censo_id=censo_id,
+            selected_curve_id=curve_id,
+            q=search_text,
+        )
+
+    @app.post('/api/no-match/<int:record_id>/apply')
+    def apply_no_match(record_id):
+        record = CensoRecord.query.get_or_404(record_id)
+        item_id = request.form.get('curva_item_id', type=int)
+        item = CurvaItem.query.get_or_404(item_id)
+        record.curva_item_id = item.id
+        recalc_censo_stats(record.censo_id)
+        db.session.commit()
+        flash(f'Corrección aplicada: ID censo {record.solicitud_id} → curva {item.solicitud_id} / {item.gerencia}', 'success')
+        return redirect(request.referrer or url_for('no_match_page'))
+
+    @app.post('/api/no-match/<int:record_id>/manual')
+    def manual_no_match(record_id):
+        record = CensoRecord.query.get_or_404(record_id)
+        curve_id = request.form.get('curve_id', type=int)
+        manual_id = norm_id(request.form.get('manual_id'))
+        curve = get_curve_for_matching(curve_id)
+        if not curve:
+            flash('No hay curva disponible para buscar el ID manual.', 'danger')
+            return redirect(request.referrer or url_for('no_match_page'))
+        item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=manual_id).first()
+        if not item:
+            flash(f'No se encontró el ID {manual_id} en la curva {curve.name}.', 'warning')
+            return redirect(request.referrer or url_for('no_match_page'))
+        record.curva_item_id = item.id
+        recalc_censo_stats(record.censo_id)
+        db.session.commit()
+        flash(f'Corrección manual aplicada: {record.solicitud_id} → {item.solicitud_id} / {item.gerencia}', 'success')
+        return redirect(request.referrer or url_for('no_match_page'))
 
     @app.route('/censos')
     def censos_page():

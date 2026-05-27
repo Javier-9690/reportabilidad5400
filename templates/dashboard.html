@@ -1,2 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 text-primary-red"><i class="bi bi-speedometer2"></i> Dashboard</h4>
+        <small class="text-muted">Importación, cruces y reportería de dotación</small>
+    </div>
+    <a href="{{ url_for('imports_page') }}" class="btn btn-sm btn-danger"><i class="bi bi-upload"></i> Importar</a>
+</div>
 
-{% extends "base.html" %}{% block content %}<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"><div><h4 class="mb-0 text-primary-red"><i class="bi bi-speedometer2"></i> Dashboard</h4><small class="text-muted">Importación, cruces y reportería de dotación</small></div><a href="{{ url_for('imports_page') }}" class="btn btn-sm btn-danger"><i class="bi bi-upload"></i> Importar</a></div><div class="row g-2 mb-3"><div class="col-6 col-lg-3"><div class="card kpi-card border-danger"><div class="card-body"><div class="text-muted small">Curva activa</div><div class="fw-bold text-truncate">{{ active.name if active else 'Sin curva' }}</div><div class="small text-muted">{{ active.sheet_name if active else 'Importar Fcst_5400' }}</div></div></div></div><div class="col-6 col-lg-3"><div class="card kpi-card border-success"><div class="card-body"><div class="text-muted small">Último censo</div><div class="fs-5 fw-bold text-success">{{ latest.fecha_label if latest else '-' }}</div><div class="small text-muted">{{ latest.total_records if latest else 0 }} registros</div></div></div></div><div class="col-6 col-lg-3"><div class="card kpi-card border-info"><div class="card-body"><div class="text-muted small">Censos</div><div class="fs-3 fw-bold text-info">{{ total_censos }}</div></div></div></div><div class="col-6 col-lg-3"><div class="card kpi-card border-warning"><div class="card-body"><div class="text-muted small">Archivos</div><div class="fs-3 fw-bold text-warning">{{ total_files }}</div></div></div></div></div><div class="row g-3"><div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-header fw-semibold">1. Importar bases</div><div class="card-body small text-muted">Carga curva y censos. Los archivos se guardan en PostgreSQL.<br><a class="btn btn-sm btn-outline-danger mt-2" href="{{ url_for('imports_page') }}">Ir</a></div></div></div><div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-header fw-semibold">2. Revisar censos</div><div class="card-body small text-muted">Consulta fechas, registros cruzados y sin match.<br><a class="btn btn-sm btn-outline-danger mt-2" href="{{ url_for('censos_page') }}">Ver</a></div></div></div><div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-header fw-semibold">3. Reportar</div><div class="card-body small text-muted">Genera dotación por gerencia y exporta Excel.<br><a class="btn btn-sm btn-danger mt-2" href="{{ url_for('report_page') }}">Generar</a></div></div></div></div>{% endblock %}
+<div class="row g-2 mb-3">
+    <div class="col-6 col-lg-3">
+        <div class="card kpi-card border-danger">
+            <div class="card-body">
+                <div class="text-muted small">Curva activa</div>
+                <div class="fw-bold text-truncate">{{ active.name if active else 'Sin curva' }}</div>
+                <div class="small text-muted">{{ active.sheet_name if active else 'Importar Fcst_5400' }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card kpi-card border-success">
+            <div class="card-body">
+                <div class="text-muted small">Último censo</div>
+                <div class="fs-5 fw-bold text-success">{{ latest.fecha_label if latest else '-' }}</div>
+                <div class="small text-muted">{{ latest.total_records if latest else 0 }} registros</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card kpi-card border-info">
+            <div class="card-body">
+                <div class="text-muted small">Censos</div>
+                <div class="fs-3 fw-bold text-info">{{ total_censos }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card kpi-card border-warning">
+            <div class="card-body">
+                <div class="text-muted small">Sin match pendientes</div>
+                <div class="fs-3 fw-bold text-warning">{{ total_unmatched|round(0)|int }}</div>
+                <a href="{{ url_for('no_match_page') }}" class="small text-decoration-none">Revisar correcciones</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-semibold">1. Importar bases</div>
+            <div class="card-body small text-muted">
+                Carga curva y censos. Los archivos se guardan en PostgreSQL.<br>
+                <a class="btn btn-sm btn-outline-danger mt-2" href="{{ url_for('imports_page') }}">Ir</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-semibold">2. Revisar censos</div>
+            <div class="card-body small text-muted">
+                Consulta fechas, registros cruzados y sin match.<br>
+                <a class="btn btn-sm btn-outline-danger mt-2" href="{{ url_for('censos_page') }}">Ver</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-semibold">3. Corregir no match</div>
+            <div class="card-body small text-muted">
+                El sistema propone IDs de curva para corregir registros no cruzados.<br>
+                <a class="btn btn-sm btn-outline-danger mt-2" href="{{ url_for('no_match_page') }}">Corregir</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-header fw-semibold">4. Reportar</div>
+            <div class="card-body small text-muted">
+                Genera dotación por gerencia y exporta Excel.<br>
+                <a class="btn btn-sm btn-danger mt-2" href="{{ url_for('report_page') }}">Generar</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
