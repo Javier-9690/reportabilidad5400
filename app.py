@@ -260,8 +260,14 @@ def colmap(columns):
         "area": ["area", "área"], "empresa": ["empresa"], "turno": ["turno"],
         "tipo_contrato": ["tipo contrato", "tipo de contrato"], "formato": ["formato"], "camp": ["camp", "campamento"],
         "modulo": ["modulo", "módulo"], "lugar": ["lugar"], "habitacion": ["habitacion", "habitación"],
-        "cama": ["cama"], "dia": ["dia", "día"], "ocupadas": ["camas ocupadas", "camas ocupdas", "ocupadas"],
-        "rut": ["rut", "run"], "estado": ["estado"],
+        "cama": ["cama"], "inicio": ["inicio"], "termino": ["termino", "término"],
+        "dia": ["dia", "día", "fecha", "fecha censo"],
+        "ocupadas": ["camas ocupadas", "camas ocupdas", "camas ocupada", "ocupadas", "ocupada", "ocupacion", "ocupación"],
+        "co_mel": ["co mel", "comel", "co_mel", "co", "centro costo", "centro de costo"],
+        "sexo": ["sexo", "genero", "género"],
+        "jornada": ["jornada", "rol", "sistema turno", "sistema de turno"],
+        "pab": ["pab", "pabellon", "pabellón"],
+        "rut": ["rut", "run"], "estado": ["estado", "status"],
     }
     available = {norm(c): c for c in columns}
     out = {}
@@ -516,6 +522,91 @@ def read_censo(content, filename):
     return df, sheet, detected_date
 
 
+def lookup_active_curve_items():
+    """Retorna la curva activa y un mapa ID -> CurvaItem.id para cruces rápidos."""
+    active = CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
+    item_map = {}
+    if active:
+        item_map = {
+            i.solicitud_id: i.id
+            for i in CurvaItem.query.filter_by(curva_version_id=active.id).all()
+        }
+    return active, item_map
+
+
+def occupied_value(row, cm):
+    """Normaliza Camas Ocupdas/Ocupadas a 1 o 0 para reservas del censo."""
+    if cm.get("ocupadas"):
+        return 1.0 if as_number(row.get(cm.get("ocupadas"))) > 0 else 0.0
+    return 0.0
+
+
+def rebuild_censo_from_dataframe(censo, df, preserved_matches=None):
+    """
+    Reconstruye los registros de un censo desde su DataFrame original.
+
+    Regla de negocio:
+    - Reservas = todas las filas del censo que tienen ID.
+    - Ocupación = reservas con Camas Ocupdas/Ocupadas > 0.
+    - Sin match/Cruzados se calculan sobre todas las reservas, no solo ocupados.
+    - Si ya existía una corrección manual para un ID, se conserva y se aplica a
+      todas las reservas con ese mismo ID, incluyendo Camas Ocupdas = 0.
+    """
+    cm = colmap(df.columns)
+    if "id" not in cm:
+        raise ValueError("No se encontró la columna Id en el censo.")
+
+    _, item_map = lookup_active_curve_items()
+    preserved_matches = preserved_matches or {}
+
+    records = []
+    matched = 0
+    unmatched = 0
+    occupied_total = 0
+
+    for _, row in df.iterrows():
+        sid = norm_id(row.get(cm["id"]))
+        if not sid:
+            continue
+
+        occupied = occupied_value(row, cm)
+        occupied_total += occupied
+
+        item_id = preserved_matches.get(sid) or item_map.get(sid)
+        if item_id:
+            matched += 1
+        else:
+            unmatched += 1
+
+        records.append(CensoRecord(
+            censo_id=censo.id,
+            curva_item_id=item_id,
+            solicitud_id=sid,
+            modulo=clean(row.get(cm.get("modulo"))) if cm.get("modulo") else "",
+            lugar=clean(row.get(cm.get("lugar"))) if cm.get("lugar") else "",
+            habitacion=clean(row.get(cm.get("habitacion"))) if cm.get("habitacion") else "",
+            empresa=clean(row.get(cm.get("empresa"))) if cm.get("empresa") else "",
+            cama=clean(row.get(cm.get("cama"))) if cm.get("cama") else "",
+            dia=clean(row.get(cm.get("dia"))) if cm.get("dia") else censo.fecha_censo.strftime("%d/%m/%Y"),
+            camas_ocupadas=occupied,
+            turno=clean(row.get(cm.get("turno"))) if cm.get("turno") else "",
+            gerencia_censo=clean(row.get(cm.get("gerencia"))) if cm.get("gerencia") else "",
+            area=clean(row.get(cm.get("area"))) if cm.get("area") else "",
+            rut=clean(row.get(cm.get("rut"))) if cm.get("rut") else "",
+            estado=clean(row.get(cm.get("estado"))) if cm.get("estado") else "",
+        ))
+
+    CensoRecord.query.filter_by(censo_id=censo.id).delete(synchronize_session=False)
+    if records:
+        db.session.bulk_save_objects(records)
+
+    censo.total_records = len(records)  # Reservas
+    censo.total_occupied = occupied_total  # Ocupación
+    censo.matched_count = matched
+    censo.unmatched_count = unmatched
+    return censo
+
+
 def import_censo(file):
     uploaded, content = save_upload(file, "censo")
     df, sheet, fecha = read_censo(content, uploaded.filename)
@@ -528,34 +619,11 @@ def import_censo(file):
         fecha = max(set(dates), key=dates.count) if dates else None
     if not fecha:
         raise ValueError("No se pudo detectar la fecha del censo.")
-    active = CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
-    item_map = {i.solicitud_id: i.id for i in CurvaItem.query.filter_by(curva_version_id=active.id).all()} if active else {}
+
     censo = Censo(file_id=uploaded.id, fecha_censo=fecha, sheet_name=sheet)
-    db.session.add(censo); db.session.flush()
-    records, matched, unmatched, occupied_total = [], 0, 0, 0
-    for _, row in df.iterrows():
-        sid = norm_id(row.get(cm["id"]))
-        if not sid: continue
-        occupied = as_number(row.get(cm.get("ocupadas"))) if cm.get("ocupadas") else 1.0
-        if occupied <= 0: continue
-        item_id = item_map.get(sid)
-        matched += 1 if item_id else 0; unmatched += 0 if item_id else 1
-        occupied_total += occupied
-        records.append(CensoRecord(
-            censo_id=censo.id, curva_item_id=item_id, solicitud_id=sid,
-            modulo=clean(row.get(cm.get("modulo"))) if cm.get("modulo") else "",
-            lugar=clean(row.get(cm.get("lugar"))) if cm.get("lugar") else "",
-            habitacion=clean(row.get(cm.get("habitacion"))) if cm.get("habitacion") else "",
-            empresa=clean(row.get(cm.get("empresa"))) if cm.get("empresa") else "",
-            cama=clean(row.get(cm.get("cama"))) if cm.get("cama") else "",
-            dia=clean(row.get(cm.get("dia"))) if cm.get("dia") else fecha.strftime("%d/%m/%Y"),
-            camas_ocupadas=occupied, turno=clean(row.get(cm.get("turno"))) if cm.get("turno") else "",
-            gerencia_censo=clean(row.get(cm.get("gerencia"))) if cm.get("gerencia") else "",
-            area=clean(row.get(cm.get("area"))) if cm.get("area") else "", rut=clean(row.get(cm.get("rut"))) if cm.get("rut") else "",
-            estado=clean(row.get(cm.get("estado"))) if cm.get("estado") else "",
-        ))
-    if records: db.session.bulk_save_objects(records)
-    censo.total_records, censo.total_occupied, censo.matched_count, censo.unmatched_count = len(records), occupied_total, matched, unmatched
+    db.session.add(censo)
+    db.session.flush()
+    rebuild_censo_from_dataframe(censo, df)
     db.session.commit()
     return censo
 
@@ -1596,6 +1664,87 @@ def report_xlsx_fast(data, progress_callback=None):
 
 
 
+
+
+def recalc_censo_totals(censo_id):
+    """Recalcula métricas del censo sobre reservas: filas con ID."""
+    censo = Censo.query.get(censo_id)
+    if not censo:
+        return None
+    total = CensoRecord.query.filter_by(censo_id=censo_id).count()
+    occupied = db.session.query(func.coalesce(func.sum(CensoRecord.camas_ocupadas), 0)).filter_by(censo_id=censo_id).scalar() or 0
+    matched = CensoRecord.query.filter(
+        CensoRecord.censo_id == censo_id,
+        CensoRecord.curva_item_id.isnot(None)
+    ).count()
+    censo.total_records = total
+    censo.total_occupied = float(occupied or 0)
+    censo.matched_count = matched
+    censo.unmatched_count = max(total - matched, 0)
+    return censo
+
+
+def recalc_many_censos(censo_ids):
+    for censo_id in sorted(set(censo_ids)):
+        recalc_censo_totals(censo_id)
+
+
+def apply_correction_to_solicitud_id(solicitud_id, item):
+    """
+    Corrige todos los registros que tengan el mismo ID original de censo.
+    Incluye reservas con Camas Ocupdas = 0.
+    """
+    sid = norm_id(solicitud_id)
+    if not sid or not item:
+        return 0, []
+    rows = CensoRecord.query.filter(CensoRecord.solicitud_id == sid).all()
+    affected_censos = set()
+    for row in rows:
+        row.curva_item_id = item.id
+        affected_censos.add(row.censo_id)
+    recalc_many_censos(affected_censos)
+    return len(rows), list(affected_censos)
+
+
+def apply_correction_to_same_id(record, item):
+    """
+    Corrige en lote todos los registros con el mismo ID del registro elegido.
+    La corrección alcanza reservas ocupadas y no ocupadas.
+    """
+    if not record:
+        return 0, []
+    return apply_correction_to_solicitud_id(record.solicitud_id, item)
+
+
+def preserved_matches_for_censo(censo_id):
+    """Conserva correcciones manuales existentes antes de reprocesar un censo."""
+    rows = CensoRecord.query.filter(
+        CensoRecord.censo_id == censo_id,
+        CensoRecord.curva_item_id.isnot(None),
+        CensoRecord.solicitud_id.isnot(None),
+        CensoRecord.solicitud_id != ''
+    ).all()
+    preserved = {}
+    for row in rows:
+        sid = norm_id(row.solicitud_id)
+        if sid and row.curva_item_id:
+            preserved[sid] = row.curva_item_id
+    return preserved
+
+
+def reprocess_censo_from_original_file(censo):
+    """
+    Reprocesa un censo desde el archivo original guardado en BD para incluir
+    reservas con Camas Ocupdas = 0 y recalcular métricas.
+    """
+    preserved = preserved_matches_for_censo(censo.id)
+    df, sheet, fecha = read_censo(censo.file.content, censo.file.filename)
+    if fecha:
+        censo.fecha_censo = fecha
+    censo.sheet_name = sheet
+    rebuild_censo_from_dataframe(censo, df, preserved_matches=preserved)
+    return censo
+
 def resolve_report_dates(start=None, end=None):
     """Devuelve rango de fechas válido para reportes/exportaciones."""
     if not start or not end:
@@ -1620,1021 +1769,179 @@ def csv_row(values):
     return output.getvalue()
 
 
-def iter_censos_acumulados_csv(start_date=None, end_date=None, batch_size=3000):
+def source_col_from_map(cm, key):
+    """Devuelve el nombre de columna de un DataFrame según alias normalizados."""
+    return cm.get(key)
+
+
+def build_corrected_meta_map(censo_id):
     """
-    Exportación liviana de censos acumulados.
-    No genera Excel en memoria: envía CSV por streaming y usa IDs corregidos contra curva.
+    Mapa por ID original de censo para aplicar correcciones hechas en Sin match.
+    Si varios registros tienen el mismo ID, todos reciben el mismo ID/metadata de curva.
+    """
+    rows = db.session.query(
+        CensoRecord.solicitud_id.label('id_censo'),
+        CurvaItem.solicitud_id.label('id_curva'),
+        CurvaItem.gerencia.label('gerencia'),
+        CurvaItem.area.label('area'),
+        CurvaItem.empresa.label('empresa'),
+    ).outerjoin(
+        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+    ).filter(
+        CensoRecord.censo_id == censo_id,
+        CensoRecord.solicitud_id.isnot(None),
+        CensoRecord.solicitud_id != '',
+    ).all()
+
+    mapping = {}
+    for row in rows:
+        original = norm_id(row.id_censo)
+        if not original:
+            continue
+        if row.id_curva:
+            mapping[original] = {
+                'id': row.id_curva or original,
+                'gerencia': row.gerencia or '',
+                'area': row.area or '',
+                'empresa': row.empresa or '',
+            }
+        elif original not in mapping:
+            mapping[original] = {'id': original, 'gerencia': '', 'area': '', 'empresa': ''}
+    return mapping
+
+
+def iter_censos_acumulados_csv(start_date=None, end_date=None, batch_size=10):
+    """
+    Exportación liviana de censos acumulados como CSV.
+
+    Reconstruye la data desde los archivos originales de censo guardados en
+    PostgreSQL. Así conserva columnas como Inicio, Termino, CO MEL, SEXO y
+    JORNADA, e incluye también filas con Camas Ocupdas = 0.
+
+    Los IDs corregidos en Sin match se aplican por ID original; por eso todos los
+    registros iguales quedan corregidos en el CSV.
     """
     headers = [
         'Modulo', 'Lugar', 'Habitacion', 'Empresa', 'Id', 'Cama', 'Inicio', 'Termino', 'Dia',
         'Camas Ocupdas', 'Turno', 'Gerencia', 'CO MEL', 'AREA', 'SEXO', 'JORNADA', 'Rut', 'PAB', 'ESTADO'
     ]
 
-    # BOM UTF-8 + instrucción sep=; para que Excel separe columnas automáticamente
-    # incluso cuando la configuración regional no detecta el delimitador del CSV.
+    # BOM UTF-8 + instrucción sep=; para que Excel separe columnas automáticamente.
     yield '\ufeffsep=;\n'
     yield csv_row(headers)
 
+    base_query = Censo.query.join(UploadedFile, UploadedFile.id == Censo.file_id).filter(
+        UploadedFile.file_type == 'censo'
+    )
+    if start_date:
+        base_query = base_query.filter(Censo.fecha_censo >= start_date)
+    if end_date:
+        base_query = base_query.filter(Censo.fecha_censo <= end_date)
+
     last_date = None
     last_id = 0
-
     while True:
-        query = db.session.query(
-            CensoRecord.id.label('record_id'),
-            Censo.fecha_censo.label('fecha_censo'),
-            CensoRecord.modulo.label('modulo'),
-            CensoRecord.lugar.label('lugar'),
-            CensoRecord.habitacion.label('habitacion'),
-            CensoRecord.empresa.label('empresa_censo'),
-            CensoRecord.solicitud_id.label('id_censo'),
-            CensoRecord.cama.label('cama'),
-            CensoRecord.dia.label('dia_original'),
-            CensoRecord.camas_ocupadas.label('camas_ocupadas'),
-            CensoRecord.turno.label('turno'),
-            CensoRecord.gerencia_censo.label('gerencia_censo'),
-            CensoRecord.area.label('area_censo'),
-            CensoRecord.rut.label('rut'),
-            CensoRecord.estado.label('estado'),
-            CurvaItem.solicitud_id.label('id_curva'),
-            CurvaItem.gerencia.label('gerencia_curva'),
-            CurvaItem.area.label('area_curva'),
-            CurvaItem.empresa.label('empresa_curva'),
-        ).join(
-            Censo, Censo.id == CensoRecord.censo_id
-        ).outerjoin(
-            CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
-        )
-
-        if start_date:
-            query = query.filter(Censo.fecha_censo >= start_date)
-        if end_date:
-            query = query.filter(Censo.fecha_censo <= end_date)
+        query = base_query
         if last_date is not None:
             query = query.filter(or_(
                 Censo.fecha_censo > last_date,
-                and_(Censo.fecha_censo == last_date, CensoRecord.id > last_id)
+                and_(Censo.fecha_censo == last_date, Censo.id > last_id)
             ))
-
-        batch = query.order_by(Censo.fecha_censo.asc(), CensoRecord.id.asc()).limit(batch_size).all()
-        if not batch:
+        censos = query.order_by(Censo.fecha_censo.asc(), Censo.id.asc()).limit(batch_size).all()
+        if not censos:
             break
 
-        for row in batch:
-            corrected_id = row.id_curva or row.id_censo or ''
-            fecha_text = row.fecha_censo.strftime('%Y-%m-%d') if row.fecha_censo else (row.dia_original or '')
-            yield csv_row([
-                row.modulo or '',
-                row.lugar or '',
-                row.habitacion or '',
-                row.empresa_curva or row.empresa_censo or '',
-                corrected_id,
-                row.cama or '',
-                '',
-                '',
-                fecha_text,
-                float(row.camas_ocupadas or 0),
-                row.turno or '',
-                row.gerencia_curva or row.gerencia_censo or '',
-                '',
-                row.area_curva or row.area_censo or '',
-                '',
-                '',
-                row.rut or '',
-                '',
-                row.estado or '',
-            ])
-            last_date = row.fecha_censo
-            last_id = row.record_id
+        for censo in censos:
+            corrected_map = build_corrected_meta_map(censo.id)
+            try:
+                df, sheet, fecha_detectada = read_censo(censo.file.content, censo.file.filename)
+            except Exception:
+                # Fallback si algún archivo original no se puede abrir: usa lo persistido.
+                fallback = CensoRecord.query.filter_by(censo_id=censo.id).order_by(
+                    CensoRecord.modulo.asc(), CensoRecord.lugar.asc(),
+                    CensoRecord.habitacion.asc(), CensoRecord.cama.asc(), CensoRecord.id.asc()
+                ).all()
+                for record in fallback:
+                    item = record.curva_item
+                    yield csv_row([
+                        record.modulo or '',
+                        record.lugar or '',
+                        record.habitacion or '',
+                        item.empresa if item else (record.empresa or ''),
+                        item.solicitud_id if item else (record.solicitud_id or ''),
+                        record.cama or '',
+                        '',
+                        '',
+                        record.dia or (censo.fecha_censo.strftime('%Y-%m-%d') if censo.fecha_censo else ''),
+                        float(record.camas_ocupadas or 0),
+                        record.turno or '',
+                        item.gerencia if item else (record.gerencia_censo or ''),
+                        '',
+                        item.area if item else (record.area or ''),
+                        '',
+                        '',
+                        record.rut or '',
+                        '',
+                        record.estado or '',
+                    ])
+                continue
+
+            # Quita columnas vacías generadas por pandas, pero conserva nombres reales.
+            valid_cols = [col for col in df.columns if clean(col) and not str(col).lower().startswith('unnamed')]
+            df = df[valid_cols].copy()
+            cm = colmap(df.columns)
+
+            # Orden estable por fecha/ubicación/cama, manteniendo todos los registros del archivo.
+            dia_col = source_col_from_map(cm, 'dia')
+            if dia_col:
+                df['_sort_fecha_'] = df[dia_col].apply(lambda value: parse_date(value) or censo.fecha_censo)
+            else:
+                df['_sort_fecha_'] = censo.fecha_censo
+            sort_cols = ['_sort_fecha_']
+            for key in ('modulo', 'lugar', 'habitacion', 'cama'):
+                col = source_col_from_map(cm, key)
+                if col:
+                    sort_cols.append(col)
+            df = df.sort_values(sort_cols, kind='stable')
+
+            def get_value(row, key):
+                col = source_col_from_map(cm, key)
+                return clean(row.get(col)) if col else ''
+
+            for _, row in df.iterrows():
+                id_col = source_col_from_map(cm, 'id')
+                original_id = norm_id(row.get(id_col)) if id_col else ''
+                meta = corrected_map.get(original_id, {}) if original_id else {}
+                dia_value = row.get(dia_col) if dia_col else censo.fecha_censo
+                parsed_dia = parse_date(dia_value)
+                dia_text = parsed_dia.strftime('%Y-%m-%d') if parsed_dia else clean(dia_value) or censo.fecha_censo.strftime('%Y-%m-%d')
+                ocupadas_col = source_col_from_map(cm, 'ocupadas')
+
+                yield csv_row([
+                    get_value(row, 'modulo'),
+                    get_value(row, 'lugar'),
+                    get_value(row, 'habitacion'),
+                    meta.get('empresa') or get_value(row, 'empresa'),
+                    meta.get('id') or original_id,
+                    get_value(row, 'cama'),
+                    get_value(row, 'inicio'),
+                    get_value(row, 'termino'),
+                    dia_text,
+                    as_number(row.get(ocupadas_col)) if ocupadas_col else 0,
+                    get_value(row, 'turno'),
+                    meta.get('gerencia') or get_value(row, 'gerencia'),
+                    get_value(row, 'co_mel'),
+                    meta.get('area') or get_value(row, 'area'),
+                    get_value(row, 'sexo'),
+                    get_value(row, 'jornada'),
+                    get_value(row, 'rut'),
+                    get_value(row, 'pab'),
+                    get_value(row, 'estado'),
+                ])
+
+            last_date = censo.fecha_censo
+            last_id = censo.id
 
-        # Libera objetos ORM entre lotes para bajar memoria durante exports grandes.
-        db.session.expunge_all()
-
-
-def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
-    """Escribe una hoja gerencial con tabla y dos gráficos de líneas profesionales."""
-    if progress_callback:
-        progress_callback('Generando reporte por gerencia y gráficos de líneas...')
-
-    RED_DARK = '#8F1510'
-    RED = '#B42318'
-    RED_SOFT = '#FFF1F1'
-    RED_CELL = '#FFF7F7'
-    YELLOW = '#FFF200'
-    ORANGE = '#F58220'
-    BLUE = '#E8F1FF'
-    BLUE_DARK = '#175CD3'
-    GREEN = '#D1FADF'
-    GREEN_TEXT = '#027A48'
-    DANGER = '#FEE4E2'
-    DANGER_TEXT = '#B42318'
-    GRAY = '#F2F4F7'
-    DARK = '#1D2939'
-    BORDER = '#8F1510'
-    WHITE = '#FFFFFF'
-    GRID = '#E4E7EC'
-    GERENCIA_COLORS = [
-        '#B42318', '#175CD3', '#027A48', '#B54708', '#7A5AF8', '#C01048',
-        '#0E9384', '#344054', '#F04438', '#2E90FA', '#12B76A', '#F79009',
-        '#6941C6', '#475467', '#A15C07', '#155EEF'
-    ]
-
-    def as_int(value):
-        try:
-            return int(round(float(value or 0)))
-        except Exception:
-            return 0
-
-    def as_pct(real, plan):
-        real = float(real or 0)
-        plan = float(plan or 0)
-        if plan <= 0:
-            return 'Sin plan' if real else '0%'
-        return f'{real / plan * 100:.1f}%'
-
-    ws = workbook.add_worksheet('Dotación Gerencia')
-    ws.hide_gridlines(2)
-    ws.set_tab_color(RED)
-    ws.set_landscape()
-    ws.fit_to_pages(1, 0)
-    ws.set_margins(left=0.25, right=0.25, top=0.45, bottom=0.45)
-
-    dates = data.get('date_labels', []) or []
-    rows = data.get('rows', []) or []
-    gerencia_series = [
-        row for row in rows
-        if row.get('gerencia') != 'SIN MATCH EN CURVA' and as_int(row.get('total')) > 0
-    ]
-    gerencia_series = sorted(gerencia_series, key=lambda item: as_int(item.get('total')), reverse=True)
-
-    real_total = float(data.get('grand_total') or 0)
-    plan_total = float(data.get('planned_grand_total') or 0)
-    diff_total = real_total - plan_total
-    curve_name = (data.get('curve') or {}).get('name', 'Sin curva seleccionada')
-    generated_at = datetime.now().strftime('%d/%m/%Y %H:%M')
-    total_cols = 1 + len(dates) + 4
-    last_col = max(total_cols - 1, 8)
-
-    fmt_title = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 16, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED_DARK, 'border': 1, 'border_color': BORDER})
-    fmt_subtitle = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 9, 'align': 'left', 'valign': 'vcenter', 'bg_color': RED_SOFT, 'border': 1, 'border_color': '#E4B6B2'})
-    fmt_header = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 8, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER, 'text_wrap': True})
-    fmt_header_left = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 8, 'align': 'left', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER})
-    fmt_date_header = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 8, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER, 'rotation': 90})
-    fmt_text = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#E7B6B2'})
-    fmt_num = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E7B6B2', 'num_format': '#,##0', 'bg_color': RED_CELL})
-    fmt_zero = workbook.add_format({'font_size': 8, 'font_color': '#98A2B3', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E4E7EC', 'num_format': '#,##0', 'bg_color': WHITE})
-    fmt_total_real = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': '#111111', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0', 'bg_color': YELLOW})
-    fmt_total_plan = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': '#111111', 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#9BBBEA', 'num_format': '#,##0', 'bg_color': BLUE})
-    fmt_diff_pos = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': GREEN_TEXT, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#75E0A7', 'num_format': '#,##0', 'bg_color': GREEN})
-    fmt_diff_neg = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': DANGER_TEXT, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#FDA29B', 'num_format': '#,##0', 'bg_color': DANGER})
-    fmt_pct = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD', 'bg_color': GRAY})
-    fmt_total_row = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': WHITE, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER, 'num_format': '#,##0', 'bg_color': RED})
-    fmt_total_row_left = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': WHITE, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': BORDER, 'bg_color': RED})
-    fmt_kpi_label = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 9, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED_DARK, 'border': 1, 'border_color': BORDER})
-    fmt_kpi_value_yellow = workbook.add_format({'bold': True, 'font_color': '#111111', 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'bg_color': YELLOW, 'border': 1, 'border_color': BORDER, 'num_format': '#,##0'})
-    fmt_kpi_value_blue = workbook.add_format({'bold': True, 'font_color': '#111111', 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'bg_color': BLUE, 'border': 1, 'border_color': '#9BBBEA', 'num_format': '#,##0'})
-    fmt_kpi_value_text = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'bg_color': GRAY, 'border': 1, 'border_color': '#D0D5DD'})
-    fmt_note_title = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 10, 'align': 'left', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER})
-    fmt_note = workbook.add_format({'font_color': DARK, 'font_size': 9, 'align': 'left', 'valign': 'top', 'bg_color': WHITE, 'border': 1, 'border_color': '#E4E7EC', 'text_wrap': True})
-    fmt_unmatched = workbook.add_format({'bold': True, 'font_size': 8, 'font_color': '#B54708', 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#FEC84B', 'bg_color': '#FFF3CD'})
-    fmt_chart_header = workbook.add_format({'bold': True, 'font_color': DARK, 'font_size': 10, 'align': 'left', 'bg_color': WHITE})
-
-    ws.set_column(0, 0, 30)
-    if dates:
-        ws.set_column(1, len(dates), 5)
-    ws.set_column(len(dates) + 1, len(dates) + 4, 13)
-
-    ws.merge_range(0, 0, 0, last_col, 'RESUMEN DE DOTACIÓN POR GERENCIA', fmt_title)
-    ws.merge_range(1, 0, 1, last_col, f"Período: {data.get('start_date', '')} al {data.get('end_date', '')}   |   Curva: {curve_name}   |   Generado: {generated_at}", fmt_subtitle)
-    ws.set_row(0, 28)
-    ws.set_row(1, 21)
-
-    ws.merge_range(3, 0, 3, 1, 'REAL ACUMULADO', fmt_kpi_label)
-    ws.merge_range(4, 0, 4, 1, as_int(real_total), fmt_kpi_value_yellow)
-    ws.merge_range(3, 2, 3, 3, 'PLAN ACUMULADO', fmt_kpi_label)
-    ws.merge_range(4, 2, 4, 3, as_int(plan_total), fmt_kpi_value_blue)
-    ws.merge_range(3, 4, 3, 5, 'DIFERENCIA', fmt_kpi_label)
-    ws.merge_range(4, 4, 4, 5, as_int(diff_total), fmt_diff_pos if diff_total >= 0 else fmt_diff_neg)
-    ws.merge_range(3, 6, 3, 7, 'CUMPLIMIENTO', fmt_kpi_label)
-    ws.merge_range(4, 6, 4, 7, as_pct(real_total, plan_total), fmt_kpi_value_text)
-
-    # Hoja oculta de datos para gráficos. Esto evita que Excel o visores web oculten series por usar columnas invisibles.
-    chart_data = workbook.add_worksheet('_Datos Graficos')
-    chart_data.hide()
-    chart_data.write(0, 0, 'Fecha')
-    chart_data.write(0, 1, 'Dotación real')
-    chart_data.write(0, 2, 'Plan curva')
-    for i, label in enumerate(dates, 1):
-        chart_data.write(i, 0, label)
-        chart_data.write_number(i, 1, as_int((data.get('totals_by_date') or [])[i - 1] if i - 1 < len(data.get('totals_by_date') or []) else 0))
-        chart_data.write_number(i, 2, as_int((data.get('planned_totals_by_date') or [])[i - 1] if i - 1 < len(data.get('planned_totals_by_date') or []) else 0))
-
-    gerencia_start_col = 5
-    chart_data.write(0, gerencia_start_col, 'Fecha')
-    for i, label in enumerate(dates, 1):
-        chart_data.write(i, gerencia_start_col, label)
-    for series_idx, item in enumerate(gerencia_series, 1):
-        col = gerencia_start_col + series_idx
-        chart_data.write(0, col, item.get('gerencia', ''))
-        values = item.get('values', []) or []
-        for date_idx in range(len(dates)):
-            chart_data.write_number(date_idx + 1, col, as_int(values[date_idx] if date_idx < len(values) else 0))
-
-    if dates:
-        first = 1
-        last = len(dates)
-
-        ws.merge_range(6, 0, 6, 8, 'TENDENCIA REAL VS PLANIFICADA', fmt_chart_header)
-        chart = workbook.add_chart({'type': 'line'})
-        chart.add_series({
-            'name': ['_Datos Graficos', 0, 1],
-            'categories': ['_Datos Graficos', first, 0, last, 0],
-            'values': ['_Datos Graficos', first, 1, last, 1],
-            'line': {'color': RED, 'width': 2.75},
-            'marker': {'type': 'circle', 'size': 4, 'border': {'color': RED}, 'fill': {'color': RED}},
-        })
-        chart.add_series({
-            'name': ['_Datos Graficos', 0, 2],
-            'categories': ['_Datos Graficos', first, 0, last, 0],
-            'values': ['_Datos Graficos', first, 2, last, 2],
-            'line': {'color': BLUE_DARK, 'width': 2.25, 'dash_type': 'dash'},
-            'marker': {'type': 'diamond', 'size': 4, 'border': {'color': BLUE_DARK}, 'fill': {'color': BLUE_DARK}},
-        })
-        chart.set_title({'name': 'Evolución diaria de dotación', 'name_font': {'bold': True, 'size': 12, 'color': DARK}})
-        chart.set_x_axis({'name': 'Fecha', 'label_position': 'low', 'num_font': {'size': 8}})
-        chart.set_y_axis({'name': 'Dotación', 'major_gridlines': {'visible': True, 'line': {'color': GRID}}, 'num_font': {'size': 8}})
-        chart.set_chartarea({'border': {'color': '#D0D5DD'}, 'fill': {'color': WHITE}})
-        chart.set_plotarea({'border': {'color': GRID}, 'fill': {'color': '#FBFCFD'}})
-        chart.set_legend({'position': 'bottom'})
-        chart.set_style(10)
-        chart.set_size({'width': 780, 'height': 250})
-        chart.show_hidden_data()
-        ws.insert_chart(7, 0, chart, {'x_offset': 2, 'y_offset': 2})
-
-        ws.merge_range(22, 0, 22, 8, 'DOTACIÓN DIARIA POR GERENCIA', fmt_chart_header)
-        chart_by_gerencia = workbook.add_chart({'type': 'line'})
-        for series_idx, item in enumerate(gerencia_series, 1):
-            color = GERENCIA_COLORS[(series_idx - 1) % len(GERENCIA_COLORS)]
-            col = gerencia_start_col + series_idx
-            chart_by_gerencia.add_series({
-                'name': ['_Datos Graficos', 0, col],
-                'categories': ['_Datos Graficos', first, gerencia_start_col, last, gerencia_start_col],
-                'values': ['_Datos Graficos', first, col, last, col],
-                'line': {'color': color, 'width': 2.0 if series_idx <= 8 else 1.5},
-                'marker': {'type': 'circle', 'size': 3, 'border': {'color': color}, 'fill': {'color': color}},
-            })
-        chart_by_gerencia.set_title({'name': 'Comportamiento diario por gerencia', 'name_font': {'bold': True, 'size': 12, 'color': DARK}})
-        chart_by_gerencia.set_x_axis({'name': 'Fecha', 'label_position': 'low', 'num_font': {'size': 8}})
-        chart_by_gerencia.set_y_axis({'name': 'Dotación real', 'major_gridlines': {'visible': True, 'line': {'color': GRID}}, 'num_font': {'size': 8}})
-        chart_by_gerencia.set_chartarea({'border': {'color': '#D0D5DD'}, 'fill': {'color': WHITE}})
-        chart_by_gerencia.set_plotarea({'border': {'color': GRID}, 'fill': {'color': '#FBFCFD'}})
-        chart_by_gerencia.set_legend({'position': 'bottom'})
-        chart_by_gerencia.set_style(10)
-        chart_by_gerencia.set_size({'width': 780, 'height': 260})
-        chart_by_gerencia.show_hidden_data()
-        ws.insert_chart(23, 0, chart_by_gerencia, {'x_offset': 2, 'y_offset': 2})
-
-    header_row = 41 if dates else 7
-    ws.repeat_rows(header_row)
-    ws.freeze_panes(header_row + 1, 1)
-
-    ws.write(header_row, 0, 'GERENCIAS', fmt_header_left)
-    for idx, label in enumerate(dates, 1):
-        ws.write(header_row, idx, label, fmt_date_header)
-    ws.write(header_row, len(dates) + 1, 'TOTAL REAL', fmt_header)
-    ws.write(header_row, len(dates) + 2, 'TOTAL PLAN', fmt_header)
-    ws.write(header_row, len(dates) + 3, 'DIF.', fmt_header)
-    ws.write(header_row, len(dates) + 4, 'CUMP.', fmt_header)
-    ws.set_row(header_row, 74)
-
-    row_num = header_row + 1
-    for item in rows:
-        is_unmatched = item.get('gerencia') == 'SIN MATCH EN CURVA'
-        real = float(item.get('total') or 0)
-        plan = float(item.get('planned_total') or 0)
-        diff = real - plan
-        ws.write(row_num, 0, item.get('gerencia', ''), fmt_unmatched if is_unmatched else fmt_text)
-        for idx, value in enumerate(item.get('values', []), 1):
-            val = as_int(value)
-            ws.write_number(row_num, idx, val, fmt_zero if val == 0 else fmt_num)
-        ws.write_number(row_num, len(dates) + 1, as_int(real), fmt_total_real)
-        ws.write_number(row_num, len(dates) + 2, as_int(plan), fmt_total_plan)
-        ws.write_number(row_num, len(dates) + 3, as_int(diff), fmt_diff_pos if diff >= 0 else fmt_diff_neg)
-        ws.write(row_num, len(dates) + 4, as_pct(real, plan), fmt_pct)
-        row_num += 1
-
-    total_row = row_num
-    ws.write(total_row, 0, 'TOTAL', fmt_total_row_left)
-    for idx, value in enumerate(data.get('totals_by_date', []), 1):
-        ws.write_number(total_row, idx, as_int(value), fmt_total_row)
-    ws.write_number(total_row, len(dates) + 1, as_int(real_total), fmt_total_real)
-    ws.write_number(total_row, len(dates) + 2, as_int(plan_total), fmt_total_plan)
-    ws.write_number(total_row, len(dates) + 3, as_int(diff_total), fmt_diff_pos if diff_total >= 0 else fmt_diff_neg)
-    ws.write(total_row, len(dates) + 4, as_pct(real_total, plan_total), fmt_pct)
-
-    if total_row > header_row:
-        ws.autofilter(header_row, 0, total_row, last_col)
-
-    notes_start = total_row + 3
-    ws.merge_range(notes_start, 0, notes_start, min(last_col, 7), 'CONCLUSIONES AUTOMÁTICAS', fmt_note_title)
-    for i, text in enumerate(data.get('conclusions', []), notes_start + 1):
-        ws.merge_range(i, 0, i, min(last_col, 7), '• ' + str(text), fmt_note)
-        ws.set_row(i, 22)
-
-
-def write_censos_acumulados_sheet(workbook, start_date=None, end_date=None, progress_callback=None):
-    """Escribe los censos acumulados del rango con IDs ya corregidos contra curva."""
-    if progress_callback:
-        progress_callback('Generando censos acumulados con IDs corregidos...')
-
-    RED = '#B42318'
-    RED_DARK = '#8F1510'
-    WHITE = '#FFFFFF'
-    DARK = '#1D2939'
-    BORDER = '#8F1510'
-    GREEN = '#D1FADF'
-    GREEN_TEXT = '#027A48'
-    DANGER = '#FEE4E2'
-    DANGER_TEXT = '#B42318'
-
-    ws = workbook.add_worksheet('Censos Acumulados')
-    ws.hide_gridlines(2)
-    ws.set_tab_color('#F58220')
-    ws.freeze_panes(1, 0)
-    ws.set_landscape()
-
-    headers = [
-        'Modulo', 'Lugar', 'Habitacion', 'Empresa', 'Id', 'Cama', 'Inicio', 'Termino', 'Dia',
-        'Camas Ocupdas', 'Turno', 'Gerencia', 'CO MEL', 'AREA', 'SEXO', 'JORNADA', 'Rut', 'PAB', 'ESTADO'
-    ]
-
-    fmt_header = workbook.add_format({'bold': True, 'font_color': WHITE, 'font_size': 9, 'align': 'center', 'valign': 'vcenter', 'bg_color': RED, 'border': 1, 'border_color': BORDER, 'text_wrap': True})
-    fmt_text = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD'})
-    fmt_center = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD'})
-    fmt_num = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD', 'num_format': '#,##0.00'})
-    fmt_date = workbook.add_format({'font_size': 8, 'font_color': DARK, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#D0D5DD', 'num_format': 'yyyy-mm-dd'})
-
-    for col_idx, header in enumerate(headers):
-        ws.write(0, col_idx, header, fmt_header)
-    ws.set_row(0, 28)
-    widths = [12,14,12,28,18,9,12,12,13,15,14,30,18,24,10,14,15,14,16]
-    for col_idx, width in enumerate(widths):
-        ws.set_column(col_idx, col_idx, width)
-
-    query = db.session.query(
-        CensoRecord.id.label('record_id'),
-        Censo.fecha_censo.label('fecha_censo'),
-        CensoRecord.modulo.label('modulo'),
-        CensoRecord.lugar.label('lugar'),
-        CensoRecord.habitacion.label('habitacion'),
-        CensoRecord.empresa.label('empresa_censo'),
-        CensoRecord.solicitud_id.label('id_censo'),
-        CensoRecord.cama.label('cama'),
-        CensoRecord.dia.label('dia'),
-        CensoRecord.camas_ocupadas.label('camas_ocupadas'),
-        CensoRecord.turno.label('turno'),
-        CensoRecord.gerencia_censo.label('gerencia_censo'),
-        CensoRecord.area.label('area_censo'),
-        CensoRecord.rut.label('rut'),
-        CensoRecord.estado.label('estado'),
-        CurvaItem.solicitud_id.label('id_curva'),
-        CurvaItem.gerencia.label('gerencia_curva'),
-        CurvaItem.area.label('area_curva'),
-        CurvaItem.empresa.label('empresa_curva'),
-    ).join(
-        Censo, Censo.id == CensoRecord.censo_id
-    ).outerjoin(
-        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
-    )
-    if start_date:
-        query = query.filter(Censo.fecha_censo >= start_date)
-    if end_date:
-        query = query.filter(Censo.fecha_censo <= end_date)
-
-    row_idx = 1
-    batch_size = 2500
-    offset = 0
-    ordered_query = query.order_by(
-        Censo.fecha_censo.asc(), CensoRecord.modulo.asc(), CensoRecord.lugar.asc(),
-        CensoRecord.habitacion.asc(), CensoRecord.cama.asc(), CensoRecord.id.asc()
-    )
-    while True:
-        batch = ordered_query.offset(offset).limit(batch_size).all()
-        if not batch:
-            break
-        offset += len(batch)
-        for row in batch:
-            corrected_id = row.id_curva or row.id_censo or ''
-            values = [
-                row.modulo or '',
-                row.lugar or '',
-                row.habitacion or '',
-                row.empresa_curva or row.empresa_censo or '',
-                corrected_id,
-                row.cama or '',
-                '',
-                '',
-                row.fecha_censo or row.dia or '',
-                float(row.camas_ocupadas or 0),
-                row.turno or '',
-                row.gerencia_curva or row.gerencia_censo or '',
-                '',
-                row.area_curva or row.area_censo or '',
-                '',
-                '',
-                row.rut or '',
-                '',
-                row.estado or '',
-            ]
-            for col_idx, value in enumerate(values):
-                if col_idx == 8 and isinstance(value, date):
-                    ws.write_datetime(row_idx, col_idx, datetime(value.year, value.month, value.day), fmt_date)
-                elif col_idx == 9:
-                    ws.write_number(row_idx, col_idx, float(value or 0), fmt_num)
-                elif col_idx in (0,1,2,4,5,8,10,12,14,15,16,17,18):
-                    ws.write(row_idx, col_idx, value, fmt_center)
-                else:
-                    ws.write(row_idx, col_idx, value, fmt_text)
-            row_idx += 1
-        if progress_callback:
-            progress_callback(f'Censos acumulados: {row_idx - 1:,} filas escritas...'.replace(',', '.'))
-
-    if row_idx > 1:
-        ws.autofilter(0, 0, row_idx - 1, len(headers) - 1)
-
-
-def report_xlsx_fast(data, progress_callback=None, export_mode='gerencia', start_date=None, end_date=None):
-    """Exportador ágil con opciones: gerencia o censos."""
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
-    tmp_path = tmp.name
-    tmp.close()
-    workbook = xlsxwriter.Workbook(tmp_path, {'strings_to_urls': False, 'nan_inf_to_errors': True})
-    try:
-        if export_mode in ('gerencia', 'full'):
-            write_dotacion_gerencia_sheet(workbook, data, progress_callback)
-        if export_mode in ('censos', 'full'):
-            write_censos_acumulados_sheet(workbook, start_date, end_date, progress_callback)
-    finally:
-        workbook.close()
-    with open(tmp_path, 'rb') as fh:
-        content = fh.read()
-    try:
-        os.remove(tmp_path)
-    except OSError:
-        pass
-    return BytesIO(content)
-
-
-def build_report_export_job(app, job_id):
-    """Genera el Excel en segundo plano para evitar 502 durante la petición HTTP."""
-    with app.app_context():
-        job = ExportJob.query.get(job_id)
-        if not job:
-            return
-
-        def progress(message):
-            current = ExportJob.query.get(job_id)
-            if current:
-                current.message = message
-                db.session.commit()
-
-        try:
-            job.status = 'running'
-            job.started_at = now_utc()
-            job.message = 'Preparando exportación...'
-            db.session.commit()
-
-            params = json.loads(job.params_json or '{}')
-            start = parse_date_text(params.get('start_date'))
-            end = parse_date_text(params.get('end_date'))
-            curve_id = int(params['curve_id']) if params.get('curve_id') else None
-            export_mode = (params.get('export_mode') or 'gerencia').strip().lower()
-            if export_mode not in {'gerencia', 'censos', 'full'}:
-                export_mode = 'gerencia'
-            start, end = resolve_report_dates(start, end)
-
-            data = report_data(start, end, curve_id)
-            bio = report_xlsx_fast(
-                data,
-                progress_callback=progress,
-                export_mode=export_mode,
-                start_date=start,
-                end_date=end,
-            )
-
-            job = ExportJob.query.get(job_id)
-            job.content = bio.getvalue()
-            job.filename = format_export_filename(export_mode)
-            job.status = 'completed'
-            job.message = 'Archivo Excel listo para descargar.'
-            job.completed_at = now_utc()
-            db.session.commit()
-        except Exception as exc:
-            db.session.rollback()
-            job = ExportJob.query.get(job_id)
-            if job:
-                job.status = 'failed'
-                job.message = f'Error al generar Excel: {exc}'
-                job.completed_at = now_utc()
-                db.session.commit()
-
-def compact_id(value):
-    """Normaliza un ID para comparación flexible: quita espacios, guiones y símbolos."""
-    return re.sub(r"[^A-Z0-9]", "", norm_id(value))
-
-
-def digits_id(value):
-    """Retorna solo los dígitos del ID para detectar diferencias por ceros, puntos o guiones."""
-    return re.sub(r"\D", "", str(value or ""))
-
-
-def recalc_censo_stats(censo_id):
-    censo = Censo.query.get(censo_id)
-    if not censo:
-        return None
-    records = CensoRecord.query.filter_by(censo_id=censo_id).all()
-    censo.total_records = len(records)
-    censo.total_occupied = sum(float(r.camas_ocupadas or 0) for r in records)
-    censo.matched_count = sum(1 for r in records if r.curva_item_id)
-    censo.unmatched_count = sum(1 for r in records if not r.curva_item_id)
-    return censo
-
-
-def set_latest_curve_active_if_needed():
-    active = CurvaVersion.query.filter_by(is_active=True).first()
-    if active:
-        return active
-    latest = CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).first()
-    if latest:
-        latest.is_active = True
-    return latest
-
-
-def delete_uploaded_file_data(file_id):
-    """
-    Elimina un archivo subido y toda la información derivada.
-
-    - Si es censo: elimina registros del censo y el censo.
-    - Si es curva: elimina versiones, items y valores diarios; los registros de censo que
-      apuntaban a esa curva quedan como sin match para poder corregirlos con otra curva.
-    """
-    uploaded = UploadedFile.query.get_or_404(file_id)
-    impacted_censo_ids = set()
-
-    if uploaded.file_type == "censo":
-        censos = Censo.query.filter_by(file_id=uploaded.id).all()
-        censo_ids = [c.id for c in censos]
-        if censo_ids:
-            CensoRecord.query.filter(CensoRecord.censo_id.in_(censo_ids)).delete(synchronize_session=False)
-            Censo.query.filter(Censo.id.in_(censo_ids)).delete(synchronize_session=False)
-
-    elif uploaded.file_type == "curva":
-        curves = CurvaVersion.query.filter_by(file_id=uploaded.id).all()
-        for curve in curves:
-            item_ids = [row[0] for row in db.session.query(CurvaItem.id).filter_by(curva_version_id=curve.id).all()]
-            if item_ids:
-                impacted_censo_ids.update(
-                    row[0] for row in db.session.query(CensoRecord.censo_id)
-                    .filter(CensoRecord.curva_item_id.in_(item_ids))
-                    .distinct()
-                    .all()
-                )
-                CensoRecord.query.filter(CensoRecord.curva_item_id.in_(item_ids)).update(
-                    {CensoRecord.curva_item_id: None}, synchronize_session=False
-                )
-                CurvaDailyValue.query.filter(CurvaDailyValue.curva_item_id.in_(item_ids)).delete(synchronize_session=False)
-                CurvaItem.query.filter(CurvaItem.id.in_(item_ids)).delete(synchronize_session=False)
-            db.session.delete(curve)
-    else:
-        raise ValueError("Tipo de archivo no reconocido.")
-
-    db.session.delete(uploaded)
-    db.session.flush()
-
-    for censo_id in impacted_censo_ids:
-        recalc_censo_stats(censo_id)
-
-    set_latest_curve_active_if_needed()
-    db.session.commit()
-    return uploaded
-
-
-def get_curve_for_matching(curve_id=None):
-    if curve_id:
-        return CurvaVersion.query.get(curve_id)
-    return CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
-
-
-def build_curve_candidates(curve):
-    if not curve:
-        return []
-    return CurvaItem.query.filter_by(curva_version_id=curve.id).all()
-
-
-def build_curve_match_index(curve):
-    """
-    Construye un índice en memoria para proponer correcciones sin comparar cada
-    registro contra toda la curva. Esto reemplaza el cálculo O(registros * curva)
-    por búsquedas directas por ID normalizado, dígitos y sufijos.
-    """
-    items = build_curve_candidates(curve)
-    index = {
-        "items": items,
-        "by_compact": defaultdict(list),
-        "by_digits": defaultdict(list),
-        "by_suffix": defaultdict(list),
-    }
-
-    for item in items:
-        compact = compact_id(item.solicitud_id)
-        digits = digits_id(item.solicitud_id).lstrip("0")
-
-        if compact:
-            index["by_compact"][compact].append(item)
-        if digits:
-            index["by_digits"][digits].append(item)
-            # Sufijos largos primero; evita recorrer toda la curva para IDs parecidos.
-            for n in range(4, min(len(digits), 12) + 1):
-                index["by_suffix"][(n, digits[-n:])].append(item)
-
-    return index
-
-
-def candidate_score(record, item):
-    target = compact_id(record.solicitud_id)
-    candidate = compact_id(item.solicitud_id)
-    target_digits = digits_id(record.solicitud_id).lstrip("0")
-    candidate_digits = digits_id(item.solicitud_id).lstrip("0")
-
-    if not target or not candidate:
-        return 0, ""
-
-    score = 0
-    reason = "Similitud de texto"
-
-    if target == candidate:
-        score, reason = 100, "Coincidencia exacta ignorando formato"
-    elif target_digits and candidate_digits and target_digits == candidate_digits:
-        score, reason = 98, "Coinciden los dígitos ignorando ceros o símbolos"
-    elif target in candidate or candidate in target:
-        score, reason = 90, "Un ID contiene al otro"
-    elif target_digits and candidate_digits:
-        max_suffix = 0
-        for n in range(min(len(target_digits), len(candidate_digits)), 3, -1):
-            if target_digits[-n:] == candidate_digits[-n:]:
-                max_suffix = n
-                break
-        if max_suffix:
-            score = min(88, 70 + max_suffix * 2)
-            reason = f"Coinciden los últimos {max_suffix} dígitos"
-
-    # Solo se ejecuta sobre candidatos prefiltrados, no sobre toda la curva.
-    ratio = SequenceMatcher(None, target, candidate).ratio()
-    if ratio >= 0.70 and int(ratio * 85) > score:
-        score = int(ratio * 85)
-        reason = f"Similitud de ID {ratio * 100:.0f}%"
-
-    if record.empresa and item.empresa and norm(record.empresa) == norm(item.empresa):
-        score += 4
-        reason += " + misma empresa"
-    if record.gerencia_censo and item.gerencia and norm(record.gerencia_censo) == norm(item.gerencia):
-        score += 4
-        reason += " + misma gerencia"
-
-    return min(score, 100), reason
-
-
-def candidate_pool_for_record(record, match_index, max_candidates=250):
-    """Obtiene un subconjunto pequeño de curva para calcular sugerencias."""
-    if not match_index:
-        return []
-
-    target = compact_id(record.solicitud_id)
-    target_digits = digits_id(record.solicitud_id).lstrip("0")
-    pool = []
-    seen = set()
-
-    def add(items):
-        for item in items or []:
-            if item.id not in seen:
-                seen.add(item.id)
-                pool.append(item)
-                if len(pool) >= max_candidates:
-                    return
-
-    if target:
-        add(match_index["by_compact"].get(target))
-    if target_digits:
-        add(match_index["by_digits"].get(target_digits))
-        for n in range(min(len(target_digits), 12), 3, -1):
-            add(match_index["by_suffix"].get((n, target_digits[-n:])))
-            if len(pool) >= max_candidates:
-                break
-
-    # Respaldo liviano: si no hay candidatos por dígitos, compara con una muestra
-    # acotada de IDs que compartan inicio o término normalizado.
-    if not pool and target:
-        for item in match_index["items"][:max_candidates]:
-            candidate = compact_id(item.solicitud_id)
-            if candidate and (candidate[:4] == target[:4] or candidate[-4:] == target[-4:]):
-                add([item])
-
-    return pool[:max_candidates]
-
-
-def suggestions_for_record(record, match_index, limit=3):
-    suggestions = []
-    for item in candidate_pool_for_record(record, match_index):
-        score, reason = candidate_score(record, item)
-        if score >= 60:
-            suggestions.append({
-                "item": item,
-                "score": score,
-                "reason": reason,
-            })
-    suggestions.sort(key=lambda x: x["score"], reverse=True)
-    return suggestions[:limit]
-
-
-def find_curve_item_by_manual_id(curve, manual_id):
-    """Busca un ID manual en la curva, aceptando diferencias simples de formato."""
-    if not curve or not manual_id:
-        return None
-
-    manual_id = norm_id(manual_id)
-    item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=manual_id).first()
-    if item:
-        return item
-
-    target = compact_id(manual_id)
-    target_digits = digits_id(manual_id).lstrip("0")
-    for item in CurvaItem.query.filter_by(curva_version_id=curve.id).all():
-        if target and compact_id(item.solicitud_id) == target:
-            return item
-        if target_digits and digits_id(item.solicitud_id).lstrip("0") == target_digits:
-            return item
-    return None
-
-
-def apply_correction_to_solicitud_id(solicitud_id, item):
-    """Corrige todos los registros sin match que tengan el mismo ID de censo."""
-    same_id = norm_id(solicitud_id) or solicitud_id
-
-    records = CensoRecord.query.filter(
-        CensoRecord.curva_item_id.is_(None),
-        CensoRecord.solicitud_id == same_id,
-    ).all()
-
-    # Respaldo por si algún registro quedó con espacios/formato distinto antes de normalizar.
-    if not records:
-        target = compact_id(solicitud_id)
-        all_unmatched = CensoRecord.query.filter(CensoRecord.curva_item_id.is_(None)).all()
-        records = [r for r in all_unmatched if compact_id(r.solicitud_id) == target]
-
-    censo_ids = set()
-    for row in records:
-        row.curva_item_id = item.id
-        censo_ids.add(row.censo_id)
-
-    for censo_id in censo_ids:
-        recalc_censo_stats(censo_id)
-
-    return len(records), censo_ids
-
-
-def apply_correction_to_same_id(record, item):
-    """
-    Corrige todos los registros sin match que tengan el mismo ID de censo.
-    Se aplica a todos los censos almacenados para evitar corregir uno por uno.
-    """
-    return apply_correction_to_solicitud_id(record.solicitud_id, item)
-
-
-def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
-    curve = get_curve_for_matching(curve_id)
-    match_index = build_curve_match_index(curve)
-
-    base_query = CensoRecord.query.join(Censo, Censo.id == CensoRecord.censo_id).filter(CensoRecord.curva_item_id.is_(None))
-    if censo_id:
-        base_query = base_query.filter(CensoRecord.censo_id == censo_id)
-
-    search_text = (search_text or "").strip()
-    if search_text:
-        like = f"%{search_text}%"
-        base_query = base_query.filter(
-            or_(
-                CensoRecord.solicitud_id.ilike(like),
-                CensoRecord.empresa.ilike(like),
-                CensoRecord.gerencia_censo.ilike(like),
-                CensoRecord.rut.ilike(like),
-                CensoRecord.habitacion.ilike(like),
-            )
-        )
-
-    total_records = base_query.count()
-    total_ids = base_query.with_entities(CensoRecord.solicitud_id).distinct().count()
-
-    grouped = base_query.with_entities(
-        CensoRecord.solicitud_id.label("solicitud_id"),
-        func.count(CensoRecord.id).label("same_id_count"),
-        func.min(Censo.fecha_censo).label("first_date"),
-        func.max(Censo.fecha_censo).label("last_date"),
-        func.min(CensoRecord.id).label("sample_id"),
-    ).group_by(
-        CensoRecord.solicitud_id
-    ).order_by(
-        func.max(Censo.fecha_censo).desc(),
-        CensoRecord.solicitud_id.asc()
-    ).limit(limit).all()
-
-    sample_ids = [row.sample_id for row in grouped]
-    sample_records = {
-        record.id: record
-        for record in CensoRecord.query.filter(CensoRecord.id.in_(sample_ids)).all()
-    } if sample_ids else {}
-
-    rows = []
-    for group in grouped:
-        record = sample_records.get(group.sample_id)
-        if not record:
-            continue
-        rows.append({
-            "record": record,
-            "censo": record.censo,
-            "same_id_count": int(group.same_id_count or 0),
-            "first_date": group.first_date,
-            "last_date": group.last_date,
-            "suggestions": suggestions_for_record(record, match_index),
-        })
-
-    return {
-        "curve": curve,
-        "total": total_ids,
-        "total_records": total_records,
-        "limit": limit,
-        "rows": rows,
-    }
-
-
-
-def refresh_curve_totals(curve_id):
-    """Recalcula totales de una curva después de agregar/editar IDs por pantalla."""
-    curve = CurvaVersion.query.get(curve_id)
-    if not curve:
-        return None
-    curve.total_items = CurvaItem.query.filter_by(curva_version_id=curve.id).count()
-    curve.total_daily_values = db.session.query(func.count(CurvaDailyValue.id)).join(
-        CurvaItem, CurvaItem.id == CurvaDailyValue.curva_item_id
-    ).filter(CurvaItem.curva_version_id == curve.id).scalar() or 0
-    return curve
-
-
-def create_or_update_curve_item_from_form(form):
-    """
-    Crea un nuevo ID en la curva desde pantalla.
-    Si el ID ya existe en la curva seleccionada, actualiza sus datos maestros.
-    Opcionalmente crea valores diarios de planificación para un rango de fechas.
-    """
-    curve_id = form.get('curve_id', type=int)
-    curve = CurvaVersion.query.get(curve_id) if curve_id else get_curve_for_matching(None)
-    if not curve:
-        raise ValueError('No hay una curva disponible. Primero importa una curva planificada.')
-
-    solicitud_id = norm_id(form.get('solicitud_id'))
-    if not solicitud_id:
-        raise ValueError('El ID de solicitud es obligatorio.')
-
-    gerencia = clean(form.get('gerencia')) or 'SIN GERENCIA'
-    area = clean(form.get('area'))
-    empresa = clean(form.get('empresa'))
-    turno = clean(form.get('turno'))
-    tipo_contrato = clean(form.get('tipo_contrato'))
-    formato = clean(form.get('formato'))
-    camp = clean(form.get('camp'))
-
-    item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=solicitud_id).first()
-    created = item is None
-    if created:
-        item = CurvaItem(curva_version_id=curve.id, solicitud_id=solicitud_id)
-        db.session.add(item)
-
-    item.gerencia = gerencia
-    item.area = area
-    item.empresa = empresa
-    item.turno = turno
-    item.tipo_contrato = tipo_contrato
-    item.formato = formato
-    item.camp = camp
-    db.session.flush()
-
-    date_from = parse_date(form.get('date_from'))
-    date_to = parse_date(form.get('date_to'))
-    dotacion = as_number(form.get('dotacion_planificada'))
-    created_values = 0
-
-    if date_from or date_to or dotacion:
-        if not date_from or not date_to:
-            raise ValueError('Para cargar planificación diaria debes indicar fecha desde y hasta.')
-        if date_to < date_from:
-            raise ValueError('La fecha hasta no puede ser menor que la fecha desde.')
-        if dotacion < 0:
-            raise ValueError('La dotación planificada no puede ser negativa.')
-
-        # Reemplaza los valores del rango para este ID y evita duplicados.
-        CurvaDailyValue.query.filter(
-            CurvaDailyValue.curva_item_id == item.id,
-            CurvaDailyValue.fecha >= date_from,
-            CurvaDailyValue.fecha <= date_to,
-        ).delete(synchronize_session=False)
-
-        values = [
-            CurvaDailyValue(curva_item_id=item.id, fecha=d, dotacion_planificada=dotacion)
-            for d in date_span(date_from, date_to)
-        ]
-        if values:
-            db.session.bulk_save_objects(values)
-            created_values = len(values)
-
-    refresh_curve_totals(curve.id)
-    return curve, item, created, created_values
-
-
-def sample_record_context(record_id):
-    """Obtiene un registro sin match para prefijar el formulario de nuevo ID."""
-    if not record_id:
-        return None
-    return CensoRecord.query.get(record_id)
-
-
-def get_curve_items_payload(curve_id=None, search_text='', gerencia='', page=1, per_page=50):
-    """Prepara la vista paginada de datos maestros de la curva."""
-    curve = get_curve_for_matching(curve_id)
-    curves = CurvaVersion.query.order_by(CurvaVersion.is_active.desc(), CurvaVersion.uploaded_at.desc()).all()
-
-    page = max(int(page or 1), 1)
-    per_page = min(max(int(per_page or 50), 10), 200)
-    search_text = (search_text or '').strip()
-    gerencia = (gerencia or '').strip()
-
-    if not curve:
-        return {
-            'curve': None, 'curves': curves, 'items': [], 'stats': {}, 'gerencias': [],
-            'total': 0, 'page': page, 'per_page': per_page, 'pages': 0,
-            'q': search_text, 'selected_gerencia': gerencia,
-        }
-
-    query = CurvaItem.query.filter(CurvaItem.curva_version_id == curve.id)
-    if search_text:
-        like = f'%{search_text}%'
-        query = query.filter(or_(
-            CurvaItem.solicitud_id.ilike(like),
-            CurvaItem.gerencia.ilike(like),
-            CurvaItem.area.ilike(like),
-            CurvaItem.empresa.ilike(like),
-            CurvaItem.turno.ilike(like),
-            CurvaItem.tipo_contrato.ilike(like),
-            CurvaItem.formato.ilike(like),
-            CurvaItem.camp.ilike(like),
-        ))
-    if gerencia:
-        query = query.filter(CurvaItem.gerencia == gerencia)
-
-    total = query.count()
-    pages = (total + per_page - 1) // per_page if total else 0
-    if pages and page > pages:
-        page = pages
-
-    items = query.order_by(CurvaItem.gerencia.asc(), CurvaItem.solicitud_id.asc()).offset((page - 1) * per_page).limit(per_page).all()
-    item_ids = [item.id for item in items]
-
-    stats = {}
-    if item_ids:
-        rows = db.session.query(
-            CurvaDailyValue.curva_item_id,
-            func.sum(CurvaDailyValue.dotacion_planificada).label('plan_total'),
-            func.min(CurvaDailyValue.fecha).label('first_date'),
-            func.max(CurvaDailyValue.fecha).label('last_date'),
-        ).filter(
-            CurvaDailyValue.curva_item_id.in_(item_ids)
-        ).group_by(
-            CurvaDailyValue.curva_item_id
-        ).all()
-        stats = {row.curva_item_id: row for row in rows}
-
-    gerencias = [row[0] for row in db.session.query(CurvaItem.gerencia).filter(
-        CurvaItem.curva_version_id == curve.id
-    ).distinct().order_by(CurvaItem.gerencia.asc()).all()]
-
-    return {
-        'curve': curve, 'curves': curves, 'items': items, 'stats': stats, 'gerencias': gerencias,
-        'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
-        'q': search_text, 'selected_gerencia': gerencia,
-    }
-
-
-def get_curve_item_for_edit(item_id):
-    if not item_id:
-        return None
-    return CurvaItem.query.get_or_404(item_id)
 
 def parse_arg(name):
     v=(request.args.get(name) or '').strip()
@@ -2650,7 +1957,7 @@ def register_routes(app):
 
     @app.route('/imports')
     def imports_page():
-        return render_template('imports.html', files=UploadedFile.query.order_by(UploadedFile.uploaded_at.desc()).limit(20).all(), curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all())
+        return render_template('imports.html', files=UploadedFile.query.order_by(UploadedFile.uploaded_at.desc()).all(), curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all())
 
     @app.post('/api/import/curva')
     def upload_curva():
@@ -2668,7 +1975,7 @@ def register_routes(app):
         f=request.files.get('file')
         if not f or not f.filename: flash('Selecciona un archivo de censo.', 'danger'); return redirect(url_for('imports_page'))
         try:
-            c=import_censo(f); flash(f'Censo {c.fecha_label} importado: {c.total_records} registros, {c.matched_count} cruzados, {c.unmatched_count} sin match.', 'success')
+            c=import_censo(f); flash(f'Censo {c.fecha_label} importado: {c.total_records} reservas, {int(c.total_occupied)} ocupadas, {c.matched_count} cruzadas, {c.unmatched_count} sin match.', 'success')
         except Exception as e:
             db.session.rollback(); flash(f'Error al importar censo: {e}', 'danger')
         return redirect(url_for('imports_page'))
@@ -2816,6 +2123,25 @@ def register_routes(app):
         if next_url.startswith('/'):
             return redirect(next_url)
         return redirect(url_for('new_curve_item_page'))
+
+    @app.post('/censos/reprocesar')
+    def reprocess_censos_page():
+        censos = Censo.query.order_by(Censo.fecha_censo.asc(), Censo.id.asc()).all()
+        ok = 0
+        errores = 0
+        for censo in censos:
+            try:
+                reprocess_censo_from_original_file(censo)
+                ok += 1
+            except Exception as exc:
+                errores += 1
+                app.logger.exception('Error reprocesando censo %s: %s', censo.id, exc)
+        db.session.commit()
+        if errores:
+            flash(f'Se reprocesaron {ok} censo(s), pero {errores} tuvieron error. Revisa logs de Render.', 'warning')
+        else:
+            flash(f'Se reprocesaron {ok} censo(s). Ahora Reservas incluye todas las filas con ID, aunque Camas Ocupdas sea 0.', 'success')
+        return redirect(url_for('censos_page'))
 
     @app.route('/censos')
     def censos_page():
