@@ -542,3 +542,13 @@ body{
         font-size:.72rem;
     }
 }
+
+.export-status-card {
+    border: 0;
+    border-top: 4px solid var(--brand-red, #b42318);
+    border-radius: 16px;
+}
+.spinner-border-lg {
+    width: 3rem;
+    height: 3rem;
+}

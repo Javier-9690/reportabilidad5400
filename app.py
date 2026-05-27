@@ -1968,9 +1968,7 @@ def register_routes(app):
     def report_api():
         return jsonify(report_data(parse_arg('start_date'), parse_arg('end_date'), request.args.get('curve_id', type=int)))
 
-    @app.post('/api/reports/dotacion-gerencia/export/start')
-    def report_export_start():
-        payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
+    def create_report_export_job_from_payload(payload):
         params = {
             'start_date': (payload.get('start_date') or '').strip(),
             'end_date': (payload.get('end_date') or '').strip(),
@@ -1988,13 +1986,25 @@ def register_routes(app):
 
         thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
         thread.start()
+        return job
+
+    @app.post('/api/reports/dotacion-gerencia/export/start')
+    def report_export_start():
+        payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
+        job = create_report_export_job_from_payload(payload)
 
         return jsonify({
             'ok': True,
             'job_id': job.id,
             'status_url': url_for('export_job_status', job_id=job.id),
             'download_url': url_for('export_job_download', job_id=job.id),
+            'page_url': url_for('export_job_page', job_id=job.id),
         }), 202
+
+    @app.get('/exports/<int:job_id>')
+    def export_job_page(job_id):
+        job = ExportJob.query.get_or_404(job_id)
+        return render_template('export_status.html', job=job)
 
     @app.get('/api/exports/<int:job_id>/status')
     def export_job_status(job_id):
@@ -2024,10 +2034,9 @@ def register_routes(app):
 
     @app.route('/api/reports/dotacion-gerencia/export')
     def report_export():
-        # Endpoint heredado: ya no genera el Excel de forma síncrona para evitar 502.
-        return jsonify({
-            'error': 'La exportación ahora se genera en segundo plano. Usa /api/reports/dotacion-gerencia/export/start.'
-        }), 202
+        # Compatibilidad con botones/enlaces antiguos o cacheados: inicia el job y muestra pantalla de progreso.
+        job = create_report_export_job_from_payload(request.args.to_dict())
+        return redirect(url_for('export_job_page', job_id=job.id), code=303)
 
 app=create_app()
 if __name__ == '__main__':

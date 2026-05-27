@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-7 col-xl-6">
+        <div class="card shadow-sm export-status-card">
+            <div class="card-body p-4 text-center">
+                <div id="exportIcon" class="display-5 text-danger mb-2">
+                    <span class="spinner-border spinner-border-lg" role="status" aria-hidden="true"></span>
+                </div>
+                <h4 class="mb-1">Generando Excel</h4>
+                <p class="text-muted mb-3">La exportación se está preparando en segundo plano para evitar errores 502.</p>
+                <div id="exportMessage" class="alert alert-info py-2 small mb-3">{{ job.message or 'Exportación en cola...' }}</div>
+                <div class="progress mb-3" style="height: 8px;">
+                    <div id="exportProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-danger" style="width: 25%"></div>
+                </div>
+                <div class="d-flex justify-content-center gap-2 flex-wrap">
+                    <a href="{{ url_for('report_page') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Volver al reporte
+                    </a>
+                    <a id="downloadBtn" href="#" class="btn btn-sm btn-success disabled" aria-disabled="true">
+                        <i class="bi bi-file-earmark-excel"></i> Descargar Excel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const jobId = {{ job.id }};
+const message = document.getElementById('exportMessage');
+const progress = document.getElementById('exportProgress');
+const downloadBtn = document.getElementById('downloadBtn');
+const icon = document.getElementById('exportIcon');
+let tick = 25;
+
+async function checkExport() {
+    try {
+        const response = await fetch(`/api/exports/${jobId}/status`, {cache: 'no-store'});
+        const job = await response.json();
+        message.textContent = job.message || 'Generando Excel...';
+
+        if (job.status === 'completed') {
+            progress.classList.remove('progress-bar-animated');
+            progress.style.width = '100%';
+            icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+            message.className = 'alert alert-success py-2 small mb-3';
+            downloadBtn.href = job.download_url;
+            downloadBtn.classList.remove('disabled');
+            downloadBtn.removeAttribute('aria-disabled');
+            setTimeout(() => { window.location.href = job.download_url; }, 800);
+            return;
+        }
+
+        if (job.status === 'failed') {
+            progress.classList.remove('progress-bar-animated');
+            progress.classList.remove('bg-danger');
+            progress.classList.add('bg-warning');
+            progress.style.width = '100%';
+            icon.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-warning"></i>';
+            message.className = 'alert alert-danger py-2 small mb-3';
+            return;
+        }
+
+        tick = Math.min(90, tick + 5);
+        progress.style.width = tick + '%';
+        setTimeout(checkExport, 2500);
+    } catch (error) {
+        message.className = 'alert alert-warning py-2 small mb-3';
+        message.textContent = 'No se pudo consultar el estado. Reintentando...';
+        setTimeout(checkExport, 3500);
+    }
+}
+
+checkExport();
+</script>
+{% endblock %}
