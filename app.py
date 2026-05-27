@@ -1630,8 +1630,10 @@ def iter_censos_acumulados_csv(start_date=None, end_date=None, batch_size=3000):
         'Camas Ocupdas', 'Turno', 'Gerencia', 'CO MEL', 'AREA', 'SEXO', 'JORNADA', 'Rut', 'PAB', 'ESTADO'
     ]
 
-    # BOM UTF-8 para que Excel abra bien acentos y ñ.
-    yield '\ufeff' + csv_row(headers)
+    # BOM UTF-8 + instrucción sep=; para que Excel separe columnas automáticamente
+    # incluso cuando la configuración regional no detecta el delimitador del CSV.
+    yield '\ufeffsep=;\n'
+    yield csv_row(headers)
 
     last_date = None
     last_id = 0
