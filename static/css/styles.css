@@ -1,78 +1,111 @@
 :root{
     --brand-red:#b42318;
-    --brand-red-dark:#7a0000;
+    --brand-red-dark:#8f1510;
+    --brand-red-soft:#c94a42;
     --brand-red-strong:#ff0000;
     --soft-red:#f8c9cd;
     --brand-orange:#f58220;
+    --page-bg:#f7f7f8;
 }
 
 body{
-    background:#f5f6f8;
+    background:var(--page-bg);
+    color:#1f2933;
 }
 
-.brand-header{
-    background:#000;
-    border-bottom:3px solid var(--brand-red);
+/* Header con estética CampCheck */
+.camp-header{
+    background:linear-gradient(90deg,var(--brand-red-dark),var(--brand-red));
+    color:#fff;
+    min-height:136px;
 }
 
-.brand-header-inner{
-    min-height:82px;
-    display:flex;
+.camp-header-inner{
+    min-height:78px;
+    display:grid;
+    grid-template-columns:minmax(180px,1fr) auto minmax(180px,1fr);
     align-items:center;
-    justify-content:space-between;
     gap:1rem;
-    padding-top:.45rem;
-    padding-bottom:.45rem;
+    padding:1rem 1.25rem .35rem;
 }
 
-.brand-logo-link{
+.camp-logo-link{
     display:inline-flex;
     align-items:center;
     text-decoration:none;
 }
 
-.brand-logo{
+.camp-logo-left-wrap{
+    justify-self:start;
+}
+
+.camp-logo-right-wrap{
+    justify-self:end;
+    display:flex;
+    align-items:center;
+}
+
+.camp-logo{
     display:block;
     object-fit:contain;
     max-width:100%;
 }
 
-.brand-logo-aramark{
-    height:54px;
-    max-width:210px;
+.camp-logo-aramark{
+    height:48px;
+    max-width:190px;
 }
 
-.brand-logo-escondida{
-    height:64px;
-    max-width:430px;
+.camp-logo-escondida{
+    height:32px;
+    max-width:260px;
 }
 
-.brand-title{
+.camp-title{
+    justify-self:center;
+    display:inline-flex;
     align-items:center;
     gap:.55rem;
     color:#fff;
-    font-size:1.35rem;
+    font-size:1.65rem;
+    line-height:1;
     font-weight:800;
-    letter-spacing:.03em;
-    text-transform:uppercase;
+    letter-spacing:.01em;
+    text-decoration:none;
+    white-space:nowrap;
 }
 
-.brand-title i{
-    color:var(--brand-orange);
+.camp-title:hover,
+.camp-title:focus{
+    color:#fff;
 }
 
-.app-navbar{
-    background:linear-gradient(90deg,var(--brand-red-dark),var(--brand-red));
+.camp-title i{
+    font-size:1.25rem;
+    color:#fff;
 }
 
-.app-navbar .navbar-brand,
-.app-navbar .nav-link{
+.camp-navbar{
+    padding:.1rem 0 .85rem;
+    background:transparent;
+}
+
+.camp-navbar .nav-link{
+    color:rgba(255,255,255,.94)!important;
+    font-size:.94rem;
+    padding:.35rem .58rem!important;
+    border-radius:999px;
+    transition:background-color .15s ease,color .15s ease;
+}
+
+.camp-navbar .nav-link:hover,
+.camp-navbar .nav-link:focus{
     color:#fff!important;
+    background:rgba(255,255,255,.14);
 }
 
-.app-navbar .nav-link:hover,
-.app-navbar .nav-link:focus{
-    color:#ffd6d6!important;
+.camp-navbar .nav-link i{
+    font-size:.95rem;
 }
 
 .text-primary-red{
@@ -85,6 +118,19 @@ body{
 
 .card{
     border-radius:.75rem;
+    border-color:#e2e5ea;
+}
+
+.btn-danger,
+.btn-primary{
+    background:var(--brand-red);
+    border-color:var(--brand-red);
+}
+
+.btn-danger:hover,
+.btn-primary:hover{
+    background:var(--brand-red-dark);
+    border-color:var(--brand-red-dark);
 }
 
 .report-table-wrapper{
@@ -161,19 +207,61 @@ body{
     justify-content:center;
 }
 
-@media (max-width: 767.98px){
-    .brand-header-inner{
-        min-height:64px;
+@media (max-width: 991.98px){
+    .camp-header-inner{
+        grid-template-columns:1fr auto 1fr;
+        min-height:68px;
+        padding:.85rem .85rem .2rem;
     }
-    .brand-logo-aramark{
+
+    .camp-title{
+        font-size:1.25rem;
+    }
+
+    .camp-logo-aramark{
         height:38px;
-        max-width:145px;
+        max-width:140px;
     }
-    .brand-logo-escondida{
-        height:44px;
-        max-width:210px;
+
+    .camp-logo-escondida{
+        height:26px;
+        max-width:185px;
     }
-    .navbar-brand{
-        font-size:1rem;
+
+    .camp-navbar{
+        padding:.15rem 0 .65rem;
+    }
+}
+
+@media (max-width: 575.98px){
+    .camp-header{
+        min-height:auto;
+    }
+
+    .camp-header-inner{
+        grid-template-columns:1fr;
+        justify-items:center;
+        gap:.5rem;
+        padding:.8rem .75rem .2rem;
+    }
+
+    .camp-logo-left-wrap,
+    .camp-logo-right-wrap,
+    .camp-title{
+        justify-self:center;
+    }
+
+    .camp-title{
+        order:-1;
+        font-size:1.15rem;
+    }
+
+    .camp-logo-aramark{
+        height:34px;
+    }
+
+    .camp-logo-escondida{
+        height:24px;
+        max-width:170px;
     }
 }

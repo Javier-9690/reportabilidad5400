@@ -10,39 +10,42 @@
     {% block head %}{% endblock %}
 </head>
 <body>
-<header class="brand-header">
-    <div class="container-fluid brand-header-inner">
-        <a class="brand-logo-link" href="{{ url_for('dashboard') }}" aria-label="Inicio">
-            <img src="{{ url_for('static', filename='img/aramark.png') }}" class="brand-logo brand-logo-aramark" alt="Aramark">
+<header class="camp-header shadow-sm">
+    <div class="container-fluid camp-header-inner">
+        <a class="camp-logo-link camp-logo-left-wrap" href="{{ url_for('dashboard') }}" aria-label="Inicio">
+            <img src="{{ url_for('static', filename='img/aramark.png') }}" class="camp-logo camp-logo-aramark" alt="Aramark">
         </a>
-        <div class="brand-title d-none d-md-flex">
-            <i class="bi bi-bar-chart-line"></i>
+
+        <a class="camp-title" href="{{ url_for('dashboard') }}" aria-label="Dashboard">
+            <i class="bi bi-clipboard-check"></i>
             <span>Reportabilidad 5400</span>
-        </div>
-        <img src="{{ url_for('static', filename='img/escondida_bhp.png') }}" class="brand-logo brand-logo-escondida" alt="Escondida BHP">
-    </div>
-</header>
-<nav class="navbar navbar-expand-lg navbar-dark app-navbar shadow-sm">
-    <div class="container-fluid">
-        <a class="navbar-brand fw-bold" href="{{ url_for('dashboard') }}">
-            <i class="bi bi-grid-1x2-fill"></i> Dotación Reportes
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Abrir navegación">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="mainNav">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('imports_page') }}">Importar</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('censos_page') }}">Censos</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('no_match_page') }}">Sin match</a></li>
-                <li class="nav-item"><a class="nav-link" href="/curva">Curva</a></li>
-                <li class="nav-item"><a class="nav-link" href="/curva/nuevo">Nuevo ID</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('report_page') }}">Reportes</a></li>
-            </ul>
+
+        <div class="camp-logo-right-wrap">
+            <img src="{{ url_for('static', filename='img/escondida_bhp.png') }}" class="camp-logo camp-logo-escondida" alt="Escondida BHP">
         </div>
     </div>
-</nav>
+
+    <nav class="navbar navbar-expand-lg navbar-dark camp-navbar">
+        <div class="container-fluid justify-content-center">
+            <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Abrir navegación">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-center" id="mainNav">
+                <ul class="navbar-nav align-items-lg-center gap-lg-1 text-center">
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('imports_page') }}"><i class="bi bi-upload"></i> Importar</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('censos_page') }}"><i class="bi bi-calendar-check"></i> Censos</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('no_match_page') }}"><i class="bi bi-magic"></i> Sin match</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/curva"><i class="bi bi-graph-up-arrow"></i> Curva</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/curva/nuevo"><i class="bi bi-plus-circle"></i> Nuevo ID</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('report_page') }}"><i class="bi bi-table"></i> Reportes</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+</header>
+
 <main class="container-fluid py-3">
     {% with messages=get_flashed_messages(with_categories=true) %}
         {% for category,message in messages %}
