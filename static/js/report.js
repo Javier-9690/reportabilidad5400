@@ -157,8 +157,75 @@ form.addEventListener('submit', event => {
     load();
 });
 
-document.getElementById('btnExport').addEventListener('click', () => {
-    location.href = '/api/reports/dotacion-gerencia/export?' + params().toString();
+
+function ensureExportStatusBox() {
+    let box = document.getElementById('exportStatusBox');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'exportStatusBox';
+        box.className = 'alert alert-info py-2 small d-none';
+        const hero = document.querySelector('.report-hero');
+        hero.parentNode.insertBefore(box, hero.nextSibling);
+    }
+    return box;
+}
+
+function setExportStatus(message, type = 'info') {
+    const box = ensureExportStatusBox();
+    box.className = `alert alert-${type} py-2 small`;
+    box.innerHTML = message;
+}
+
+async function pollExport(jobId, button) {
+    const statusUrl = `/api/exports/${jobId}/status`;
+    for (let attempt = 0; attempt < 240; attempt++) {
+        const response = await fetch(statusUrl);
+        const job = await response.json();
+
+        if (job.status === 'completed') {
+            setExportStatus(`<i class="bi bi-check-circle"></i> ${job.message || 'Excel listo.'} Descargando...`, 'success');
+            button.disabled = false;
+            button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+            window.location.href = job.download_url;
+            return;
+        }
+
+        if (job.status === 'failed') {
+            setExportStatus(`<i class="bi bi-exclamation-triangle"></i> ${job.message || 'Error al generar Excel.'}`, 'danger');
+            button.disabled = false;
+            button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+            return;
+        }
+
+        setExportStatus(`<i class="bi bi-hourglass-split"></i> ${job.message || 'Generando Excel...'} Puedes seguir usando la aplicación mientras termina.`, 'info');
+        await new Promise(resolve => setTimeout(resolve, 2500));
+    }
+
+    setExportStatus('<i class="bi bi-clock-history"></i> La exportación sigue en proceso. Espera unos segundos y vuelve a intentar descargar desde el aviso.', 'warning');
+    button.disabled = false;
+    button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+}
+
+document.getElementById('btnExport').addEventListener('click', async () => {
+    const button = document.getElementById('btnExport');
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparando Excel...';
+    setExportStatus('<i class="bi bi-hourglass-split"></i> Iniciando exportación en segundo plano...', 'info');
+
+    try {
+        const response = await fetch('/api/reports/dotacion-gerencia/export/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(Object.fromEntries(params())),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo iniciar la exportación');
+        pollExport(data.job_id, button);
+    } catch (error) {
+        setExportStatus(`<i class="bi bi-exclamation-triangle"></i> ${error.message}`, 'danger');
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Excel completo';
+    }
 });
 
 load();

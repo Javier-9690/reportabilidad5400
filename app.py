@@ -1,7 +1,9 @@
 
 import hashlib
+import json
 import os
 import re
+import threading
 import unicodedata
 from collections import defaultdict
 from difflib import SequenceMatcher
@@ -13,6 +15,7 @@ from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy import func, or_
@@ -113,6 +116,20 @@ class CensoRecord(db.Model):
     estado = db.Column(db.String(120), default="")
     censo = db.relationship("Censo", backref="records")
     curva_item = db.relationship("CurvaItem", backref="censo_records")
+
+
+class ExportJob(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_type = db.Column(db.String(80), nullable=False, default="dotacion_gerencia")
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)  # pending | running | completed | failed
+    message = db.Column(db.Text, default="")
+    params_json = db.Column(db.Text, default="{}")
+    filename = db.Column(db.String(255), default="")
+    content_type = db.Column(db.String(160), default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    content = db.Column(db.LargeBinary, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=now_utc)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
 
 
 def get_database_url(app):
@@ -928,6 +945,337 @@ def report_xlsx(data):
 
 
 
+
+def parse_date_text(value):
+    value = (value or '').strip()
+    if not value:
+        return None
+    return datetime.strptime(value, '%Y-%m-%d').date()
+
+
+def excel_cell(ws, value, font=None, fill=None, alignment=None, border=None, number_format=None):
+    cell = WriteOnlyCell(ws, value=value)
+    if font is not None:
+        cell.font = font
+    if fill is not None:
+        cell.fill = fill
+    if alignment is not None:
+        cell.alignment = alignment
+    if border is not None:
+        cell.border = border
+    if number_format is not None:
+        cell.number_format = number_format
+    return cell
+
+
+def report_xlsx_fast(data, progress_callback=None):
+    """
+    Genera el Excel de forma liviana.
+
+    La versión anterior creaba un Workbook normal y mantenía todas las celdas en memoria.
+    Con muchos censos, Render puede responder 502 por timeout/memoria. Esta versión usa
+    write_only=True y escribe filas en streaming para que el proceso sea mucho más liviano.
+    """
+    wb = Workbook(write_only=True)
+
+    colors = {
+        'red': 'B42318',
+        'red_dark': '7A1712',
+        'pink': 'F8C9CD',
+        'pink_soft': 'FFF0F0',
+        'yellow': 'FFF200',
+        'white': 'FFFFFF',
+        'black': '111111',
+        'gray': 'F2F4F7',
+        'blue': 'E8F1FF',
+        'green': 'D1FADF',
+        'green_text': '027A48',
+        'danger': 'FEE4E2',
+        'danger_text': 'B42318',
+        'warning': 'FFF3CD',
+        'orange_text': 'B54708',
+        'border': '7A1712',
+    }
+
+    def fill(hex_color):
+        return PatternFill(start_color=hex_color, end_color=hex_color, fill_type='solid')
+
+    thin_border = Border(
+        left=Side(style='thin', color=colors['border']),
+        right=Side(style='thin', color=colors['border']),
+        top=Side(style='thin', color=colors['border']),
+        bottom=Side(style='thin', color=colors['border']),
+    )
+    red_fill = fill(colors['red'])
+    dark_fill = fill(colors['red_dark'])
+    yellow_fill = fill(colors['yellow'])
+    pink_fill = fill(colors['pink'])
+    pink_soft_fill = fill(colors['pink_soft'])
+    blue_fill = fill(colors['blue'])
+    green_fill = fill(colors['green'])
+    danger_fill = fill(colors['danger'])
+    gray_fill = fill(colors['gray'])
+    white_fill = fill(colors['white'])
+
+    white_bold = Font(color=colors['white'], bold=True, size=9)
+    header_font = Font(color=colors['white'], bold=True, size=8)
+    title_font = Font(color=colors['white'], bold=True, size=14)
+    normal_font = Font(size=8, color=colors['black'])
+    bold_font = Font(size=8, bold=True, color=colors['black'])
+    green_font = Font(size=8, bold=True, color=colors['green_text'])
+    danger_font = Font(size=8, bold=True, color=colors['danger_text'])
+    orange_font = Font(size=8, bold=True, color=colors['orange_text'])
+
+    center = Alignment(horizontal='center', vertical='center')
+    left = Alignment(horizontal='left', vertical='center')
+    wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    vertical_date = Alignment(horizontal='center', vertical='center', textRotation=90)
+
+    def safe_num(value):
+        try:
+            number = float(value or 0)
+            return int(number) if number.is_integer() else round(number, 2)
+        except Exception:
+            return 0
+
+    def safe_pct(real, plan):
+        real = float(real or 0)
+        plan = float(plan or 0)
+        if plan <= 0:
+            return 'Sin plan' if real else '0%'
+        return f'{real / plan * 100:.1f}%'
+
+    if progress_callback:
+        progress_callback('Preparando pestaña resumen...')
+
+    # Hoja resumen
+    ws = wb.create_sheet('Dotacion Gerencia')
+    dates = data.get('date_labels', [])
+    rows = data.get('rows', [])
+    total_cols = len(dates) + 5
+    real_total = float(data.get('grand_total') or 0)
+    plan_total = float(data.get('planned_grand_total') or 0)
+    diff_total = real_total - plan_total
+
+    ws.append([excel_cell(ws, 'RESUMEN DE DOTACIÓN POR GERENCIA', title_font, red_fill, center, thin_border)] + [excel_cell(ws, '', title_font, red_fill, center, thin_border) for _ in range(total_cols - 1)])
+    ws.append([excel_cell(ws, f"Periodo: {data.get('start_date', '')} al {data.get('end_date', '')}", bold_font, white_fill, left, thin_border)] + [excel_cell(ws, '', normal_font, white_fill, center, thin_border) for _ in range(total_cols - 1)])
+    ws.append([excel_cell(ws, f"Curva: {(data.get('curve') or {}).get('name', 'Sin curva')}", bold_font, white_fill, left, thin_border)] + [excel_cell(ws, '', normal_font, white_fill, center, thin_border) for _ in range(total_cols - 1)])
+    ws.append([])
+    ws.append([
+        excel_cell(ws, 'Real acumulado', white_bold, dark_fill, center, thin_border),
+        excel_cell(ws, safe_num(real_total), bold_font, yellow_fill, center, thin_border),
+        excel_cell(ws, 'Plan acumulado', white_bold, dark_fill, center, thin_border),
+        excel_cell(ws, safe_num(plan_total), bold_font, blue_fill, center, thin_border),
+        excel_cell(ws, 'Diferencia', white_bold, dark_fill, center, thin_border),
+        excel_cell(ws, safe_num(diff_total), green_font if diff_total >= 0 else danger_font, green_fill if diff_total >= 0 else danger_fill, center, thin_border),
+        excel_cell(ws, 'Cumplimiento', white_bold, dark_fill, center, thin_border),
+        excel_cell(ws, safe_pct(real_total, plan_total), bold_font, gray_fill, center, thin_border),
+    ])
+    ws.append([])
+
+    headers = ['GERENCIAS'] + dates + ['TOTAL REAL', 'TOTAL PLAN', 'DIF.', 'CUMP.']
+    header_row = []
+    for idx, header in enumerate(headers, 1):
+        alignment = left if idx == 1 else (vertical_date if 2 <= idx <= len(dates) + 1 else wrap)
+        header_row.append(excel_cell(ws, header, header_font, red_fill, alignment, thin_border))
+    ws.append(header_row)
+
+    for item in rows:
+        is_unmatched = item.get('gerencia') == 'SIN MATCH EN CURVA'
+        real = float(item.get('total') or 0)
+        plan = float(item.get('planned_total') or 0)
+        diff = real - plan
+        row_cells = [excel_cell(ws, item.get('gerencia', ''), orange_font if is_unmatched else bold_font, danger_fill if is_unmatched else white_fill, left, thin_border)]
+        for value in item.get('values', []):
+            val = safe_num(value)
+            row_cells.append(excel_cell(ws, val, normal_font, pink_soft_fill if val == 0 else pink_fill, center, thin_border))
+        row_cells.append(excel_cell(ws, safe_num(real), bold_font, yellow_fill, center, thin_border))
+        row_cells.append(excel_cell(ws, safe_num(plan), bold_font, blue_fill, center, thin_border))
+        row_cells.append(excel_cell(ws, safe_num(diff), green_font if diff >= 0 else danger_font, green_fill if diff >= 0 else danger_fill, center, thin_border))
+        row_cells.append(excel_cell(ws, safe_pct(real, plan), bold_font, gray_fill, center, thin_border))
+        ws.append(row_cells)
+
+    total_row = [excel_cell(ws, 'TOTAL', white_bold, red_fill, left, thin_border)]
+    for value in data.get('totals_by_date', []):
+        total_row.append(excel_cell(ws, safe_num(value), white_bold, red_fill, center, thin_border))
+    total_row.append(excel_cell(ws, safe_num(real_total), bold_font, yellow_fill, center, thin_border))
+    total_row.append(excel_cell(ws, safe_num(plan_total), bold_font, blue_fill, center, thin_border))
+    total_row.append(excel_cell(ws, safe_num(diff_total), green_font if diff_total >= 0 else danger_font, green_fill if diff_total >= 0 else danger_fill, center, thin_border))
+    total_row.append(excel_cell(ws, safe_pct(real_total, plan_total), bold_font, gray_fill, center, thin_border))
+    ws.append(total_row)
+
+    ws.append([])
+    ws.append([excel_cell(ws, 'CONCLUSIONES', white_bold, red_fill, left, thin_border)])
+    for text in data.get('conclusions', []):
+        ws.append([excel_cell(ws, '• ' + str(text), normal_font, white_fill, left, thin_border)])
+
+    # Hoja detalle completo
+    if progress_callback:
+        progress_callback('Preparando detalle de censos...')
+
+    detail = wb.create_sheet('Detalle Censos')
+    detail_headers = [
+        'Censo ID', 'Fecha Censo', 'Hoja Censo', 'Importado Censo',
+        'Total Registros Censo', 'Total Ocupado Censo', 'Cruzados Censo', 'Sin Match Censo',
+        'Archivo ID', 'Archivo Nombre', 'Archivo Tipo', 'Archivo Tamaño Bytes', 'Archivo SHA256', 'Archivo Subido',
+        'Registro ID', 'Solicitud ID', 'Módulo', 'Lugar', 'Habitación', 'Empresa Censo', 'Cama', 'Día',
+        'Camas Ocupadas', 'Turno Censo', 'Gerencia Censo', 'Área Censo', 'RUT', 'Estado',
+        'Curva Item ID', 'Curva Versión ID', 'Curva Versión', 'Gerencia Curva', 'Área Curva', 'Empresa Curva',
+        'Turno Curva', 'Tipo Contrato Curva', 'Formato Curva', 'Camp Curva', 'Estado Match'
+    ]
+    detail.append([excel_cell(detail, h, header_font, red_fill, wrap, thin_border) for h in detail_headers])
+
+    query = db.session.query(
+        Censo.id.label('censo_id'),
+        Censo.fecha_censo.label('fecha_censo'),
+        Censo.sheet_name.label('censo_sheet_name'),
+        Censo.imported_at.label('censo_imported_at'),
+        Censo.total_records.label('censo_total_records'),
+        Censo.total_occupied.label('censo_total_occupied'),
+        Censo.matched_count.label('censo_matched_count'),
+        Censo.unmatched_count.label('censo_unmatched_count'),
+        UploadedFile.id.label('file_id'),
+        UploadedFile.filename.label('file_filename'),
+        UploadedFile.file_type.label('file_type'),
+        UploadedFile.size_bytes.label('file_size_bytes'),
+        UploadedFile.sha256.label('file_sha256'),
+        UploadedFile.uploaded_at.label('file_uploaded_at'),
+        CensoRecord.id.label('record_id'),
+        CensoRecord.solicitud_id.label('record_solicitud_id'),
+        CensoRecord.modulo.label('record_modulo'),
+        CensoRecord.lugar.label('record_lugar'),
+        CensoRecord.habitacion.label('record_habitacion'),
+        CensoRecord.empresa.label('record_empresa'),
+        CensoRecord.cama.label('record_cama'),
+        CensoRecord.dia.label('record_dia'),
+        CensoRecord.camas_ocupadas.label('record_camas_ocupadas'),
+        CensoRecord.turno.label('record_turno'),
+        CensoRecord.gerencia_censo.label('record_gerencia_censo'),
+        CensoRecord.area.label('record_area'),
+        CensoRecord.rut.label('record_rut'),
+        CensoRecord.estado.label('record_estado'),
+        CurvaItem.id.label('curva_item_id'),
+        CurvaItem.curva_version_id.label('curva_version_id'),
+        CurvaVersion.name.label('curva_version_name'),
+        CurvaItem.gerencia.label('curva_gerencia'),
+        CurvaItem.area.label('curva_area'),
+        CurvaItem.empresa.label('curva_empresa'),
+        CurvaItem.turno.label('curva_turno'),
+        CurvaItem.tipo_contrato.label('curva_tipo_contrato'),
+        CurvaItem.formato.label('curva_formato'),
+        CurvaItem.camp.label('curva_camp'),
+    ).select_from(CensoRecord).join(
+        Censo, Censo.id == CensoRecord.censo_id
+    ).join(
+        UploadedFile, UploadedFile.id == Censo.file_id
+    ).outerjoin(
+        CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+    ).outerjoin(
+        CurvaVersion, CurvaVersion.id == CurvaItem.curva_version_id
+    ).order_by(
+        Censo.fecha_censo.desc(), CensoRecord.id.asc()
+    )
+
+    processed = 0
+    for row in query.yield_per(2000):
+        is_matched = bool(row.curva_item_id)
+        detail.append([
+            row.censo_id,
+            row.fecha_censo.strftime('%Y-%m-%d') if row.fecha_censo else '',
+            row.censo_sheet_name or '',
+            row.censo_imported_at.strftime('%Y-%m-%d %H:%M:%S') if row.censo_imported_at else '',
+            row.censo_total_records,
+            row.censo_total_occupied,
+            row.censo_matched_count,
+            row.censo_unmatched_count,
+            row.file_id or '',
+            row.file_filename or '',
+            row.file_type or '',
+            row.file_size_bytes or '',
+            row.file_sha256 or '',
+            row.file_uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if row.file_uploaded_at else '',
+            row.record_id,
+            row.record_solicitud_id or '',
+            row.record_modulo or '',
+            row.record_lugar or '',
+            row.record_habitacion or '',
+            row.record_empresa or '',
+            row.record_cama or '',
+            row.record_dia or '',
+            row.record_camas_ocupadas,
+            row.record_turno or '',
+            row.record_gerencia_censo or '',
+            row.record_area or '',
+            row.record_rut or '',
+            row.record_estado or '',
+            row.curva_item_id or '',
+            row.curva_version_id or '',
+            row.curva_version_name or '',
+            row.curva_gerencia or '',
+            row.curva_area or '',
+            row.curva_empresa or '',
+            row.curva_turno or '',
+            row.curva_tipo_contrato or '',
+            row.curva_formato or '',
+            row.curva_camp or '',
+            'Cruzado' if is_matched else 'Sin match',
+        ])
+        processed += 1
+        if progress_callback and processed % 5000 == 0:
+            progress_callback(f'Escribiendo detalle de censos: {processed:,} registros...'.replace(',', '.'))
+
+    if progress_callback:
+        progress_callback('Comprimiendo archivo Excel...')
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio
+
+
+def build_report_export_job(app, job_id):
+    """Genera el Excel en segundo plano para evitar 502 durante la petición HTTP."""
+    with app.app_context():
+        job = ExportJob.query.get(job_id)
+        if not job:
+            return
+
+        def progress(message):
+            current = ExportJob.query.get(job_id)
+            if current:
+                current.message = message
+                db.session.commit()
+
+        try:
+            job.status = 'running'
+            job.started_at = now_utc()
+            job.message = 'Generando datos del reporte...'
+            db.session.commit()
+
+            params = json.loads(job.params_json or '{}')
+            start = parse_date_text(params.get('start_date'))
+            end = parse_date_text(params.get('end_date'))
+            curve_id = int(params['curve_id']) if params.get('curve_id') else None
+
+            data = report_data(start, end, curve_id)
+            bio = report_xlsx_fast(data, progress_callback=progress)
+
+            job = ExportJob.query.get(job_id)
+            job.content = bio.getvalue()
+            job.filename = f"dotacion_gerencia_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            job.status = 'completed'
+            job.message = 'Archivo Excel listo para descargar.'
+            job.completed_at = now_utc()
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            job = ExportJob.query.get(job_id)
+            if job:
+                job.status = 'failed'
+                job.message = f'Error al generar Excel: {exc}'
+                job.completed_at = now_utc()
+                db.session.commit()
+
 def compact_id(value):
     """Normaliza un ID para comparación flexible: quita espacios, guiones y símbolos."""
     return re.sub(r"[^A-Z0-9]", "", norm_id(value))
@@ -1620,10 +1968,66 @@ def register_routes(app):
     def report_api():
         return jsonify(report_data(parse_arg('start_date'), parse_arg('end_date'), request.args.get('curve_id', type=int)))
 
+    @app.post('/api/reports/dotacion-gerencia/export/start')
+    def report_export_start():
+        payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
+        params = {
+            'start_date': (payload.get('start_date') or '').strip(),
+            'end_date': (payload.get('end_date') or '').strip(),
+            'curve_id': (payload.get('curve_id') or '').strip(),
+        }
+        job = ExportJob(
+            job_type='dotacion_gerencia',
+            status='pending',
+            message='Exportación en cola...',
+            params_json=json.dumps(params),
+            filename=f'dotacion_gerencia_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+        )
+        db.session.add(job)
+        db.session.commit()
+
+        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
+        thread.start()
+
+        return jsonify({
+            'ok': True,
+            'job_id': job.id,
+            'status_url': url_for('export_job_status', job_id=job.id),
+            'download_url': url_for('export_job_download', job_id=job.id),
+        }), 202
+
+    @app.get('/api/exports/<int:job_id>/status')
+    def export_job_status(job_id):
+        job = ExportJob.query.get_or_404(job_id)
+        return jsonify({
+            'id': job.id,
+            'status': job.status,
+            'message': job.message or '',
+            'filename': job.filename or '',
+            'created_at': job.created_at.isoformat() if job.created_at else None,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'download_url': url_for('export_job_download', job_id=job.id) if job.status == 'completed' else None,
+        })
+
+    @app.get('/api/exports/<int:job_id>/download')
+    def export_job_download(job_id):
+        job = ExportJob.query.get_or_404(job_id)
+        if job.status != 'completed' or not job.content:
+            return jsonify({'error': 'El archivo aún no está listo.'}), 409
+        return send_file(
+            BytesIO(job.content),
+            as_attachment=True,
+            download_name=job.filename or f'export_{job.id}.xlsx',
+            mimetype=job.content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
     @app.route('/api/reports/dotacion-gerencia/export')
     def report_export():
-        data=report_data(parse_arg('start_date'), parse_arg('end_date'), request.args.get('curve_id', type=int))
-        return send_file(report_xlsx(data), as_attachment=True, download_name=f'dotacion_gerencia_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        # Endpoint heredado: ya no genera el Excel de forma síncrona para evitar 502.
+        return jsonify({
+            'error': 'La exportación ahora se genera en segundo plano. Usa /api/reports/dotacion-gerencia/export/start.'
+        }), 202
 
 app=create_app()
 if __name__ == '__main__':
