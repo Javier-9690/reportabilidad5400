@@ -4,7 +4,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         <h4 class="text-primary-red mb-0"><i class="bi bi-magic"></i> Corrección de registros sin match</h4>
-        <small class="text-muted">El sistema compara el ID del censo contra la curva y propone posibles correcciones.</small>
+        <small class="text-muted">
+            Vista optimizada: se agrupa por ID de censo. Al corregir un ID, se corrigen todos los registros sin match que tengan ese mismo ID.
+        </small>
     </div>
     <a href="{{ url_for('report_page') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-table"></i> Ir a reporte</a>
 </div>
@@ -35,7 +37,7 @@
                 <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="ID, empresa, gerencia, habitación">
             </div>
             <div class="col-6 col-md-1">
-                <label class="form-label small mb-0">Límite</label>
+                <label class="form-label small mb-0">Límite IDs</label>
                 <input type="number" name="limit" value="{{ limit }}" min="10" max="1000" class="form-control form-control-sm">
             </div>
             <div class="col-6 col-md-2">
@@ -49,8 +51,9 @@
     <div class="col-6 col-md-3">
         <div class="card kpi-card border-danger">
             <div class="card-body py-2">
-                <div class="text-muted small">Sin match encontrados</div>
+                <div class="text-muted small">IDs únicos sin match</div>
                 <div class="fs-4 fw-bold text-danger">{{ total }}</div>
+                <div class="small text-muted">{{ total_records }} registro(s) asociados</div>
             </div>
         </div>
     </div>
@@ -64,7 +67,7 @@
     </div>
     <div class="col-12 col-md-4">
         <div class="alert alert-warning py-2 mb-0 small">
-            Revisa la propuesta antes de aplicar. La corrección cambia la gerencia del registro según la curva seleccionada.
+            Las propuestas ahora se calculan con índice por ID, dígitos y sufijos. Al aplicar, se actualizan todos los registros iguales.
         </div>
     </div>
 </div>
@@ -74,9 +77,9 @@
         <table class="table table-sm table-striped table-hover align-middle mb-0 no-match-table">
             <thead class="table-dark">
                 <tr>
-                    <th>Fecha</th>
+                    <th>Fechas</th>
                     <th>ID censo</th>
-                    <th>Datos censo</th>
+                    <th>Datos ejemplo</th>
                     <th>Propuestas</th>
                     <th>Manual</th>
                 </tr>
@@ -85,16 +88,25 @@
                 {% for row in rows %}
                     {% set r = row.record %}
                     <tr>
-                        <td class="small fw-bold text-nowrap">{{ row.censo.fecha_label }}</td>
+                        <td class="small fw-bold text-nowrap">
+                            {% if row.first_date and row.last_date and row.first_date != row.last_date %}
+                                {{ row.first_date.strftime('%d/%m/%Y') }}<br>{{ row.last_date.strftime('%d/%m/%Y') }}
+                            {% else %}
+                                {{ row.censo.fecha_label }}
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="fw-bold text-danger">{{ r.solicitud_id }}</div>
-                            <div class="small text-muted">Hab: {{ r.habitacion or '-' }} · Cama: {{ r.cama or '-' }}</div>
+                            <div class="small text-muted">
+                                {{ row.same_id_count }} registro(s) con este ID
+                            </div>
+                            <div class="small text-muted">Hab ejemplo: {{ r.habitacion or '-' }} · Cama: {{ r.cama or '-' }}</div>
                         </td>
                         <td class="small">
                             <div><strong>Empresa:</strong> {{ r.empresa or '-' }}</div>
                             <div><strong>Gerencia censo:</strong> {{ r.gerencia_censo or '-' }}</div>
                             <div><strong>Área:</strong> {{ r.area or '-' }}</div>
-                            <div><strong>Rut:</strong> {{ r.rut or '-' }}</div>
+                            <div><strong>Rut ejemplo:</strong> {{ r.rut or '-' }}</div>
                         </td>
                         <td>
                             {% if row.suggestions %}
@@ -109,8 +121,8 @@
                                                 </div>
                                                 <form action="{{ url_for('apply_no_match', record_id=r.id) }}" method="post">
                                                     <input type="hidden" name="curva_item_id" value="{{ s.item.id }}">
-                                                    <button class="btn btn-sm btn-outline-success py-0" onclick="return confirm('¿Aplicar esta corrección?');">
-                                                        Aplicar
+                                                    <button class="btn btn-sm btn-outline-success py-0" onclick="return confirm('¿Aplicar esta corrección a todos los registros sin match con el mismo ID?');">
+                                                        Aplicar a todos
                                                     </button>
                                                 </form>
                                             </div>
@@ -124,11 +136,11 @@
                                 <span class="text-muted small">Sin propuesta automática</span>
                             {% endif %}
                         </td>
-                        <td style="min-width: 220px;">
+                        <td style="min-width: 240px;">
                             <form action="{{ url_for('manual_no_match', record_id=r.id) }}" method="post" class="d-flex gap-1">
                                 <input type="hidden" name="curve_id" value="{{ selected_curve_id or '' }}">
                                 <input name="manual_id" class="form-control form-control-sm" placeholder="ID exacto curva" required>
-                                <button class="btn btn-sm btn-dark" onclick="return confirm('¿Aplicar corrección manual?');">OK</button>
+                                <button class="btn btn-sm btn-dark" onclick="return confirm('¿Aplicar corrección manual a todos los registros sin match con el mismo ID?');">OK todos</button>
                             </form>
                         </td>
                     </tr>
@@ -144,7 +156,7 @@
     </div>
     {% if total > limit %}
         <div class="card-footer small text-muted">
-            Mostrando {{ limit }} de {{ total }} registros. Usa filtros para acotar la revisión.
+            Mostrando {{ limit }} de {{ total }} IDs únicos sin match. Usa filtros para acotar la revisión.
         </div>
     {% endif %}
 </div>

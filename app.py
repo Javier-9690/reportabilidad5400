@@ -712,6 +712,35 @@ def build_curve_candidates(curve):
     return CurvaItem.query.filter_by(curva_version_id=curve.id).all()
 
 
+def build_curve_match_index(curve):
+    """
+    Construye un índice en memoria para proponer correcciones sin comparar cada
+    registro contra toda la curva. Esto reemplaza el cálculo O(registros * curva)
+    por búsquedas directas por ID normalizado, dígitos y sufijos.
+    """
+    items = build_curve_candidates(curve)
+    index = {
+        "items": items,
+        "by_compact": defaultdict(list),
+        "by_digits": defaultdict(list),
+        "by_suffix": defaultdict(list),
+    }
+
+    for item in items:
+        compact = compact_id(item.solicitud_id)
+        digits = digits_id(item.solicitud_id).lstrip("0")
+
+        if compact:
+            index["by_compact"][compact].append(item)
+        if digits:
+            index["by_digits"][digits].append(item)
+            # Sufijos largos primero; evita recorrer toda la curva para IDs parecidos.
+            for n in range(4, min(len(digits), 12) + 1):
+                index["by_suffix"][(n, digits[-n:])].append(item)
+
+    return index
+
+
 def candidate_score(record, item):
     target = compact_id(record.solicitud_id)
     candidate = compact_id(item.solicitud_id)
@@ -740,12 +769,12 @@ def candidate_score(record, item):
             score = min(88, 70 + max_suffix * 2)
             reason = f"Coinciden los últimos {max_suffix} dígitos"
 
+    # Solo se ejecuta sobre candidatos prefiltrados, no sobre toda la curva.
     ratio = SequenceMatcher(None, target, candidate).ratio()
     if ratio >= 0.70 and int(ratio * 85) > score:
         score = int(ratio * 85)
         reason = f"Similitud de ID {ratio * 100:.0f}%"
 
-    # Pequeños refuerzos si además coinciden datos descriptivos.
     if record.empresa and item.empresa and norm(record.empresa) == norm(item.empresa):
         score += 4
         reason += " + misma empresa"
@@ -756,9 +785,47 @@ def candidate_score(record, item):
     return min(score, 100), reason
 
 
-def suggestions_for_record(record, candidates, limit=3):
+def candidate_pool_for_record(record, match_index, max_candidates=250):
+    """Obtiene un subconjunto pequeño de curva para calcular sugerencias."""
+    if not match_index:
+        return []
+
+    target = compact_id(record.solicitud_id)
+    target_digits = digits_id(record.solicitud_id).lstrip("0")
+    pool = []
+    seen = set()
+
+    def add(items):
+        for item in items or []:
+            if item.id not in seen:
+                seen.add(item.id)
+                pool.append(item)
+                if len(pool) >= max_candidates:
+                    return
+
+    if target:
+        add(match_index["by_compact"].get(target))
+    if target_digits:
+        add(match_index["by_digits"].get(target_digits))
+        for n in range(min(len(target_digits), 12), 3, -1):
+            add(match_index["by_suffix"].get((n, target_digits[-n:])))
+            if len(pool) >= max_candidates:
+                break
+
+    # Respaldo liviano: si no hay candidatos por dígitos, compara con una muestra
+    # acotada de IDs que compartan inicio o término normalizado.
+    if not pool and target:
+        for item in match_index["items"][:max_candidates]:
+            candidate = compact_id(item.solicitud_id)
+            if candidate and (candidate[:4] == target[:4] or candidate[-4:] == target[-4:]):
+                add([item])
+
+    return pool[:max_candidates]
+
+
+def suggestions_for_record(record, match_index, limit=3):
     suggestions = []
-    for item in candidates:
+    for item in candidate_pool_for_record(record, match_index):
         score, reason = candidate_score(record, item)
         if score >= 60:
             suggestions.append({
@@ -770,18 +837,69 @@ def suggestions_for_record(record, candidates, limit=3):
     return suggestions[:limit]
 
 
+def find_curve_item_by_manual_id(curve, manual_id):
+    """Busca un ID manual en la curva, aceptando diferencias simples de formato."""
+    if not curve or not manual_id:
+        return None
+
+    manual_id = norm_id(manual_id)
+    item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=manual_id).first()
+    if item:
+        return item
+
+    target = compact_id(manual_id)
+    target_digits = digits_id(manual_id).lstrip("0")
+    for item in CurvaItem.query.filter_by(curva_version_id=curve.id).all():
+        if target and compact_id(item.solicitud_id) == target:
+            return item
+        if target_digits and digits_id(item.solicitud_id).lstrip("0") == target_digits:
+            return item
+    return None
+
+
+def apply_correction_to_same_id(record, item):
+    """
+    Corrige todos los registros sin match que tengan el mismo ID de censo.
+    Se aplica a todos los censos almacenados para evitar corregir uno por uno.
+    """
+    same_id = norm_id(record.solicitud_id)
+    if not same_id:
+        same_id = record.solicitud_id
+
+    records = CensoRecord.query.filter(
+        CensoRecord.curva_item_id.is_(None),
+        CensoRecord.solicitud_id == same_id,
+    ).all()
+
+    # Respaldo por si algún registro quedó con espacios/formato distinto antes de normalizar.
+    if not records:
+        target = compact_id(record.solicitud_id)
+        all_unmatched = CensoRecord.query.filter(CensoRecord.curva_item_id.is_(None)).all()
+        records = [r for r in all_unmatched if compact_id(r.solicitud_id) == target]
+
+    censo_ids = set()
+    for row in records:
+        row.curva_item_id = item.id
+        censo_ids.add(row.censo_id)
+
+    for censo_id in censo_ids:
+        recalc_censo_stats(censo_id)
+
+    return len(records), censo_ids
+
+
 def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
     curve = get_curve_for_matching(curve_id)
-    candidates = build_curve_candidates(curve)
+    match_index = build_curve_match_index(curve)
 
-    query = CensoRecord.query.join(Censo, Censo.id == CensoRecord.censo_id).filter(CensoRecord.curva_item_id.is_(None))
+    base_query = CensoRecord.query.join(Censo, Censo.id == CensoRecord.censo_id).filter(CensoRecord.curva_item_id.is_(None))
     if censo_id:
-        query = query.filter(CensoRecord.censo_id == censo_id)
+        base_query = base_query.filter(CensoRecord.censo_id == censo_id)
 
     search_text = (search_text or "").strip()
     if search_text:
         like = f"%{search_text}%"
-        query = query.filter(
+        base_query = base_query.filter(
             or_(
                 CensoRecord.solicitud_id.ilike(like),
                 CensoRecord.empresa.ilike(like),
@@ -791,18 +909,46 @@ def no_match_payload(censo_id=None, curve_id=None, search_text="", limit=200):
             )
         )
 
-    total = query.count()
-    records = query.order_by(Censo.fecha_censo.desc(), CensoRecord.solicitud_id.asc()).limit(limit).all()
+    total_records = base_query.count()
+    total_ids = base_query.with_entities(CensoRecord.solicitud_id).distinct().count()
+
+    grouped = base_query.with_entities(
+        CensoRecord.solicitud_id.label("solicitud_id"),
+        func.count(CensoRecord.id).label("same_id_count"),
+        func.min(Censo.fecha_censo).label("first_date"),
+        func.max(Censo.fecha_censo).label("last_date"),
+        func.min(CensoRecord.id).label("sample_id"),
+    ).group_by(
+        CensoRecord.solicitud_id
+    ).order_by(
+        func.max(Censo.fecha_censo).desc(),
+        CensoRecord.solicitud_id.asc()
+    ).limit(limit).all()
+
+    sample_ids = [row.sample_id for row in grouped]
+    sample_records = {
+        record.id: record
+        for record in CensoRecord.query.filter(CensoRecord.id.in_(sample_ids)).all()
+    } if sample_ids else {}
+
     rows = []
-    for record in records:
+    for group in grouped:
+        record = sample_records.get(group.sample_id)
+        if not record:
+            continue
         rows.append({
             "record": record,
             "censo": record.censo,
-            "suggestions": suggestions_for_record(record, candidates),
+            "same_id_count": int(group.same_id_count or 0),
+            "first_date": group.first_date,
+            "last_date": group.last_date,
+            "suggestions": suggestions_for_record(record, match_index),
         })
+
     return {
         "curve": curve,
-        "total": total,
+        "total": total_ids,
+        "total_records": total_records,
         "limit": limit,
         "rows": rows,
     }
@@ -864,13 +1010,14 @@ def register_routes(app):
         censo_id = request.args.get('censo_id', type=int)
         curve_id = request.args.get('curve_id', type=int)
         search_text = request.args.get('q', '')
-        limit = min(request.args.get('limit', 200, type=int) or 200, 1000)
+        limit = min(request.args.get('limit', 100, type=int) or 100, 1000)
         payload = no_match_payload(censo_id=censo_id, curve_id=curve_id, search_text=search_text, limit=limit)
         return render_template(
             'no_match.html',
             rows=payload['rows'],
             curve=payload['curve'],
             total=payload['total'],
+            total_records=payload['total_records'],
             limit=payload['limit'],
             censos=Censo.query.order_by(Censo.fecha_censo.desc()).all(),
             curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all(),
@@ -884,10 +1031,12 @@ def register_routes(app):
         record = CensoRecord.query.get_or_404(record_id)
         item_id = request.form.get('curva_item_id', type=int)
         item = CurvaItem.query.get_or_404(item_id)
-        record.curva_item_id = item.id
-        recalc_censo_stats(record.censo_id)
+        updated_count, censo_ids = apply_correction_to_same_id(record, item)
         db.session.commit()
-        flash(f'Corrección aplicada: ID censo {record.solicitud_id} → curva {item.solicitud_id} / {item.gerencia}', 'success')
+        flash(
+            f'Corrección aplicada a {updated_count} registro(s) con ID censo {record.solicitud_id} → curva {item.solicitud_id} / {item.gerencia}.',
+            'success'
+        )
         return redirect(request.referrer or url_for('no_match_page'))
 
     @app.post('/api/no-match/<int:record_id>/manual')
@@ -899,14 +1048,16 @@ def register_routes(app):
         if not curve:
             flash('No hay curva disponible para buscar el ID manual.', 'danger')
             return redirect(request.referrer or url_for('no_match_page'))
-        item = CurvaItem.query.filter_by(curva_version_id=curve.id, solicitud_id=manual_id).first()
+        item = find_curve_item_by_manual_id(curve, manual_id)
         if not item:
             flash(f'No se encontró el ID {manual_id} en la curva {curve.name}.', 'warning')
             return redirect(request.referrer or url_for('no_match_page'))
-        record.curva_item_id = item.id
-        recalc_censo_stats(record.censo_id)
+        updated_count, censo_ids = apply_correction_to_same_id(record, item)
         db.session.commit()
-        flash(f'Corrección manual aplicada: {record.solicitud_id} → {item.solicitud_id} / {item.gerencia}', 'success')
+        flash(
+            f'Corrección manual aplicada a {updated_count} registro(s): {record.solicitud_id} → {item.solicitud_id} / {item.gerencia}.',
+            'success'
+        )
         return redirect(request.referrer or url_for('no_match_page'))
 
     @app.route('/censos')

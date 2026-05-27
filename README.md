@@ -47,3 +47,9 @@ Manual Deploy -> Clear build cache & deploy
 
 - Eliminar un censo borra sus registros asociados.
 - Eliminar una curva borra sus IDs y planificación. Los registros de censo que estaban cruzados con esa curva quedan como `sin match`, para que puedan corregirse contra otra curva activa o histórica.
+
+## Optimización Sin Match
+
+- La pantalla **Sin match** ahora agrupa por ID de censo para evitar repetir el mismo error muchas veces.
+- Las propuestas ya no comparan cada registro contra toda la curva. Se usa un índice por ID normalizado, dígitos y sufijos.
+- Al aplicar una propuesta o una corrección manual, se actualizan todos los registros sin match que tengan el mismo ID de censo.
