@@ -114,13 +114,32 @@ class CensoRecord(db.Model):
     curva_item = db.relationship("CurvaItem", backref="censo_records")
 
 
+def get_database_url(app):
+    """
+    Resolve la URL de base de datos.
+
+    En Render debe venir desde la variable DATABASE_URL de PostgreSQL.
+    Para desarrollo local, crea automáticamente la carpeta instance/ y usa SQLite.
+    """
+    db_url = os.getenv("DATABASE_URL", "").strip()
+
+    if db_url:
+        # Render/PostgreSQL antiguos pueden entregar postgres://, pero SQLAlchemy usa postgresql://
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        return db_url
+
+    # Fallback solo para desarrollo local.
+    # Esto evita el error: sqlite3.OperationalError: unable to open database file
+    # cuando la carpeta instance/ no existe.
+    os.makedirs(app.instance_path, exist_ok=True)
+    return "sqlite:///" + os.path.join(app.instance_path, "dotacion_reportes.db")
+
+
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, instance_relative_config=True)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-change-me")
-    db_url = os.getenv("DATABASE_URL", "sqlite:///instance/dotacion_reportes.db")
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+    app.config["SQLALCHEMY_DATABASE_URI"] = get_database_url(app)
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "40")) * 1024 * 1024
