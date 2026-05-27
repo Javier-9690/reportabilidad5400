@@ -47,12 +47,39 @@
                     </button>
                 </div>
                 <div class="col-12">
-                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#bedsByDateBox">
-                        <i class="bi bi-calendar3"></i> Definir camas por fecha
-                    </button>
-                    <small class="text-muted ms-2">Opcional. Si lo dejas vacío, se usa el valor general para todas las fechas.</small>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#bedsByDateBox" aria-expanded="false">
+                            <i class="bi bi-calendar3"></i> Definir camas por día
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" type="button" id="btnBuildBedsTable">
+                            <i class="bi bi-table"></i> Crear tabla diaria
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" type="button" id="btnApplyDefaultBeds">
+                            <i class="bi bi-arrow-down-square"></i> Aplicar valor general
+                        </button>
+                        <small class="text-muted">Úsalo cuando las camas habilitadas cambian día a día.</small>
+                    </div>
                     <div class="collapse mt-2" id="bedsByDateBox">
-                        <textarea id="bedsByDate" class="form-control form-control-sm" rows="3" placeholder="Ejemplo:\n20/05/2026=1160\n21/05/2026=1160\n23/05/2026=840"></textarea>
+                        <div class="alert alert-light border py-2 small mb-2">
+                            Ingresa la cantidad de camas habilitadas para cada fecha del rango. Si una fecha queda vacía, se usará el valor general.
+                        </div>
+                        <div class="table-responsive beds-by-date-wrapper">
+                            <table class="table table-sm table-bordered align-middle mb-2 beds-by-date-table">
+                                <thead class="table-danger">
+                                    <tr>
+                                        <th style="width: 160px;">Fecha</th>
+                                        <th style="width: 180px;">Camas habilitadas</th>
+                                        <th>Día</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bedsByDateBody">
+                                    <tr>
+                                        <td colspan="3" class="text-muted text-center py-3">Selecciona Desde/Hasta y presiona “Crear tabla diaria”.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <textarea id="bedsByDate" class="form-control form-control-sm d-none" rows="3"></textarea>
                     </div>
                 </div>
             </form>
@@ -95,5 +122,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/ocupabilidad.js') }}?v=20260527_ocupabilidad_1"></script>
+<script src="{{ url_for('static', filename='js/ocupabilidad.js') }}?v=20260527_ocupabilidad_beds_by_day"></script>
 {% endblock %}

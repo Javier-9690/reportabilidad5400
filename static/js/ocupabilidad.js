@@ -4,6 +4,9 @@ const conclusions = document.getElementById('conclusions');
 const summary = document.getElementById('reportSummary');
 const generalCanvas = document.getElementById('generalChart');
 const percentCanvas = document.getElementById('percentChart');
+const bedsByDateBody = document.getElementById('bedsByDateBody');
+const bedsByDateText = document.getElementById('bedsByDate');
+const bedsDefaultInput = document.getElementById('bedsDefault');
 let generalChart = null;
 let percentChart = null;
 let lastData = null;
@@ -13,14 +16,96 @@ function params() {
     const start = document.getElementById('startDate').value;
     const end = document.getElementById('endDate').value;
     const curve = document.getElementById('curveId').value;
-    const bedsDefault = document.getElementById('bedsDefault').value;
-    const bedsByDate = document.getElementById('bedsByDate').value;
+    const bedsDefault = bedsDefaultInput.value;
+    const bedsByDate = serializeBedsByDate();
     if (start) p.set('start_date', start);
     if (end) p.set('end_date', end);
     if (curve) p.set('curve_id', curve);
     if (bedsDefault) p.set('beds_default', bedsDefault);
-    if (bedsByDate.trim()) p.set('beds_by_date', bedsByDate.trim());
+    if (Object.keys(bedsByDate).length) p.set('beds_by_date', JSON.stringify(bedsByDate));
     return p;
+}
+
+function parseLocalDate(value) {
+    if (!value) return null;
+    const parts = value.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function toIsoDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function toDisplayDate(iso) {
+    const d = parseLocalDate(iso);
+    if (!d) return iso;
+    return d.toLocaleDateString('es-CL', {day: '2-digit', month: '2-digit', year: 'numeric'});
+}
+
+function weekdayName(iso) {
+    const d = parseLocalDate(iso);
+    if (!d) return '';
+    return d.toLocaleDateString('es-CL', {weekday: 'long'});
+}
+
+function dateRangeIso(startIso, endIso) {
+    const start = parseLocalDate(startIso);
+    const end = parseLocalDate(endIso);
+    if (!start || !end || start > end) return [];
+    const dates = [];
+    const current = new Date(start);
+    while (current <= end) {
+        dates.push(toIsoDate(current));
+        current.setDate(current.getDate() + 1);
+    }
+    return dates;
+}
+
+function readExistingBeds() {
+    const values = {};
+    document.querySelectorAll('.bed-date-input').forEach(input => {
+        if (input.value !== '') values[input.dataset.date] = input.value;
+    });
+    return values;
+}
+
+function serializeBedsByDate() {
+    const values = {};
+    document.querySelectorAll('.bed-date-input').forEach(input => {
+        const raw = String(input.value || '').trim();
+        if (raw !== '') values[input.dataset.date] = Number(raw);
+    });
+    bedsByDateText.value = Object.keys(values).length ? JSON.stringify(values) : '';
+    return values;
+}
+
+function buildBedsTable(applyDefault = false) {
+    const dates = dateRangeIso(document.getElementById('startDate').value, document.getElementById('endDate').value);
+    if (!dates.length) {
+        bedsByDateBody.innerHTML = '<tr><td colspan="3" class="text-muted text-center py-3">Selecciona un rango válido Desde/Hasta.</td></tr>';
+        bedsByDateText.value = '';
+        return;
+    }
+    const existing = applyDefault ? {} : readExistingBeds();
+    const defaultValue = bedsDefaultInput.value || '';
+    bedsByDateBody.innerHTML = dates.map(iso => {
+        const value = applyDefault ? defaultValue : (existing[iso] ?? '');
+        return `<tr>
+            <td class="fw-semibold">${toDisplayDate(iso)}</td>
+            <td>
+                <input type="number" min="0" step="1" class="form-control form-control-sm bed-date-input" data-date="${iso}" value="${value}" placeholder="${defaultValue || '0'}">
+            </td>
+            <td class="text-muted text-capitalize">${weekdayName(iso)}</td>
+        </tr>`;
+    }).join('');
+    document.querySelectorAll('.bed-date-input').forEach(input => {
+        input.addEventListener('input', () => serializeBedsByDate());
+    });
+    serializeBedsByDate();
 }
 
 function num(value) {
@@ -222,7 +307,20 @@ async function load() {
 
 form.addEventListener('submit', event => {
     event.preventDefault();
-    load();
+    document.getElementById('btnBuildBedsTable').addEventListener('click', () => buildBedsTable(false));
+document.getElementById('btnApplyDefaultBeds').addEventListener('click', () => buildBedsTable(true));
+['startDate', 'endDate'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+        if (document.querySelector('.bed-date-input')) buildBedsTable(false);
+    });
+});
+bedsDefaultInput.addEventListener('change', () => {
+    document.querySelectorAll('.bed-date-input').forEach(input => {
+        if (!input.value) input.placeholder = bedsDefaultInput.value || '0';
+    });
+});
+
+load();
 });
 
 function ensureExportStatusBox() {
@@ -289,6 +387,19 @@ document.getElementById('btnExportOcupabilidad').addEventListener('click', async
         button.disabled = false;
         button.innerHTML = '<i class="bi bi-file-earmark-bar-graph"></i> Exportar Excel';
     }
+});
+
+document.getElementById('btnBuildBedsTable').addEventListener('click', () => buildBedsTable(false));
+document.getElementById('btnApplyDefaultBeds').addEventListener('click', () => buildBedsTable(true));
+['startDate', 'endDate'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+        if (document.querySelector('.bed-date-input')) buildBedsTable(false);
+    });
+});
+bedsDefaultInput.addEventListener('change', () => {
+    document.querySelectorAll('.bed-date-input').forEach(input => {
+        if (!input.value) input.placeholder = bedsDefaultInput.value || '0';
+    });
 });
 
 load();

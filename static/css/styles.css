@@ -674,3 +674,27 @@ body{
 .occupancy-table .gerencia-col {
     min-width: 230px;
 }
+
+/* Camas habilitadas por día - reporte de ocupabilidad */
+.beds-by-date-wrapper {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid rgba(180, 35, 24, .18);
+    border-radius: .45rem;
+}
+.beds-by-date-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #b42318 !important;
+    color: #fff !important;
+    border-color: #8f1510 !important;
+}
+.beds-by-date-table td,
+.beds-by-date-table th {
+    border-color: rgba(143, 21, 16, .25) !important;
+}
+.beds-by-date-table .bed-date-input {
+    max-width: 160px;
+    font-weight: 700;
+}
