@@ -1,4 +1,5 @@
 
+import csv
 import hashlib
 import json
 import os
@@ -9,19 +10,19 @@ import unicodedata
 from collections import defaultdict
 from difflib import SequenceMatcher
 from datetime import date, datetime, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import pandas as pd
 import xlsxwriter
 from xlsxwriter.utility import xl_rowcol_to_cell
 from dotenv import load_dotenv
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, send_file, stream_with_context, url_for
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 load_dotenv()
 db = SQLAlchemy()
@@ -1611,6 +1612,102 @@ def format_export_filename(export_mode):
     return f'dotacion_gerencia_{stamp}.xlsx'
 
 
+def csv_row(values):
+    """Convierte una lista de valores en una línea CSV compatible con Excel."""
+    output = StringIO()
+    writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL, lineterminator='\n')
+    writer.writerow(['' if value is None else value for value in values])
+    return output.getvalue()
+
+
+def iter_censos_acumulados_csv(start_date=None, end_date=None, batch_size=3000):
+    """
+    Exportación liviana de censos acumulados.
+    No genera Excel en memoria: envía CSV por streaming y usa IDs corregidos contra curva.
+    """
+    headers = [
+        'Modulo', 'Lugar', 'Habitacion', 'Empresa', 'Id', 'Cama', 'Inicio', 'Termino', 'Dia',
+        'Camas Ocupdas', 'Turno', 'Gerencia', 'CO MEL', 'AREA', 'SEXO', 'JORNADA', 'Rut', 'PAB', 'ESTADO'
+    ]
+
+    # BOM UTF-8 para que Excel abra bien acentos y ñ.
+    yield '\ufeff' + csv_row(headers)
+
+    last_date = None
+    last_id = 0
+
+    while True:
+        query = db.session.query(
+            CensoRecord.id.label('record_id'),
+            Censo.fecha_censo.label('fecha_censo'),
+            CensoRecord.modulo.label('modulo'),
+            CensoRecord.lugar.label('lugar'),
+            CensoRecord.habitacion.label('habitacion'),
+            CensoRecord.empresa.label('empresa_censo'),
+            CensoRecord.solicitud_id.label('id_censo'),
+            CensoRecord.cama.label('cama'),
+            CensoRecord.dia.label('dia_original'),
+            CensoRecord.camas_ocupadas.label('camas_ocupadas'),
+            CensoRecord.turno.label('turno'),
+            CensoRecord.gerencia_censo.label('gerencia_censo'),
+            CensoRecord.area.label('area_censo'),
+            CensoRecord.rut.label('rut'),
+            CensoRecord.estado.label('estado'),
+            CurvaItem.solicitud_id.label('id_curva'),
+            CurvaItem.gerencia.label('gerencia_curva'),
+            CurvaItem.area.label('area_curva'),
+            CurvaItem.empresa.label('empresa_curva'),
+        ).join(
+            Censo, Censo.id == CensoRecord.censo_id
+        ).outerjoin(
+            CurvaItem, CurvaItem.id == CensoRecord.curva_item_id
+        )
+
+        if start_date:
+            query = query.filter(Censo.fecha_censo >= start_date)
+        if end_date:
+            query = query.filter(Censo.fecha_censo <= end_date)
+        if last_date is not None:
+            query = query.filter(or_(
+                Censo.fecha_censo > last_date,
+                and_(Censo.fecha_censo == last_date, CensoRecord.id > last_id)
+            ))
+
+        batch = query.order_by(Censo.fecha_censo.asc(), CensoRecord.id.asc()).limit(batch_size).all()
+        if not batch:
+            break
+
+        for row in batch:
+            corrected_id = row.id_curva or row.id_censo or ''
+            fecha_text = row.fecha_censo.strftime('%Y-%m-%d') if row.fecha_censo else (row.dia_original or '')
+            yield csv_row([
+                row.modulo or '',
+                row.lugar or '',
+                row.habitacion or '',
+                row.empresa_curva or row.empresa_censo or '',
+                corrected_id,
+                row.cama or '',
+                '',
+                '',
+                fecha_text,
+                float(row.camas_ocupadas or 0),
+                row.turno or '',
+                row.gerencia_curva or row.gerencia_censo or '',
+                '',
+                row.area_curva or row.area_censo or '',
+                '',
+                '',
+                row.rut or '',
+                '',
+                row.estado or '',
+            ])
+            last_date = row.fecha_censo
+            last_id = row.record_id
+
+        # Libera objetos ORM entre lotes para bajar memoria durante exports grandes.
+        db.session.expunge_all()
+
+
 def write_dotacion_gerencia_sheet(workbook, data, progress_callback=None):
     """Escribe una hoja gerencial con tabla y dos gráficos de líneas profesionales."""
     if progress_callback:
@@ -2767,6 +2864,25 @@ def register_routes(app):
             'page_url': url_for('export_job_page', job_id=job.id),
         }), 202
 
+    @app.get('/api/reports/dotacion-gerencia/export/censos-csv')
+    def report_export_censos_csv():
+        """Descarga directa y liviana de censos acumulados como CSV, con IDs corregidos."""
+        start = parse_arg('start_date')
+        end = parse_arg('end_date')
+        start, end = resolve_report_dates(start, end)
+        start_text = start.strftime('%Y%m%d') if start else 'inicio'
+        end_text = end.strftime('%Y%m%d') if end else 'fin'
+        filename = f'censos_acumulados_{start_text}_{end_text}.csv'
+        headers = {
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Cache-Control': 'no-store',
+        }
+        return Response(
+            stream_with_context(iter_censos_acumulados_csv(start, end)),
+            mimetype='text/csv; charset=utf-8',
+            headers=headers,
+        )
+
     @app.get('/exports/<int:job_id>')
     def export_job_page(job_id):
         job = ExportJob.query.get_or_404(job_id)
@@ -2800,7 +2916,10 @@ def register_routes(app):
 
     @app.route('/api/reports/dotacion-gerencia/export')
     def report_export():
-        # Compatibilidad con botones/enlaces antiguos o cacheados: inicia el job y muestra pantalla de progreso.
+        # Compatibilidad con botones/enlaces antiguos o cacheados.
+        export_mode = (request.args.get('export_mode') or request.args.get('mode') or 'gerencia').strip().lower()
+        if export_mode == 'censos':
+            return redirect(url_for('report_export_censos_csv', **request.args.to_dict()), code=303)
         job = create_report_export_job_from_payload(request.args.to_dict())
         return redirect(url_for('export_job_page', job_id=job.id), code=303)
 

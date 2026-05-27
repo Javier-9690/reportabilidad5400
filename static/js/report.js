@@ -332,7 +332,7 @@ function setExportStatus(message, type = 'info') {
 
 function buttonText(mode) {
     return mode === 'censos'
-        ? '<i class="bi bi-file-earmark-spreadsheet"></i> Exportar censos acumulados'
+        ? '<i class="bi bi-filetype-csv"></i> Exportar censos CSV'
         : '<i class="bi bi-file-earmark-bar-graph"></i> Exportar reporte gerencia';
 }
 
@@ -394,7 +394,16 @@ document.getElementById('btnExportGerencia').addEventListener('click', () => {
 });
 
 document.getElementById('btnExportCensos').addEventListener('click', () => {
-    startExport('censos', document.getElementById('btnExportCensos'));
+    const button = document.getElementById('btnExportCensos');
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Descargando CSV...';
+    setExportStatus('<i class="bi bi-lightning-charge"></i> Generando descarga liviana en CSV. Solo se exporta la data del rango seleccionado con IDs corregidos.', 'info');
+    const p = params();
+    window.location.href = `/api/reports/dotacion-gerencia/export/censos-csv?${p.toString()}`;
+    setTimeout(() => {
+        button.disabled = false;
+        button.innerHTML = buttonText('censos');
+    }, 4000);
 });
 
 load();

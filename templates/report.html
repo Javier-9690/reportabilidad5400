@@ -15,7 +15,7 @@
                 <i class="bi bi-file-earmark-bar-graph"></i> Exportar reporte gerencia
             </button>
             <button id="btnExportCensos" class="btn btn-sm btn-outline-success report-export-btn">
-                <i class="bi bi-file-earmark-spreadsheet"></i> Exportar censos acumulados
+                <i class="bi bi-filetype-csv"></i> Exportar censos CSV
             </button>
         </div>
     </div>
@@ -100,5 +100,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/report.js') }}?v=20260527_gerencia_chart_excel_fix"></script>
+<script src="{{ url_for('static', filename='js/report.js') }}?v=20260527_censos_csv_fast_fix"></script>
 {% endblock %}
