@@ -2873,6 +2873,8 @@ def build_report_export_job(app, job_id):
                 job.filename = job.filename or format_ocupabilidad_filename()
             elif job.job_type.startswith('area_report'):
                 kind = params.get('kind') or job.job_type.replace('area_report_', '') or 'egp'
+                if not start or not end:
+                    raise ValueError('Exportación cancelada: debes indicar Desde y Hasta. El Excel de EGP/F&A solo usa el rango solicitado, no el histórico completo.')
                 data = area_report_data(kind, start, end, curve_id)
                 content = area_report_xlsx(data, progress_callback=progress)
                 job.filename = job.filename or format_area_report_filename(kind)
@@ -3408,8 +3410,27 @@ def register_routes(app):
         if kind not in {'egp', 'fa'}:
             return jsonify({'error': 'Reporte no soportado'}), 404
         payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
-        params = {'kind': kind, 'start_date': (payload.get('start_date') or '').strip(), 'end_date': (payload.get('end_date') or '').strip(), 'curve_id': (payload.get('curve_id') or '').strip()}
-        job = ExportJob(job_type=f'area_report_{kind}', status='pending', message=f'Exportación {kind.upper()} en cola...', params_json=json.dumps(params), filename=format_area_report_filename(kind))
+        params = {
+            'kind': kind,
+            'start_date': (payload.get('start_date') or '').strip(),
+            'end_date': (payload.get('end_date') or '').strip(),
+            'curve_id': (payload.get('curve_id') or '').strip(),
+        }
+        # Seguridad operacional: estos reportes nunca deben exportarse con
+        # rango implícito histórico. Si no viene Desde/Hasta, se detiene la
+        # exportación para evitar enviar información fuera del rango solicitado.
+        if not params['start_date'] or not params['end_date']:
+            return jsonify({
+                'ok': False,
+                'error': 'Debes indicar Desde y Hasta antes de exportar. El Excel solo se genera con el rango seleccionado.'
+            }), 400
+        job = ExportJob(
+            job_type=f'area_report_{kind}',
+            status='pending',
+            message=f'Exportación {kind.upper()} en cola...',
+            params_json=json.dumps(params),
+            filename=format_area_report_filename(kind),
+        )
         db.session.add(job); db.session.commit()
         thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True); thread.start()
         return jsonify({'ok': True, 'job_id': job.id, 'status_url': url_for('export_job_status', job_id=job.id), 'download_url': url_for('export_job_download', job_id=job.id), 'page_url': url_for('export_job_page', job_id=job.id)}), 202
@@ -3418,8 +3439,22 @@ def register_routes(app):
     def area_report_export_redirect(kind):
         if kind not in {'egp', 'fa'}:
             return jsonify({'error': 'Reporte no soportado'}), 404
-        params = {'kind': kind, 'start_date': (request.args.get('start_date') or '').strip(), 'end_date': (request.args.get('end_date') or '').strip(), 'curve_id': (request.args.get('curve_id') or '').strip()}
-        job = ExportJob(job_type=f'area_report_{kind}', status='pending', message=f'Exportación {kind.upper()} en cola...', params_json=json.dumps(params), filename=format_area_report_filename(kind))
+        params = {
+            'kind': kind,
+            'start_date': (request.args.get('start_date') or '').strip(),
+            'end_date': (request.args.get('end_date') or '').strip(),
+            'curve_id': (request.args.get('curve_id') or '').strip(),
+        }
+        if not params['start_date'] or not params['end_date']:
+            flash('Debes indicar Desde y Hasta antes de exportar. El Excel no se genera con rango histórico automático.', 'warning')
+            return redirect(url_for('egp_report_page' if kind == 'egp' else 'fa_report_page'))
+        job = ExportJob(
+            job_type=f'area_report_{kind}',
+            status='pending',
+            message=f'Exportación {kind.upper()} en cola...',
+            params_json=json.dumps(params),
+            filename=format_area_report_filename(kind),
+        )
         db.session.add(job); db.session.commit()
         thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True); thread.start()
         return redirect(url_for('export_job_page', job_id=job.id))

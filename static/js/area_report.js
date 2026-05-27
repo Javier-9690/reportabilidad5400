@@ -25,7 +25,26 @@ function getParams() {
     return params;
 }
 
+function hydrateFiltersFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const start = params.get('start_date') || '';
+    const end = params.get('end_date') || '';
+    const curve = params.get('curve_id') || '';
+    if (start) document.getElementById('startDate').value = start;
+    if (end) document.getElementById('endDate').value = end;
+    if (curve) document.getElementById('curveId').value = curve;
+}
+
+function syncUrlWithFilters() {
+    const params = getParams();
+    const qs = params.toString();
+    const nextUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState({}, '', nextUrl);
+}
+
 function setDefaultDates(data) {
+    // Solo rellena fechas si el usuario no eligió rango. Esto evita que el exportador
+    // use por error el histórico completo después de haber filtrado manualmente.
     if (data.start_date && !document.getElementById('startDate').value) document.getElementById('startDate').value = data.start_date;
     if (data.end_date && !document.getElementById('endDate').value) document.getElementById('endDate').value = data.end_date;
 }
@@ -131,6 +150,7 @@ async function loadReport() {
     const data = await resp.json();
     areaData = data;
     setDefaultDates(data);
+    syncUrlWithFilters();
     renderSummary(data);
     renderConclusions(data);
     renderCharts(data);
@@ -141,9 +161,22 @@ async function loadReport() {
 document.getElementById('filterForm').addEventListener('submit', e => { e.preventDefault(); loadReport(); });
 document.getElementById('btnExportArea').addEventListener('click', async () => {
     const params = Object.fromEntries(getParams().entries());
-    const resp = await fetch(`/api/reports/${reportKind}/export/start`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(params) });
+    if (!params.start_date || !params.end_date) {
+        alert('Indica Desde y Hasta antes de exportar. El Excel se generará solo con ese rango.');
+        return;
+    }
+    const resp = await fetch(`/api/reports/${reportKind}/export/start`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params)
+    });
     const data = await resp.json();
+    if (!resp.ok || data.ok === false) {
+        alert(data.error || 'No se pudo iniciar la exportación.');
+        return;
+    }
     if (data.page_url) window.location.href = data.page_url;
 });
 
+hydrateFiltersFromUrl();
 loadReport();
