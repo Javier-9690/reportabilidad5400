@@ -2871,6 +2871,11 @@ def build_report_export_job(app, job_id):
                 data = occupancy_report_data(start, end, curve_id, beds_default, beds_map)
                 content = occupancy_xlsx_fast(data, progress_callback=progress)
                 job.filename = job.filename or format_ocupabilidad_filename()
+            elif job.job_type.startswith('area_report'):
+                kind = params.get('kind') or job.job_type.replace('area_report_', '') or 'egp'
+                data = area_report_data(kind, start, end, curve_id)
+                content = area_report_xlsx(data, progress_callback=progress)
+                job.filename = job.filename or format_area_report_filename(kind)
             else:
                 data = report_data(start, end, curve_id)
                 content = report_xlsx_fast(data, progress_callback=progress)
@@ -2890,6 +2895,293 @@ def build_report_export_job(app, job_id):
                 job.message = f'Error al generar Excel: {exc}'
                 job.completed_at = now_utc()
                 db.session.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reportes por área/proyecto: EGP y F&A
+# ─────────────────────────────────────────────────────────────────────────────
+
+def area_report_config(kind):
+    kind = (kind or '').lower().strip()
+    if kind in {'fa', 'fya', 'f&a'}:
+        return {
+            'kind': 'fa',
+            'title': 'F&A',
+            'long_title': 'Reporte alojamiento F&A',
+            'subtitle': 'IDs asociados a F&A, con planificación por curva, reservas y censo.',
+            'patterns': ['%F&A%', '%F & A%', '%Fast%Agile%', '%Fast&Agile%', '%Fast and Agile%', '%Fast y Agile%'],
+        }
+    return {
+        'kind': 'egp',
+        'title': 'EGP',
+        'long_title': 'Reporte alojamiento EGP',
+        'subtitle': 'IDs asociados a Escondida Growth Program, con planificación por curva, reservas y censo.',
+        'patterns': ['%EGP%', '%Escondida Growth Program%', '%Growth Program%'],
+    }
+
+
+def area_report_filter(kind):
+    cfg = area_report_config(kind)
+    conditions = [CurvaItem.area.ilike(pattern) for pattern in cfg['patterns']]
+    if cfg['kind'] == 'egp':
+        conditions.extend([CurvaItem.empresa.ilike('%EGP%'), CurvaItem.camp.ilike('%EGP%')])
+    else:
+        conditions.extend([CurvaItem.empresa.ilike('%F&A%'), CurvaItem.camp.ilike('%F&A%')])
+    return or_(*conditions)
+
+
+def area_report_data(kind, start=None, end=None, curve_id=None):
+    cfg = area_report_config(kind)
+    if not start or not end:
+        minmax = db.session.query(func.min(Censo.fecha_censo), func.max(Censo.fecha_censo)).one()
+        start = start or minmax[0]
+        end = end or minmax[1]
+    if not start or not end:
+        return {
+            'kind': cfg['kind'], 'title': cfg['title'], 'long_title': cfg['long_title'], 'subtitle': cfg['subtitle'],
+            'start_date': '', 'end_date': '', 'dates': [], 'date_labels': [], 'rows': [],
+            'totals': {}, 'conclusions': ['No hay censos importados para generar el reporte.'], 'curve': None,
+        }
+
+    dates = list(date_span(start, end))
+    curve = CurvaVersion.query.get(curve_id) if curve_id else CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
+    if not curve:
+        return {
+            'kind': cfg['kind'], 'title': cfg['title'], 'long_title': cfg['long_title'], 'subtitle': cfg['subtitle'],
+            'start_date': start.isoformat(), 'end_date': end.isoformat(), 'dates': [d.isoformat() for d in dates],
+            'date_labels': [d.strftime('%d/%m/%y') for d in dates], 'rows': [], 'totals': {},
+            'conclusions': ['No existe una curva activa. Importa una curva o selecciona una versión.'], 'curve': None,
+        }
+
+    items = CurvaItem.query.filter(
+        CurvaItem.curva_version_id == curve.id,
+        area_report_filter(cfg['kind']),
+    ).order_by(CurvaItem.solicitud_id.asc()).all()
+    item_ids = [i.id for i in items]
+    date_index = {d: idx for idx, d in enumerate(dates)}
+
+    planned = {i.id: [0.0 for _ in dates] for i in items}
+    reservas = {i.id: [0.0 for _ in dates] for i in items}
+    censo = {i.id: [0.0 for _ in dates] for i in items}
+
+    if item_ids:
+        rows_plan = db.session.query(
+            CurvaDailyValue.curva_item_id,
+            CurvaDailyValue.fecha,
+            func.sum(CurvaDailyValue.dotacion_planificada),
+        ).filter(
+            CurvaDailyValue.curva_item_id.in_(item_ids),
+            CurvaDailyValue.fecha >= start,
+            CurvaDailyValue.fecha <= end,
+        ).group_by(CurvaDailyValue.curva_item_id, CurvaDailyValue.fecha).all()
+        for item_id, d, value in rows_plan:
+            if d in date_index:
+                planned[item_id][date_index[d]] = float(value or 0)
+
+        rows_censo = db.session.query(
+            CensoRecord.curva_item_id,
+            Censo.fecha_censo,
+            func.count(CensoRecord.id),
+            func.sum(CensoRecord.camas_ocupadas),
+        ).join(Censo, Censo.id == CensoRecord.censo_id).filter(
+            CensoRecord.curva_item_id.in_(item_ids),
+            Censo.fecha_censo >= start,
+            Censo.fecha_censo <= end,
+            CensoRecord.solicitud_id.isnot(None),
+            CensoRecord.solicitud_id != '',
+        ).group_by(CensoRecord.curva_item_id, Censo.fecha_censo).all()
+        for item_id, d, reserve_count, occupied_count in rows_censo:
+            if d in date_index:
+                reservas[item_id][date_index[d]] = float(reserve_count or 0)
+                censo[item_id][date_index[d]] = float(occupied_count or 0)
+
+    rows = []
+    totals_plan = [0.0 for _ in dates]
+    totals_res = [0.0 for _ in dates]
+    totals_censo = [0.0 for _ in dates]
+
+    for item in items:
+        pvals = planned.get(item.id, [0.0 for _ in dates])
+        rvals = reservas.get(item.id, [0.0 for _ in dates])
+        cvals = censo.get(item.id, [0.0 for _ in dates])
+        for idx in range(len(dates)):
+            totals_plan[idx] += pvals[idx]
+            totals_res[idx] += rvals[idx]
+            totals_censo[idx] += cvals[idx]
+        total_plan = sum(pvals)
+        total_res = sum(rvals)
+        total_censo = sum(cvals)
+        rows.append({
+            'id': item.solicitud_id,
+            'empresa': item.empresa or '',
+            'area': item.area or '',
+            'turno': item.turno or '',
+            'tipo_contrato': item.tipo_contrato or '',
+            'formato': item.formato or '',
+            'camp': item.camp or '',
+            'planned_values': pvals,
+            'reservation_values': rvals,
+            'census_values': cvals,
+            'total_plan': total_plan,
+            'total_reservas': total_res,
+            'total_censo': total_censo,
+            'no_show_reservas': total_res - total_censo,
+            'cumplimiento': (total_censo / total_plan * 100) if total_plan else None,
+        })
+
+    totals_no_show = [totals_res[i] - totals_censo[i] for i in range(len(dates))]
+    grand_plan = sum(totals_plan)
+    grand_res = sum(totals_res)
+    grand_censo = sum(totals_censo)
+    grand_no_show = grand_res - grand_censo
+    cumplimiento = (grand_censo / grand_plan * 100) if grand_plan else 0
+    eficiencia = (grand_censo / grand_res * 100) if grand_res else 0
+
+    conclusions = [
+        f"{cfg['title']}: {len(items)} ID(s) identificados en la curva {curve.name}.",
+        f"Planificación acumulada: {grand_plan:.0f}. Reservas acumuladas: {grand_res:.0f}. Censo acumulado: {grand_censo:.0f}.",
+        f"No show de reservas acumulado: {grand_no_show:.0f}. Eficiencia censo/reserva: {eficiencia:.1f}%.",
+    ]
+    if grand_plan:
+        conclusions.append(f"Cumplimiento del censo contra curva: {cumplimiento:.1f}%.")
+    if dates and totals_censo:
+        idx_max = max(range(len(totals_censo)), key=lambda idx: totals_censo[idx])
+        conclusions.append(f"Día con mayor censo: {dates[idx_max].strftime('%d/%m/%Y')} ({totals_censo[idx_max]:.0f}).")
+    if rows:
+        top = max(rows, key=lambda r: r['total_censo'])
+        conclusions.append(f"ID con mayor censo acumulado: {top['id']} - {top['empresa']} ({top['total_censo']:.0f}).")
+
+    return {
+        'kind': cfg['kind'], 'title': cfg['title'], 'long_title': cfg['long_title'], 'subtitle': cfg['subtitle'],
+        'start_date': start.isoformat(), 'end_date': end.isoformat(),
+        'dates': [d.isoformat() for d in dates],
+        'date_labels': [d.strftime('%d/%m/%y') for d in dates],
+        'rows': rows,
+        'totals': {
+            'plan': totals_plan, 'reservas': totals_res, 'censo': totals_censo,
+            'no_show_reservas': totals_no_show, 'grand_plan': grand_plan,
+            'grand_reservas': grand_res, 'grand_censo': grand_censo,
+            'grand_no_show_reservas': grand_no_show, 'cumplimiento': cumplimiento,
+            'eficiencia': eficiencia,
+        },
+        'conclusions': conclusions,
+        'curve': {'id': curve.id, 'name': curve.name},
+    }
+
+
+def format_area_report_filename(kind):
+    cfg = area_report_config(kind)
+    return f"reporte_{cfg['kind']}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+
+
+def area_report_xlsx(data, progress_callback=None):
+    if progress_callback:
+        progress_callback(f"Preparando Excel {data.get('title', '')}...")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    tmp_path = tmp.name
+    tmp.close()
+
+    dates = data.get('date_labels', [])
+    rows = data.get('rows', [])
+    totals = data.get('totals', {})
+    title = data.get('long_title') or data.get('title') or 'Reporte'
+
+    workbook = xlsxwriter.Workbook(tmp_path, {'constant_memory': True})
+    ws = workbook.add_worksheet('Reporte')
+    data_ws = workbook.add_worksheet('_Datos Graficos')
+    data_ws.hide()
+
+    red = '#B42318'; red_dark = '#7A1712'; yellow = '#FFF200'; gray = '#F2F4F7'; border = '#7A1712'
+    fmt_title = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': red, 'font_size': 16, 'align': 'center', 'valign': 'vcenter'})
+    fmt_sub = workbook.add_format({'bold': True, 'font_color': '#111111', 'bg_color': gray, 'font_size': 9})
+    fmt_head = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': red, 'border': 1, 'border_color': border, 'align': 'center', 'valign': 'vcenter'})
+    fmt_section = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': red_dark, 'border': 1, 'border_color': border, 'align': 'left'})
+    fmt_date = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': red, 'border': 1, 'border_color': border, 'align': 'center', 'valign': 'vcenter', 'rotation': 90})
+    fmt_text = workbook.add_format({'border': 1, 'border_color': border, 'font_size': 8, 'valign': 'vcenter'})
+    fmt_num = workbook.add_format({'border': 1, 'border_color': border, 'font_size': 8, 'num_format': '0', 'align': 'center'})
+    fmt_total = workbook.add_format({'bold': True, 'border': 1, 'border_color': border, 'bg_color': yellow, 'font_size': 8, 'num_format': '0', 'align': 'center'})
+    fmt_total_label = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': red, 'border': 1, 'border_color': border, 'font_size': 8})
+    fmt_kpi_label = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': red_dark, 'border': 1, 'border_color': border, 'align': 'center'})
+    fmt_kpi_val = workbook.add_format({'bold': True, 'bg_color': '#FFFFFF', 'border': 1, 'border_color': border, 'num_format': '#,##0', 'align': 'center'})
+    fmt_pct = workbook.add_format({'bold': True, 'bg_color': '#FFFFFF', 'border': 1, 'border_color': border, 'num_format': '0.0%', 'align': 'center'})
+
+    last_col = 7 + len(dates)
+    ws.merge_range(0, 0, 0, max(last_col, 12), title.upper(), fmt_title)
+    ws.write(1, 0, f"Período: {data.get('start_date','')} al {data.get('end_date','')}", fmt_sub)
+    ws.write(2, 0, f"Curva: {(data.get('curve') or {}).get('name','Sin curva')}", fmt_sub)
+    ws.write(3, 0, data.get('subtitle', ''), fmt_sub)
+
+    kpis = [
+        ('Plan acumulado', totals.get('grand_plan', 0)), ('Reservas acumuladas', totals.get('grand_reservas', 0)),
+        ('Censo acumulado', totals.get('grand_censo', 0)), ('No show reservas', totals.get('grand_no_show_reservas', 0)),
+        ('Cumplimiento', (totals.get('cumplimiento', 0) or 0) / 100), ('Eficiencia', (totals.get('eficiencia', 0) or 0) / 100),
+    ]
+    ws.write_row(5, 0, [k[0] for k in kpis], fmt_kpi_label)
+    for idx, (_, val) in enumerate(kpis):
+        ws.write(6, idx, val, fmt_pct if idx >= 4 else fmt_kpi_val)
+
+    data_ws.write_row(0, 0, ['Fecha', 'Plan', 'Reservas', 'Censo', 'No show reservas'], fmt_head)
+    for idx, label in enumerate(dates, 1):
+        data_ws.write(idx, 0, label)
+        data_ws.write(idx, 1, (totals.get('plan') or [])[idx - 1] if idx - 1 < len(totals.get('plan') or []) else 0)
+        data_ws.write(idx, 2, (totals.get('reservas') or [])[idx - 1] if idx - 1 < len(totals.get('reservas') or []) else 0)
+        data_ws.write(idx, 3, (totals.get('censo') or [])[idx - 1] if idx - 1 < len(totals.get('censo') or []) else 0)
+        data_ws.write(idx, 4, (totals.get('no_show_reservas') or [])[idx - 1] if idx - 1 < len(totals.get('no_show_reservas') or []) else 0)
+
+    if dates:
+        chart = workbook.add_chart({'type': 'line'})
+        chart.set_title({'name': f"Resumen {data.get('title','')}: Curva, reservas y censo"})
+        for col, name, color in [(1, 'Plan', '#4472C4'), (2, 'Reservas', '#ED7D31'), (3, 'Censo', '#A5A5A5'), (4, 'No show reservas', '#FFC000')]:
+            chart.add_series({'name': name, 'categories': ['_Datos Graficos', 1, 0, len(dates), 0], 'values': ['_Datos Graficos', 1, col, len(dates), col], 'line': {'color': color, 'width': 2.25}, 'marker': {'type': 'circle', 'size': 4}})
+        chart.set_legend({'position': 'bottom'})
+        chart.set_y_axis({'major_gridlines': {'visible': True, 'line': {'color': '#D9D9D9'}}})
+        chart.set_size({'width': 850, 'height': 310})
+        ws.insert_chart(8, 0, chart)
+
+    def write_section(start_row, name, key, total_key):
+        ws.merge_range(start_row, 0, start_row, max(7 + len(dates), 12), name, fmt_section)
+        headers = ['ID', 'Empresa', 'Área', 'Turno', 'Tipo Contrato', 'Formato', 'Camp']
+        for col, h in enumerate(headers): ws.write(start_row + 1, col, h, fmt_head)
+        for idx, label in enumerate(dates): ws.write(start_row + 1, 7 + idx, label, fmt_date)
+        ws.write(start_row + 1, 7 + len(dates), 'TOTAL', fmt_head)
+        row_idx = start_row + 2
+        for item in rows:
+            for col, val in enumerate([item['id'], item['empresa'], item['area'], item['turno'], item['tipo_contrato'], item['formato'], item['camp']]): ws.write(row_idx, col, val, fmt_text)
+            vals = item.get(key) or []
+            for idx, val in enumerate(vals): ws.write(row_idx, 7 + idx, val, fmt_num)
+            ws.write(row_idx, 7 + len(dates), item.get(total_key, 0), fmt_total)
+            row_idx += 1
+        ws.write(row_idx, 0, f'TOTAL {name}', fmt_total_label)
+        for col in range(1, 7): ws.write(row_idx, col, '', fmt_total_label)
+        total_by_date = totals.get({'CURVA': 'plan', 'RESERVAS': 'reservas', 'CENSO': 'censo'}[name], [])
+        for idx, val in enumerate(total_by_date): ws.write(row_idx, 7 + idx, val, fmt_total)
+        ws.write(row_idx, 7 + len(dates), sum(total_by_date), fmt_total)
+        return row_idx + 3
+
+    row = 27 if dates else 9
+    row = write_section(row, 'CURVA', 'planned_values', 'total_plan')
+    row = write_section(row, 'RESERVAS', 'reservation_values', 'total_reservas')
+    row = write_section(row, 'CENSO', 'census_values', 'total_censo')
+
+    ws.merge_range(row, 0, row, 7, 'RESUMEN POR ID', fmt_section)
+    ws.write_row(row + 1, 0, ['ID', 'Empresa', 'Área', 'Total Plan', 'Total Reservas', 'Total Censo', 'No Show Reservas', 'Cumplimiento'], fmt_head)
+    for ridx, item in enumerate(rows, row + 2):
+        ws.write(ridx, 0, item['id'], fmt_text); ws.write(ridx, 1, item['empresa'], fmt_text); ws.write(ridx, 2, item['area'], fmt_text)
+        ws.write(ridx, 3, item['total_plan'], fmt_num); ws.write(ridx, 4, item['total_reservas'], fmt_num); ws.write(ridx, 5, item['total_censo'], fmt_num); ws.write(ridx, 6, item['no_show_reservas'], fmt_num)
+        ws.write(ridx, 7, '' if item.get('cumplimiento') is None else item['cumplimiento'] / 100, fmt_pct if item.get('cumplimiento') is not None else fmt_num)
+
+    row += len(rows) + 4
+    ws.merge_range(row, 0, row, 7, 'CONCLUSIONES', fmt_section)
+    for idx, conclusion in enumerate(data.get('conclusions') or [], row + 1): ws.write(idx, 0, f'• {conclusion}', fmt_text)
+
+    ws.freeze_panes(7, 7)
+    ws.set_column(0, 0, 14); ws.set_column(1, 1, 24); ws.set_column(2, 2, 42); ws.set_column(3, 6, 13); ws.set_column(7, 7 + len(dates), 5)
+    ws.set_landscape(); ws.fit_to_pages(1, 0); ws.set_margins(left=0.25, right=0.25, top=0.45, bottom=0.45)
+
+    workbook.close()
+    with open(tmp_path, 'rb') as fh: content = fh.read()
+    os.unlink(tmp_path)
+    return content
 
 def parse_arg(name):
     v=(request.args.get(name) or '').strip()
@@ -3095,6 +3387,42 @@ def register_routes(app):
     def censos_page():
         return render_template('censos.html', censos=Censo.query.order_by(Censo.fecha_censo.desc()).all())
 
+
+
+    @app.route('/reports/egp')
+    def egp_report_page():
+        return render_template('area_report.html', curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all(), kind='egp', title='EGP', subtitle='Escondida Growth Program')
+
+    @app.route('/reports/fa')
+    def fa_report_page():
+        return render_template('area_report.html', curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all(), kind='fa', title='F&A', subtitle='Fast & Agile / F&A')
+
+    @app.route('/api/reports/<kind>')
+    def area_report_api(kind):
+        if kind not in {'egp', 'fa'}:
+            return jsonify({'error': 'Reporte no soportado'}), 404
+        return jsonify(area_report_data(kind, parse_arg('start_date'), parse_arg('end_date'), request.args.get('curve_id', type=int)))
+
+    @app.post('/api/reports/<kind>/export/start')
+    def area_report_export_start(kind):
+        if kind not in {'egp', 'fa'}:
+            return jsonify({'error': 'Reporte no soportado'}), 404
+        payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
+        params = {'kind': kind, 'start_date': (payload.get('start_date') or '').strip(), 'end_date': (payload.get('end_date') or '').strip(), 'curve_id': (payload.get('curve_id') or '').strip()}
+        job = ExportJob(job_type=f'area_report_{kind}', status='pending', message=f'Exportación {kind.upper()} en cola...', params_json=json.dumps(params), filename=format_area_report_filename(kind))
+        db.session.add(job); db.session.commit()
+        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True); thread.start()
+        return jsonify({'ok': True, 'job_id': job.id, 'status_url': url_for('export_job_status', job_id=job.id), 'download_url': url_for('export_job_download', job_id=job.id), 'page_url': url_for('export_job_page', job_id=job.id)}), 202
+
+    @app.route('/api/reports/<kind>/export')
+    def area_report_export_redirect(kind):
+        if kind not in {'egp', 'fa'}:
+            return jsonify({'error': 'Reporte no soportado'}), 404
+        params = {'kind': kind, 'start_date': (request.args.get('start_date') or '').strip(), 'end_date': (request.args.get('end_date') or '').strip(), 'curve_id': (request.args.get('curve_id') or '').strip()}
+        job = ExportJob(job_type=f'area_report_{kind}', status='pending', message=f'Exportación {kind.upper()} en cola...', params_json=json.dumps(params), filename=format_area_report_filename(kind))
+        db.session.add(job); db.session.commit()
+        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True); thread.start()
+        return redirect(url_for('export_job_page', job_id=job.id))
 
     @app.route('/reports/ocupabilidad')
     def ocupabilidad_page():

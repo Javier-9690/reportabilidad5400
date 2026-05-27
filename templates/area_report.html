@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Reporte {{ title }}{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+{% block content %}
+<div class="report-page area-report-page" data-kind="{{ kind }}">
+    <div class="report-hero d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+        <div>
+            <div class="report-eyebrow"><i class="bi bi-diagram-3"></i> Reporte operativo</div>
+            <h4 class="mb-0">Reporte alojamiento {{ title }}</h4>
+            <small>{{ subtitle }}: planificación por curva, reservas y censo con detalle por ID.</small>
+        </div>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <button id="btnExportArea" class="btn btn-sm btn-success report-export-btn">
+                <i class="bi bi-file-earmark-bar-graph"></i> Exportar Excel
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3 report-filter-card">
+        <div class="card-body py-3">
+            <form id="filterForm" class="row g-2 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1">Desde</label>
+                    <input type="date" id="startDate" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1">Hasta</label>
+                    <input type="date" id="endDate" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label small mb-1">Curva</label>
+                    <select id="curveId" class="form-select form-select-sm">
+                        <option value="">Curva activa</option>
+                        {% for c in curves %}
+                        <option value="{{ c.id }}">{{ c.name }}{% if c.is_active %} (activa){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2">
+                    <button class="btn btn-sm btn-danger w-100" type="submit">
+                        <i class="bi bi-arrow-clockwise"></i> Generar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="reportSummary" class="row g-2 mb-3"></div>
+    <div id="conclusions" class="mb-3"></div>
+
+    <div class="card shadow-sm mb-3 report-chart-card">
+        <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+            <div>
+                <div class="fw-bold"><i class="bi bi-graph-up"></i> Curva, reservas y censo</div>
+                <small class="text-muted">Evolución diaria del rango seleccionado</small>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="report-chart-wrapper occupancy-chart-wrapper">
+                <canvas id="areaMainChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3 report-chart-card">
+        <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+            <div>
+                <div class="fw-bold"><i class="bi bi-bar-chart"></i> Top IDs por censo acumulado</div>
+                <small class="text-muted">IDs con mayor presencia en censo dentro del rango</small>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="report-chart-wrapper management-chart-wrapper">
+                <canvas id="areaTopChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header py-2 fw-bold text-primary-red"><i class="bi bi-list-check"></i> Resumen por ID</div>
+        <div class="table-responsive area-summary-wrapper">
+            <table class="table table-sm table-bordered report-table mb-0">
+                <thead id="summaryHead"></thead>
+                <tbody id="summaryBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="sectionsContainer" class="area-sections"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/area_report.js') }}?v=20260527_area_reports"></script>
+{% endblock %}
