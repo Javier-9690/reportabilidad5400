@@ -2932,28 +2932,67 @@ def area_report_filter(kind):
     return or_(*conditions)
 
 
+def empty_area_report_payload(cfg, start=None, end=None, message=None):
+    """Payload vacío para EGP/F&A cuando falta rango, curva o datos."""
+    start_label = start.isoformat() if start else ''
+    end_label = end.isoformat() if end else ''
+    return {
+        'kind': cfg['kind'],
+        'title': cfg['title'],
+        'long_title': cfg['long_title'],
+        'subtitle': cfg['subtitle'],
+        'start_date': start_label,
+        'end_date': end_label,
+        'dates': [],
+        'date_labels': [],
+        'rows': [],
+        'totals': {
+            'plan': [],
+            'reservas': [],
+            'censo': [],
+            'no_show_reservas': [],
+            'grand_plan': 0,
+            'grand_reservas': 0,
+            'grand_censo': 0,
+            'grand_no_show_reservas': 0,
+            'cumplimiento': 0,
+            'eficiencia': 0,
+        },
+        'conclusions': [message or 'Selecciona un rango Desde/Hasta para generar el reporte.'],
+        'curve': None,
+    }
+
+
 def area_report_data(kind, start=None, end=None, curve_id=None):
     cfg = area_report_config(kind)
+
+    # Regla operacional: los informes EGP/F&A no deben usar histórico implícito.
+    # Siempre deben generarse con el rango indicado por pantalla/exportación.
     if not start or not end:
-        minmax = db.session.query(func.min(Censo.fecha_censo), func.max(Censo.fecha_censo)).one()
-        start = start or minmax[0]
-        end = end or minmax[1]
-    if not start or not end:
-        return {
-            'kind': cfg['kind'], 'title': cfg['title'], 'long_title': cfg['long_title'], 'subtitle': cfg['subtitle'],
-            'start_date': '', 'end_date': '', 'dates': [], 'date_labels': [], 'rows': [],
-            'totals': {}, 'conclusions': ['No hay censos importados para generar el reporte.'], 'curve': None,
-        }
+        return empty_area_report_payload(
+            cfg,
+            start,
+            end,
+            'Selecciona Desde y Hasta. Este informe no se genera con histórico automático.'
+        )
+
+    if end < start:
+        start, end = end, start
 
     dates = list(date_span(start, end))
     curve = CurvaVersion.query.get(curve_id) if curve_id else CurvaVersion.query.filter_by(is_active=True).order_by(CurvaVersion.uploaded_at.desc()).first()
     if not curve:
-        return {
-            'kind': cfg['kind'], 'title': cfg['title'], 'long_title': cfg['long_title'], 'subtitle': cfg['subtitle'],
-            'start_date': start.isoformat(), 'end_date': end.isoformat(), 'dates': [d.isoformat() for d in dates],
-            'date_labels': [d.strftime('%d/%m/%y') for d in dates], 'rows': [], 'totals': {},
-            'conclusions': ['No existe una curva activa. Importa una curva o selecciona una versión.'], 'curve': None,
-        }
+        payload = empty_area_report_payload(
+            cfg,
+            start,
+            end,
+            'No existe una curva activa. Importa una curva o selecciona una versión.'
+        )
+        payload.update({
+            'dates': [d.isoformat() for d in dates],
+            'date_labels': [d.strftime('%d/%m/%y') for d in dates],
+        })
+        return payload
 
     items = CurvaItem.query.filter(
         CurvaItem.curva_version_id == curve.id,
@@ -3040,9 +3079,10 @@ def area_report_data(kind, start=None, end=None, curve_id=None):
     eficiencia = (grand_censo / grand_res * 100) if grand_res else 0
 
     conclusions = [
+        f"Rango exportado/visualizado: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')}.",
         f"{cfg['title']}: {len(items)} ID(s) identificados en la curva {curve.name}.",
-        f"Planificación acumulada: {grand_plan:.0f}. Reservas acumuladas: {grand_res:.0f}. Censo acumulado: {grand_censo:.0f}.",
-        f"No show de reservas acumulado: {grand_no_show:.0f}. Eficiencia censo/reserva: {eficiencia:.1f}%.",
+        f"Planificación acumulada del rango: {grand_plan:.0f}. Reservas del rango: {grand_res:.0f}. Censo del rango: {grand_censo:.0f}.",
+        f"No show de reservas del rango: {grand_no_show:.0f}. Eficiencia censo/reserva: {eficiencia:.1f}%.",
     ]
     if grand_plan:
         conclusions.append(f"Cumplimiento del censo contra curva: {cumplimiento:.1f}%.")
@@ -3069,7 +3109,6 @@ def area_report_data(kind, start=None, end=None, curve_id=None):
         'conclusions': conclusions,
         'curve': {'id': curve.id, 'name': curve.name},
     }
-
 
 def format_area_report_filename(kind):
     cfg = area_report_config(kind)
@@ -3186,8 +3225,10 @@ def area_report_xlsx(data, progress_callback=None):
     return content
 
 def parse_arg(name):
-    v=(request.args.get(name) or '').strip()
-    return datetime.strptime(v,'%Y-%m-%d').date() if v else None
+    v = (request.args.get(name) or '').strip()
+    if not v:
+        return None
+    return parse_date(v)
 
 
 def register_routes(app):
@@ -3410,20 +3451,23 @@ def register_routes(app):
         if kind not in {'egp', 'fa'}:
             return jsonify({'error': 'Reporte no soportado'}), 404
         payload = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict()
-        params = {
-            'kind': kind,
-            'start_date': (payload.get('start_date') or '').strip(),
-            'end_date': (payload.get('end_date') or '').strip(),
-            'curve_id': (payload.get('curve_id') or '').strip(),
-        }
-        # Seguridad operacional: estos reportes nunca deben exportarse con
-        # rango implícito histórico. Si no viene Desde/Hasta, se detiene la
-        # exportación para evitar enviar información fuera del rango solicitado.
-        if not params['start_date'] or not params['end_date']:
+        start_value = payload.get('start_date') or payload.get('startDate') or payload.get('desde') or payload.get('from')
+        end_value = payload.get('end_date') or payload.get('endDate') or payload.get('hasta') or payload.get('to')
+        start_parsed = parse_date(start_value)
+        end_parsed = parse_date(end_value)
+        if not start_parsed or not end_parsed:
             return jsonify({
                 'ok': False,
                 'error': 'Debes indicar Desde y Hasta antes de exportar. El Excel solo se genera con el rango seleccionado.'
             }), 400
+        if end_parsed < start_parsed:
+            start_parsed, end_parsed = end_parsed, start_parsed
+        params = {
+            'kind': kind,
+            'start_date': start_parsed.isoformat(),
+            'end_date': end_parsed.isoformat(),
+            'curve_id': (payload.get('curve_id') or payload.get('curveId') or '').strip(),
+        }
         job = ExportJob(
             job_type=f'area_report_{kind}',
             status='pending',
@@ -3439,15 +3483,19 @@ def register_routes(app):
     def area_report_export_redirect(kind):
         if kind not in {'egp', 'fa'}:
             return jsonify({'error': 'Reporte no soportado'}), 404
-        params = {
-            'kind': kind,
-            'start_date': (request.args.get('start_date') or '').strip(),
-            'end_date': (request.args.get('end_date') or '').strip(),
-            'curve_id': (request.args.get('curve_id') or '').strip(),
-        }
-        if not params['start_date'] or not params['end_date']:
+        start_parsed = parse_arg('start_date')
+        end_parsed = parse_arg('end_date')
+        if not start_parsed or not end_parsed:
             flash('Debes indicar Desde y Hasta antes de exportar. El Excel no se genera con rango histórico automático.', 'warning')
             return redirect(url_for('egp_report_page' if kind == 'egp' else 'fa_report_page'))
+        if end_parsed < start_parsed:
+            start_parsed, end_parsed = end_parsed, start_parsed
+        params = {
+            'kind': kind,
+            'start_date': start_parsed.isoformat(),
+            'end_date': end_parsed.isoformat(),
+            'curve_id': (request.args.get('curve_id') or '').strip(),
+        }
         job = ExportJob(
             job_type=f'area_report_{kind}',
             status='pending',

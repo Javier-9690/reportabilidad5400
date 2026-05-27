@@ -1,8 +1,7 @@
+const reportKind = document.querySelector('.area-report-page')?.dataset.kind || 'egp';
 let areaData = null;
 let mainChart = null;
 let topChart = null;
-const page = document.querySelector('.area-report-page');
-const reportKind = page ? page.dataset.kind : 'egp';
 
 function fmt(n) {
     const v = Number(n || 0);
@@ -42,17 +41,10 @@ function syncUrlWithFilters() {
     window.history.replaceState({}, '', nextUrl);
 }
 
-function setDefaultDates(data) {
-    // Solo rellena fechas si el usuario no eligió rango. Esto evita que el exportador
-    // use por error el histórico completo después de haber filtrado manualmente.
-    if (data.start_date && !document.getElementById('startDate').value) document.getElementById('startDate').value = data.start_date;
-    if (data.end_date && !document.getElementById('endDate').value) document.getElementById('endDate').value = data.end_date;
-}
-
 function renderSummary(data) {
     const totals = data.totals || {};
     const cards = [
-        ['IDs curva', data.rows.length, 'bi-diagram-3'],
+        ['IDs curva', (data.rows || []).length, 'bi-diagram-3'],
         ['Plan acumulado', fmt(totals.grand_plan), 'bi-clipboard-data'],
         ['Reservas acumuladas', fmt(totals.grand_reservas), 'bi-calendar-check'],
         ['Censo acumulado', fmt(totals.grand_censo), 'bi-house-check'],
@@ -82,7 +74,8 @@ function renderConclusions(data) {
 function destroyCharts() {
     if (mainChart) mainChart.destroy();
     if (topChart) topChart.destroy();
-    mainChart = null; topChart = null;
+    mainChart = null;
+    topChart = null;
 }
 
 function renderCharts(data) {
@@ -100,14 +93,28 @@ function renderCharts(data) {
                 { label: 'No show reservas', data: totals.no_show_reservas || [], borderWidth: 2.5, tension: 0.25, pointRadius: 3 },
             ]
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true } }
+        }
     });
 
     const top = [...(data.rows || [])].sort((a, b) => (b.total_censo || 0) - (a.total_censo || 0)).slice(0, 15);
     topChart = new Chart(document.getElementById('areaTopChart'), {
         type: 'bar',
-        data: { labels: top.map(r => r.id), datasets: [{ label: 'Censo acumulado', data: top.map(r => r.total_censo || 0), borderWidth: 1 }] },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+        data: {
+            labels: top.map(r => r.id),
+            datasets: [{ label: 'Censo acumulado', data: top.map(r => r.total_censo || 0), borderWidth: 1 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true } }
+        }
     });
 }
 
@@ -146,11 +153,10 @@ function renderSections(data) {
 
 async function loadReport() {
     const params = getParams();
+    syncUrlWithFilters();
     const resp = await fetch(`/api/reports/${reportKind}?${params.toString()}`);
     const data = await resp.json();
     areaData = data;
-    setDefaultDates(data);
-    syncUrlWithFilters();
     renderSummary(data);
     renderConclusions(data);
     renderCharts(data);
@@ -158,24 +164,26 @@ async function loadReport() {
     renderSections(data);
 }
 
-document.getElementById('filterForm').addEventListener('submit', e => { e.preventDefault(); loadReport(); });
-document.getElementById('btnExportArea').addEventListener('click', async () => {
-    const params = Object.fromEntries(getParams().entries());
-    if (!params.start_date || !params.end_date) {
+function exportCurrentRange() {
+    const params = getParams();
+    if (!params.get('start_date') || !params.get('end_date')) {
         alert('Indica Desde y Hasta antes de exportar. El Excel se generará solo con ese rango.');
         return;
     }
-    const resp = await fetch(`/api/reports/${reportKind}/export/start`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(params)
-    });
-    const data = await resp.json();
-    if (!resp.ok || data.ok === false) {
-        alert(data.error || 'No se pudo iniciar la exportación.');
-        return;
-    }
-    if (data.page_url) window.location.href = data.page_url;
+    syncUrlWithFilters();
+    window.location.href = `/api/reports/${reportKind}/export?${params.toString()}`;
+}
+
+document.getElementById('filterForm').addEventListener('submit', e => {
+    e.preventDefault();
+    loadReport();
+});
+
+document.getElementById('btnExportArea').addEventListener('click', exportCurrentRange);
+
+['startDate', 'endDate', 'curveId'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', syncUrlWithFilters);
 });
 
 hydrateFiltersFromUrl();
