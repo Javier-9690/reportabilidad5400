@@ -800,7 +800,51 @@ def report_xlsx(data):
         cell.border = thin_border
     detail.row_dimensions[1].height = 32
 
-    query = db.session.query(CensoRecord, Censo, UploadedFile, CurvaItem, CurvaVersion).join(
+    # IMPORTANTE:
+    # No consultamos el modelo UploadedFile completo porque incluye la columna binaria `content`.
+    # Si se selecciona el modelo completo, PostgreSQL replica el archivo original por cada registro
+    # del censo en el JOIN y Render puede responder 502 por memoria/tiempo.
+    # Por eso se seleccionan solo las columnas necesarias para el detalle.
+    query = db.session.query(
+        Censo.id.label('censo_id'),
+        Censo.fecha_censo.label('fecha_censo'),
+        Censo.sheet_name.label('censo_sheet_name'),
+        Censo.imported_at.label('censo_imported_at'),
+        Censo.total_records.label('censo_total_records'),
+        Censo.total_occupied.label('censo_total_occupied'),
+        Censo.matched_count.label('censo_matched_count'),
+        Censo.unmatched_count.label('censo_unmatched_count'),
+        UploadedFile.id.label('file_id'),
+        UploadedFile.filename.label('file_filename'),
+        UploadedFile.file_type.label('file_type'),
+        UploadedFile.size_bytes.label('file_size_bytes'),
+        UploadedFile.sha256.label('file_sha256'),
+        UploadedFile.uploaded_at.label('file_uploaded_at'),
+        CensoRecord.id.label('record_id'),
+        CensoRecord.solicitud_id.label('record_solicitud_id'),
+        CensoRecord.modulo.label('record_modulo'),
+        CensoRecord.lugar.label('record_lugar'),
+        CensoRecord.habitacion.label('record_habitacion'),
+        CensoRecord.empresa.label('record_empresa'),
+        CensoRecord.cama.label('record_cama'),
+        CensoRecord.dia.label('record_dia'),
+        CensoRecord.camas_ocupadas.label('record_camas_ocupadas'),
+        CensoRecord.turno.label('record_turno'),
+        CensoRecord.gerencia_censo.label('record_gerencia_censo'),
+        CensoRecord.area.label('record_area'),
+        CensoRecord.rut.label('record_rut'),
+        CensoRecord.estado.label('record_estado'),
+        CurvaItem.id.label('curva_item_id'),
+        CurvaItem.curva_version_id.label('curva_version_id'),
+        CurvaVersion.name.label('curva_version_name'),
+        CurvaItem.gerencia.label('curva_gerencia'),
+        CurvaItem.area.label('curva_area'),
+        CurvaItem.empresa.label('curva_empresa'),
+        CurvaItem.turno.label('curva_turno'),
+        CurvaItem.tipo_contrato.label('curva_tipo_contrato'),
+        CurvaItem.formato.label('curva_formato'),
+        CurvaItem.camp.label('curva_camp'),
+    ).select_from(CensoRecord).join(
         Censo, Censo.id == CensoRecord.censo_id
     ).join(
         UploadedFile, UploadedFile.id == Censo.file_id
@@ -813,54 +857,55 @@ def report_xlsx(data):
     )
 
     row_idx = 2
-    for record, censo, file_obj, item, version in query.yield_per(1000):
+    for row in query.yield_per(1000):
+        is_matched = bool(row.curva_item_id)
         values = [
-            censo.id,
-            censo.fecha_censo.strftime('%Y-%m-%d') if censo.fecha_censo else '',
-            censo.sheet_name or '',
-            censo.imported_at.strftime('%Y-%m-%d %H:%M:%S') if censo.imported_at else '',
-            censo.total_records,
-            censo.total_occupied,
-            censo.matched_count,
-            censo.unmatched_count,
-            file_obj.id if file_obj else '',
-            file_obj.filename if file_obj else '',
-            file_obj.file_type if file_obj else '',
-            file_obj.size_bytes if file_obj else '',
-            file_obj.sha256 if file_obj else '',
-            file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if file_obj and file_obj.uploaded_at else '',
-            record.id,
-            record.solicitud_id or '',
-            record.modulo or '',
-            record.lugar or '',
-            record.habitacion or '',
-            record.empresa or '',
-            record.cama or '',
-            record.dia or '',
-            record.camas_ocupadas,
-            record.turno or '',
-            record.gerencia_censo or '',
-            record.area or '',
-            record.rut or '',
-            record.estado or '',
-            item.id if item else '',
-            version.id if version else '',
-            version.name if version else '',
-            item.gerencia if item else '',
-            item.area if item else '',
-            item.empresa if item else '',
-            item.turno if item else '',
-            item.tipo_contrato if item else '',
-            item.formato if item else '',
-            item.camp if item else '',
-            'Cruzado' if item else 'Sin match',
+            row.censo_id,
+            row.fecha_censo.strftime('%Y-%m-%d') if row.fecha_censo else '',
+            row.censo_sheet_name or '',
+            row.censo_imported_at.strftime('%Y-%m-%d %H:%M:%S') if row.censo_imported_at else '',
+            row.censo_total_records,
+            row.censo_total_occupied,
+            row.censo_matched_count,
+            row.censo_unmatched_count,
+            row.file_id or '',
+            row.file_filename or '',
+            row.file_type or '',
+            row.file_size_bytes or '',
+            row.file_sha256 or '',
+            row.file_uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if row.file_uploaded_at else '',
+            row.record_id,
+            row.record_solicitud_id or '',
+            row.record_modulo or '',
+            row.record_lugar or '',
+            row.record_habitacion or '',
+            row.record_empresa or '',
+            row.record_cama or '',
+            row.record_dia or '',
+            row.record_camas_ocupadas,
+            row.record_turno or '',
+            row.record_gerencia_censo or '',
+            row.record_area or '',
+            row.record_rut or '',
+            row.record_estado or '',
+            row.curva_item_id or '',
+            row.curva_version_id or '',
+            row.curva_version_name or '',
+            row.curva_gerencia or '',
+            row.curva_area or '',
+            row.curva_empresa or '',
+            row.curva_turno or '',
+            row.curva_tipo_contrato or '',
+            row.curva_formato or '',
+            row.curva_camp or '',
+            'Cruzado' if is_matched else 'Sin match',
         ]
         for col_idx, value in enumerate(values, 1):
             cell = detail.cell(row_idx, col_idx, value)
             cell.alignment = Alignment(vertical='center')
             if col_idx == len(values):
-                cell.fill = fill(colors['green'] if item else colors['danger'])
-                cell.font = Font(bold=True, color=colors['green_text'] if item else colors['danger_text'])
+                cell.fill = fill(colors['green'] if is_matched else colors['danger'])
+                cell.font = Font(bold=True, color=colors['green_text'] if is_matched else colors['danger_text'])
         row_idx += 1
 
     detail.freeze_panes = 'A2'
