@@ -1,3 +1,179 @@
+:root{
+    --brand-red:#b42318;
+    --brand-red-dark:#7a0000;
+    --brand-red-strong:#ff0000;
+    --soft-red:#f8c9cd;
+    --brand-orange:#f58220;
+}
 
-:root{--brand-red:#b42318;--brand-red-strong:#ff0000;--soft-red:#f8c9cd}body{background:#f5f6f8}.app-navbar{background:linear-gradient(90deg,#7a0000,#b42318)}.text-primary-red{color:var(--brand-red)}.kpi-card{border-left-width:5px}.card{border-radius:.75rem}.report-table-wrapper{max-height:72vh;border:1px solid #111;background:white}.report-table{font-size:.76rem;white-space:nowrap}.report-table thead th{background:var(--brand-red-strong)!important;color:#fff;text-align:center;vertical-align:middle;border-color:#111!important}.report-table .date-header{height:86px;writing-mode:vertical-rl;transform:rotate(180deg);font-size:.7rem}.report-table tbody td{background:var(--soft-red);border-color:#111!important;text-align:center}.report-table tbody td:first-child{text-align:left;background:#fff;font-weight:700}.report-table .total-col{background:#ffff00!important;font-weight:700}.report-table .total-row td{background:var(--brand-red-strong)!important;color:#fff;font-weight:700}.report-table .total-row td.total-col{background:#ffff00!important;color:#111}.conclusion-card{border-left:5px solid var(--brand-red)}
-.no-match-table td{vertical-align:top}.no-match-table .border{border-color:#f0b4b4!important}.btn-icon{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center}
+body{
+    background:#f5f6f8;
+}
+
+.brand-header{
+    background:#000;
+    border-bottom:3px solid var(--brand-red);
+}
+
+.brand-header-inner{
+    min-height:82px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding-top:.45rem;
+    padding-bottom:.45rem;
+}
+
+.brand-logo-link{
+    display:inline-flex;
+    align-items:center;
+    text-decoration:none;
+}
+
+.brand-logo{
+    display:block;
+    object-fit:contain;
+    max-width:100%;
+}
+
+.brand-logo-aramark{
+    height:54px;
+    max-width:210px;
+}
+
+.brand-logo-escondida{
+    height:64px;
+    max-width:430px;
+}
+
+.brand-title{
+    align-items:center;
+    gap:.55rem;
+    color:#fff;
+    font-size:1.35rem;
+    font-weight:800;
+    letter-spacing:.03em;
+    text-transform:uppercase;
+}
+
+.brand-title i{
+    color:var(--brand-orange);
+}
+
+.app-navbar{
+    background:linear-gradient(90deg,var(--brand-red-dark),var(--brand-red));
+}
+
+.app-navbar .navbar-brand,
+.app-navbar .nav-link{
+    color:#fff!important;
+}
+
+.app-navbar .nav-link:hover,
+.app-navbar .nav-link:focus{
+    color:#ffd6d6!important;
+}
+
+.text-primary-red{
+    color:var(--brand-red);
+}
+
+.kpi-card{
+    border-left-width:5px;
+}
+
+.card{
+    border-radius:.75rem;
+}
+
+.report-table-wrapper{
+    max-height:72vh;
+    border:1px solid #111;
+    background:white;
+}
+
+.report-table{
+    font-size:.76rem;
+    white-space:nowrap;
+}
+
+.report-table thead th{
+    background:var(--brand-red-strong)!important;
+    color:#fff;
+    text-align:center;
+    vertical-align:middle;
+    border-color:#111!important;
+}
+
+.report-table .date-header{
+    height:86px;
+    writing-mode:vertical-rl;
+    transform:rotate(180deg);
+    font-size:.7rem;
+}
+
+.report-table tbody td{
+    background:var(--soft-red);
+    border-color:#111!important;
+    text-align:center;
+}
+
+.report-table tbody td:first-child{
+    text-align:left;
+    background:#fff;
+    font-weight:700;
+}
+
+.report-table .total-col{
+    background:#ffff00!important;
+    font-weight:700;
+}
+
+.report-table .total-row td{
+    background:var(--brand-red-strong)!important;
+    color:#fff;
+    font-weight:700;
+}
+
+.report-table .total-row td.total-col{
+    background:#ffff00!important;
+    color:#111;
+}
+
+.conclusion-card{
+    border-left:5px solid var(--brand-red);
+}
+
+.no-match-table td{
+    vertical-align:top;
+}
+
+.no-match-table .border{
+    border-color:#f0b4b4!important;
+}
+
+.btn-icon{
+    width:30px;
+    height:30px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+}
+
+@media (max-width: 767.98px){
+    .brand-header-inner{
+        min-height:64px;
+    }
+    .brand-logo-aramark{
+        height:38px;
+        max-width:145px;
+    }
+    .brand-logo-escondida{
+        height:44px;
+        max-width:210px;
+    }
+    .navbar-brand{
+        font-size:1rem;
+    }
+}
