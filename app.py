@@ -220,6 +220,11 @@ def as_number(value):
 
 
 def parse_date(value):
+    """Convierte fechas de Excel, HTML date input e informes a date.
+
+    Importante: los inputs HTML llegan como YYYY-MM-DD. No deben parsearse con
+    dayfirst=True porque fechas como 2026-06-08 pueden terminar como 06-08-2026.
+    """
     if value is None or value == "" or pd.isna(value):
         return None
     if isinstance(value, datetime):
@@ -228,7 +233,32 @@ def parse_date(value):
         return value
     if isinstance(value, (int, float)) and 20000 <= float(value) <= 60000:
         return (datetime(1899, 12, 30) + timedelta(days=float(value))).date()
-    parsed = pd.to_datetime(str(value), errors="coerce", dayfirst=True)
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    # Formato nativo de <input type="date"> y de los parámetros de la URL.
+    iso_match = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if iso_match:
+        y, m, d = map(int, iso_match.groups())
+        try:
+            return date(y, m, d)
+        except ValueError:
+            return None
+
+    # Formatos habituales de archivos/reportes chilenos: DD-MM-YYYY o DD/MM/YYYY.
+    local_match = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})", text)
+    if local_match:
+        d, m, y = map(int, local_match.groups())
+        if y < 100:
+            y += 2000
+        try:
+            return date(y, m, d)
+        except ValueError:
+            return None
+
+    parsed = pd.to_datetime(text, errors="coerce", dayfirst=True)
     return None if pd.isna(parsed) else parsed.date()
 
 
