@@ -552,3 +552,50 @@ body{
     width: 3rem;
     height: 3rem;
 }
+
+/* Ajuste final: reporte más limpio y presentable */
+.report-page .report-hero{
+    background:linear-gradient(90deg,#fff 0%,#fff5f4 55%,#fff8f0 100%);
+    border:1px solid #ead4d2;
+    border-left:7px solid #b42318;
+}
+.report-page .report-table-wrapper{
+    border:1px solid #d0d5dd;
+    border-radius:14px;
+    box-shadow:0 10px 28px rgba(16,24,40,.08)!important;
+}
+.report-page .report-table{
+    font-size:.76rem;
+}
+.report-page .report-table tbody td{
+    background:#fff7f7;
+    border-color:#e7b6b2!important;
+}
+.report-page .report-table .actual-cell.zero-cell{
+    background:#fff!important;
+    color:#a4a7ae;
+}
+.report-page .report-table tbody td.gerencia-col{
+    background:#fff!important;
+    color:#101828!important;
+}
+.report-page .report-table tbody tr:nth-child(even) td:not(.total-col):not(.plan-col):not(.diff-positive):not(.diff-negative):not(.cumpl-col){
+    background:#fffafa;
+}
+.report-page .report-table .report-main-title th{
+    letter-spacing:.12em;
+}
+.report-page .report-table .date-header{
+    min-width:38px;
+}
+.report-page .report-table .total-row td{
+    background:#b42318!important;
+}
+.report-page .report-table .total-col,
+.report-page .report-table .total-col-head{
+    background:#fff200!important;
+}
+.report-page .report-table .plan-col,
+.report-page .report-table .plan-col-head{
+    background:#e8f1ff!important;
+}
