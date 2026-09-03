@@ -1,4 +1,4 @@
-# Dotación Reportes 5400
+# Reportabilidad 5400 integrada
 
 Aplicación Flask preparada para Render.com + PostgreSQL.
 
@@ -13,6 +13,40 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 - Aplicar corrección automática o corrección manual por ID exacto de curva.
 - Generar reporte de dotación por gerencia.
 - Exportar reporte a Excel.
+- Acceder al módulo Gestión 5S desde la misma cabecera y el mismo dominio.
+- Registrar, importar, consultar, eliminar y exportar los 15 tipos de registros operacionales de Gestión 5S.
+- Consultar el dashboard KPI consolidado de Gestión 5S por fechas o semanas.
+
+## Gestión 5S integrada
+
+El sistema 5S se encuentra en estas rutas dentro de la aplicación principal:
+
+- `/gestion-5s/panel`: ingreso manual e importación Excel.
+- `/gestion-5s/registros`: consulta, eliminación y descarga CSV.
+- `/gestion-5s/dashboard`: indicadores y gráficos.
+
+Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
+los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
+sobrescribe información previa.
+
+### Migrar los registros del antiguo despliegue 5S
+
+Si los dos sistemas utilizaban bases PostgreSQL separadas, ejecuta una sola vez:
+
+```bash
+SOURCE_5S_DATABASE_URL="<base-antigua-5S>" \
+DATABASE_URL="<base-reportabilidad>" \
+python scripts/migrate_5s_database.py
+```
+
+La utilidad no borra información y cancela la operación si las tablas 5S del
+destino ya contienen registros, para evitar duplicados.
+
+## Pruebas
+
+```bash
+python -m unittest discover -v
+```
 
 ## Render
 

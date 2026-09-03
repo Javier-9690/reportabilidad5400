@@ -1,0 +1,576 @@
+{% extends "base.html" %}
+{% block title %}Sistema de Gestión 5400 - Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  .chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-container">
+  <h1 class="page-title">Dashboard de Operaciones</h1>
+
+  <!-- Filtros -->
+  <div class="filter-card">
+    <h5 class="mb-3"><i class="fas fa-filter me-2"></i>Filtros del Dashboard</h5>
+    <form method="get" action="{{ url_for('dashboard') }}">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Fecha Desde</label>
+          <input type="date" name="from" class="form-control" value="{{ d_from if d_from else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Fecha Hasta</label>
+          <input type="date" name="to" class="form-control" value="{{ d_to if d_to else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Semana Específica</label>
+          <select name="semana" class="form-select">
+            <option value="">-- Todas las semanas --</option>
+            {% for num, r in week_map.items()|sort %}
+              <option value="{{ num }}" {{ 'selected' if semana_sel==num }}>{{ num }} ({{ r[0] }} → {{ r[1] }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button class="btn btn-primary-custom w-100" type="submit">
+            <i class="fas fa-chart-line me-1"></i> Actualizar Dashboard
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if not have_data %}
+    <div class="alert alert-warning text-center py-4">
+      <i class="fas fa-chart-bar fa-2x mb-3"></i>
+      <h4>No hay datos disponibles</h4>
+      <p class="mb-0">No se encontraron datos para el rango o semana seleccionada.</p>
+    </div>
+  {% else %}
+    <!-- Tarjetas de Resumen - TODOS LOS MÓDULOS -->
+    <div class="row mb-4">
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-primary">
+          <i class="fas fa-users text-primary"></i>
+          <div class="number text-primary">{{ cards.censo_total }}</div>
+          <div class="label">Total Censo</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-warning">
+          <i class="fas fa-shield-alt text-warning"></i>
+          <div class="number text-warning">{{ cards.eventos_total }}</div>
+          <div class="label">Eventos</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-info">
+          <i class="fas fa-copy text-info"></i>
+          <div class="number text-info">{{ cards.duplicidades_total }}</div>
+          <div class="label">Duplicidades</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-success">
+          <i class="fas fa-poll text-success"></i>
+          <div class="number text-success">{{ cards.encuestas_total }}</div>
+          <div class="label">Encuestas</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-danger">
+          <i class="fas fa-headset text-danger"></i>
+          <div class="number text-danger">{{ cards.atencion_cant_total }}</div>
+          <div class="label">Atenciones</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-secondary">
+          <i class="fas fa-clock text-secondary"></i>
+          <div class="number text-secondary">{{ cards.atencion_tiempo_prom_global }}</div>
+          <div class="label">Tiempo Promedio</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Segunda fila de tarjetas -->
+    <div class="row mb-4">
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-primary">
+          <i class="fas fa-exclamation-triangle text-primary"></i>
+          <div class="number text-primary">{{ cards.robos_total }}</div>
+          <div class="label">Robos/Hurtos</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-warning">
+          <i class="fas fa-tools text-warning"></i>
+          <div class="number text-warning">{{ cards.miscelaneo_total }}</div>
+          <div class="label">Misceláneo</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-info">
+          <i class="fas fa-random text-info"></i>
+          <div class="number text-info">{{ cards.desviaciones_total }}</div>
+          <div class="label">Desviaciones</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-success">
+          <i class="fas fa-clipboard-list text-success"></i>
+          <div class="number text-success">{{ cards.solicitudes_ot_total }}</div>
+          <div class="label">Solicitudes OT</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-danger">
+          <i class="fas fa-comments text-danger"></i>
+          <div class="number text-danger">{{ cards.reclamos_total }}</div>
+          <div class="label">Reclamos</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-secondary">
+          <i class="fas fa-bell text-secondary"></i>
+          <div class="number text-secondary">{{ cards.alarmas_total }}</div>
+          <div class="label">Alarmas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tercera fila de tarjetas -->
+    <div class="row mb-4">
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-primary">
+          <i class="fas fa-calendar-plus text-primary"></i>
+          <div class="number text-primary">{{ cards.extensiones_total }}</div>
+          <div class="label">Extensiones</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-warning">
+          <i class="fas fa-user-plus text-warning"></i>
+          <div class="number text-warning">{{ cards.onboarding_total }}</div>
+          <div class="label">Onboarding</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-info">
+          <i class="fas fa-door-open text-info"></i>
+          <div class="number text-info">{{ cards.apertura_total }}</div>
+          <div class="label">Aperturas</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-success">
+          <i class="fas fa-check-circle text-success"></i>
+          <div class="number text-success">{{ cards.cumplimiento_total }}</div>
+          <div class="label">Cumplimiento</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Primera fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Evolución del Censo</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="censoChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Eventos de Seguridad</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="eventosChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Segunda fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Duplicidades por Día</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="duplicidadesChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Encuestas Realizadas</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="encuestasChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tercera fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-users me-2"></i>Atenciones al Público</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="atencionesChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Tiempo Promedio de Atención</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="tiempoAtencionChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cuarta fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Robos y Hurtos</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="robosChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-tools me-2"></i>Registros Misceláneos</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="miscelaneoChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quinta fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-random me-2"></i>Desviaciones</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="desviacionesChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Solicitudes OT</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="solicitudesOtChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sexta fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-comments me-2"></i>Reclamos de Usuarios</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="reclamosChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Activaciones de Alarma</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="alarmasChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Séptima fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-calendar-plus me-2"></i>Extensiones y Excepciones</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="extensionesChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Registros Onboarding</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="onboardingChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Octava fila de gráficos -->
+    <div class="row">
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-door-open me-2"></i>Aperturas de Habitación</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="aperturaChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Cumplimiento EECC</h5>
+          </div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="cumplimientoChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // === Configuración y estilo unificado ===
+      const labels = {{ labels|tojson }};
+      const series = {{ series|tojson }};
+
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              boxWidth: 22,
+              padding: 12,
+              color: '#4b5563'
+            }
+          },
+          tooltip: { enabled: true }
+        },
+        elements: {
+          line:  { borderWidth: 3, tension: 0.4 },
+          point: { radius: 3, hoverRadius: 5, backgroundColor: '#fff', borderWidth: 2 }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(0,0,0,0.1)' }, ticks: { color: '#6c757d' } },
+          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.1)' }, ticks: { color: '#6c757d' } }
+        }
+      };
+
+      // Helper para datasets con estilo consistente (relleno 0.1 + fill:true)
+      const makeDataset = (label, data, borderColor, bgRGBA) => ({
+        label,
+        data,
+        borderColor,
+        backgroundColor: bgRGBA,
+        tension: 0.4,
+        fill: true
+      });
+
+      // === Gráficos (todos line + mismo estilo) ===
+      new Chart(document.getElementById('censoChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Censo Total', series.censo, '#2c5aa0', 'rgba(44, 90, 160, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('eventosChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Eventos de Seguridad', series.eventos, 'rgba(255, 193, 7, 1)', 'rgba(255, 193, 7, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('duplicidadesChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Duplicidades', series.duplicidades, 'rgba(23, 162, 184, 1)', 'rgba(23, 162, 184, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('encuestasChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Encuestas Realizadas', series.encuestas, '#28a745', 'rgba(40, 167, 69, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('atencionesChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Atenciones Realizadas', series.atencion_cant, 'rgba(220, 53, 69, 1)', 'rgba(220, 53, 69, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('tiempoAtencionChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Tiempo Promedio (min)', series.atencion_min, '#6c757d', 'rgba(108, 117, 125, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('robosChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Robos y Hurtos', series.robos, 'rgba(253, 126, 20, 1)', 'rgba(253, 126, 20, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('miscelaneoChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Registros Misceláneos', series.miscelaneo, 'rgba(108, 117, 125, 1)', 'rgba(108, 117, 125, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('desviacionesChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Desviaciones', series.desviaciones, 'rgba(40, 167, 69, 1)', 'rgba(40, 167, 69, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('solicitudesOtChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Solicitudes OT', series.solicitudes_ot, 'rgba(0, 123, 255, 1)', 'rgba(0, 123, 255, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('reclamosChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Reclamos de Usuarios', series.reclamos, 'rgba(220, 53, 69, 1)', 'rgba(220, 53, 69, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('alarmasChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Activaciones de Alarma', series.alarmas, 'rgba(111, 66, 193, 1)', 'rgba(111, 66, 193, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('extensionesChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Extensiones y Excepciones', series.extensiones, 'rgba(255, 193, 7, 1)', 'rgba(255, 193, 7, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('onboardingChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Registros Onboarding', series.onboarding, 'rgba(23, 162, 184, 1)', 'rgba(23, 162, 184, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('aperturaChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Aperturas de Habitación', series.apertura, 'rgba(111, 66, 193, 1)', 'rgba(111, 66, 193, 0.1)')
+        ]},
+        options: chartOptions
+      });
+
+      new Chart(document.getElementById('cumplimientoChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Cumplimiento EECC', series.cumplimiento, 'rgba(253, 126, 20, 1)', 'rgba(253, 126, 20, 0.1)')
+        ]},
+        options: chartOptions
+      });
+    </script>
+  {% endif %}
+</div>
+{% endblock %}

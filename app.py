@@ -9,7 +9,7 @@ import tempfile
 import unicodedata
 from collections import defaultdict
 from difflib import SequenceMatcher
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO, StringIO
 
 import pandas as pd
@@ -23,6 +23,7 @@ from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy import and_, func, or_
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 load_dotenv()
 db = SQLAlchemy()
@@ -36,7 +37,7 @@ DEFAULT_GERENCIAS = [
 
 
 def now_utc():
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class UploadedFile(db.Model):
@@ -3381,5 +3382,14 @@ def register_routes(app):
         return redirect(url_for('export_job_page', job_id=job.id), code=303)
 
 app=create_app()
+
+# Gestión 5S conserva sus tablas y lógica, pero se publica bajo la misma
+# aplicación y comparte DATABASE_URL, SECRET_KEY, cabecera y navegación.
+from gestion5s.web import app as gestion5s_app
+
+app.wsgi_app = DispatcherMiddleware(
+    app.wsgi_app,
+    {"/gestion-5s": gestion5s_app},
+)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT',5000)), debug=os.getenv('FLASK_DEBUG')=='1')

@@ -43,6 +43,16 @@
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('ocupabilidad_page') }}"><i class="bi bi-bar-chart-line"></i> Ocupabilidad</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('egp_report_page') }}"><i class="bi bi-building"></i> EGP</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('fa_report_page') }}"><i class="bi bi-briefcase"></i> F&A</a></li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-grid-3x3-gap"></i> Gestión 5S
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/gestion-5s/panel"><i class="bi bi-pencil-square me-2"></i>Ingresar registros</a></li>
+                            <li><a class="dropdown-item" href="/gestion-5s/registros"><i class="bi bi-database me-2"></i>Consultar registros</a></li>
+                            <li><a class="dropdown-item" href="/gestion-5s/dashboard"><i class="bi bi-graph-up me-2"></i>Dashboard KPI</a></li>
+                        </ul>
+                    </li>
                 </ul>
             </div>
         </div>

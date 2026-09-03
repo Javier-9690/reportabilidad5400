@@ -1,0 +1,828 @@
+{% extends "base.html" %}
+{% block title %}Sistema de Gestión 5400 - Registros{% endblock %}
+
+{% block content %}
+<div class="content-container">
+  <h1 class="page-title">Registros del Sistema</h1>
+
+  <!-- Filtros -->
+  <div class="filter-card">
+    <h5 class="mb-3"><i class="fas fa-filter me-2"></i>Filtros de Búsqueda</h5>
+    <form method="get" action="{{ url_for('registros') }}">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Fecha Desde</label>
+          <input type="date" name="from" class="form-control" value="{{ d_from if d_from else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Fecha Hasta</label>
+          <input type="date" name="to" class="form-control" value="{{ d_to if d_to else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Semana Específica</label>
+          <select name="semana" class="form-select">
+            <option value="">-- Todas las semanas --</option>
+            {% for num, r in week_map.items()|sort %}
+              <option value="{{ num }}" {{ 'selected' if semana_sel==num }}>{{ num }} ({{ r[0] }} → {{ r[1] }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Módulo</label>
+          {% set opciones = [
+            ('censo','Censo'),
+            ('eventos','Eventos de seguridad'),
+            ('duplicidades','Duplicidades'),
+            ('encuestas','Encuesta de satisfacción'),
+            ('atencion','Atención al público'),
+            ('robos','Robos y hurtos'),
+            ('miscelaneo','Misceláneo'),
+            ('desviaciones','Desviaciones'),
+            ('solicitud_ot','Solicitud y OT de usuario'),
+            ('reclamos','Reclamos de usuarios'),
+            ('alarmas', 'Activación de alarma'),
+            ('extensiones', 'Extensión y excepción'),
+            ('onboarding', 'Registro onboarding'),
+            ('apertura', 'Apertura de habitación'),
+            ('cumplimiento', 'Cumplimiento EECC')
+          ] %}
+          <select name="vista" class="form-select" onchange="this.form.submit()">
+            {% for v, label in opciones %}
+              <option value="{{ v }}" {{ 'selected' if vista==v }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12">
+          <button class="btn btn-primary-custom" type="submit">
+            <i class="fas fa-search me-1"></i> Aplicar Filtros
+          </button>
+          <a href="{{ url_for('registros') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-undo me-1"></i> Limpiar Filtros
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {# Macro botón eliminar #}
+  {% macro delbtn(entity, id) -%}
+    <form method="post"
+          action="{{ url_for('delete_record', entity=entity, rid=id) }}"
+          onsubmit="return confirm('¿Está seguro de que desea eliminar este registro?');"
+          style="display:inline;">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <button class="btn btn-sm btn-outline-danger" type="submit" title="Eliminar registro">
+        <i class="fas fa-trash"></i>
+      </button>
+    </form>
+  {%- endmacro %}
+
+  <!-- Sección de datos -->
+  <div class="mt-4">
+    <!-- CENSO -->
+    {% if vista == 'censo' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-users me-2"></i>Registros de Censo</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='censo', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      
+      {% if census %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Censo Día</th>
+                <th>Censo Noche</th>
+                <th>Total</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in census %}
+                <tr>
+                  <td class="table-actions">
+                    {{ delbtn('censo', r.id) }}
+                  </td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.censo_dia }}</td>
+                  <td>{{ r.censo_noche }}</td>
+                  <td><strong>{{ r.total }}</strong></td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-users fa-2x mb-3"></i>
+          <h5>No se encontraron registros de censo</h5>
+          <p class="mb-0">No hay datos de censo para los filtros seleccionados.</p>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    <!-- EVENTOS DE SEGURIDAD -->
+    {% if vista == 'eventos' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-shield-alt me-2"></i>Eventos de Seguridad</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='eventos', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      
+      {% if eventos %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Horario</th>
+                <th>Qué Ocurrió</th>
+                <th>Nombre Afectado</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in eventos %}
+                <tr>
+                  <td class="table-actions">
+                    {{ delbtn('eventos', r.id) }}
+                  </td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.horario }}</td>
+                  <td>
+                    <span title="{{ r.que_ocurrio }}">
+                      {{ r.que_ocurrio[:50] }}{% if r.que_ocurrio|length > 50 %}...{% endif %}
+                    </span>
+                  </td>
+                  <td>{{ r.nombre_afectado or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-shield-alt fa-2x mb-3"></i>
+          <h5>No se encontraron eventos de seguridad</h5>
+          <p class="mb-0">No hay eventos de seguridad para los filtros seleccionados.</p>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    <!-- DUPLICIDADES -->
+    {% if vista == 'duplicidades' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-copy me-2"></i>Duplicidades</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='duplicidades', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      
+      {% if duplics %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Semana</th>
+                <th>Fecha</th>
+                <th>ID</th>
+                <th>Empresa</th>
+                <th>Descripción</th>
+                <th>Estatus</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in duplics %}
+                <tr>
+                  <td class="table-actions">
+                    {{ delbtn('duplicidades', r.id) }}
+                  </td>
+                  <td>{{ r.semana }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.id_interno or '-' }}</td>
+                  <td>
+                    <span title="{{ r.empresa_contratista or '' }}">
+                      {{ (r.empresa_contratista or '-')[:20] }}{% if (r.empresa_contratista or '')|length > 20 %}...{% endif %}
+                    </span>
+                  </td>
+                  <td>
+                    <span title="{{ r.descripcion_problema or '' }}">
+                      {{ (r.descripcion_problema or '')[:30] }}{% if (r.descripcion_problema or '')|length > 30 %}...{% endif %}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge {% if r.estatus == 'Cerrado' %}bg-success{% else %}bg-warning{% endif %}">
+                      {{ r.estatus or 'Abierto' }}
+                    </span>
+                  </td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-copy fa-2x mb-3"></i>
+          <h5>No se encontraron duplicidades</h5>
+          <p class="mb-0">No hay duplicidades para los filtros seleccionados.</p>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    <!-- ENCUESTAS -->
+    {% if vista == 'encuestas' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-poll me-2"></i>Encuestas de Satisfacción</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='encuestas', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      
+      {% if encuestas %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha Hora</th>
+                <th>Puntaje 1</th>
+                <th>Puntaje 2</th>
+                <th>Puntaje 3</th>
+                <th>Puntaje 4</th>
+                <th>Puntaje 5</th>
+                <th>Total</th>
+                <th>Promedio</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in encuestas %}
+                <tr>
+                  <td class="table-actions">
+                    {{ delbtn('encuestas', r.id) }}
+                  </td>
+                  <td>{{ r.fecha_hora.strftime('%d/%m/%Y %H:%M') }}</td>
+                  <td>{{ r.q1_puntaje if r.q1_puntaje is not none else '-' }}</td>
+                  <td>{{ r.q2_puntaje if r.q2_puntaje is not none else '-' }}</td>
+                  <td>{{ r.q3_puntaje if r.q3_puntaje is not none else '-' }}</td>
+                  <td>{{ r.q4_puntaje if r.q4_puntaje is not none else '-' }}</td>
+                  <td>{{ r.q5_puntaje if r.q5_puntaje is not none else '-' }}</td>
+                  <td><strong>{{ r.total if r.total is not none else '-' }}</strong></td>
+                  <td>
+                    <span class="badge {% if r.promedio and r.promedio >= 8 %}bg-success{% elif r.promedio and r.promedio >= 6 %}bg-warning{% else %}bg-danger{% endif %}">
+                      {{ "%.2f"|format(r.promedio) if r.promedio is not none else '-' }}
+                    </span>
+                  </td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-poll fa-2x mb-3"></i>
+          <h5>No se encontraron encuestas</h5>
+          <p class="mb-0">No hay encuestas para los filtros seleccionados.</p>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    <!-- ATENCIÓN AL PÚBLICO -->
+    {% if vista == 'atencion' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-headset me-2"></i>Atención al Público</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='atencion', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      
+      {% if atenciones %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Tiempo Promedio</th>
+                <th>Cantidad</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in atenciones %}
+                <tr>
+                  <td class="table-actions">
+                    {{ delbtn('atencion', r.id) }}
+                  </td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ '%02d:%02d'|format((r.tiempo_promedio_sec//60),(r.tiempo_promedio_sec%60)) }}</td>
+                  <td><strong>{{ r.cantidad }}</strong></td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-headset fa-2x mb-3"></i>
+          <h5>No se encontraron registros de atención</h5>
+          <p class="mb-0">No hay registros de atención al público para los filtros seleccionados.</p>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    {# ===================== MÓDULOS ESPECÍFICOS ===================== #}
+
+    {% if vista == 'robos' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-exclamation-triangle me-2"></i>Robos y Hurtos</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='robos', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if robos %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Módulo</th>
+                <th>Habitación</th>
+                <th>Empresa</th>
+                <th>Cliente</th>
+                <th>Especies</th>
+                <th>Recepciona</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in robos %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('robos', r.id) }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.hora and r.hora.strftime('%H:%M') or '-' }}</td>
+                  <td>{{ r.modulo or '-' }}</td>
+                  <td>{{ r.habitacion or '-' }}</td>
+                  <td>{{ r.empresa or '-' }}</td>
+                  <td>{{ r.nombre_cliente or '-' }}</td>
+                  <td>
+                    <span title="{{ r.especies or '' }}">
+                      {{ (r.especies or '-')[:40] }}{% if (r.especies or '')|length > 40 %}...{% endif %}
+                    </span>
+                  </td>
+                  <td>{{ r.recepciona or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'miscelaneo' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-tools me-2"></i>Misceláneo</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='miscelaneo', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if miscelaneo %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>OT</th>
+                <th>División</th>
+                <th>Área</th>
+                <th>Lugar</th>
+                <th>Estado</th>
+                <th>F. Creación</th>
+                <th>F. Inicio</th>
+                <th>F. Término</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in miscelaneo %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('miscelaneo', r.id) }}</td>
+                  <td>{{ r.ot or '-' }}</td>
+                  <td>{{ r.division or '-' }}</td>
+                  <td>{{ r.area or '-' }}</td>
+                  <td>{{ r.lugar or '-' }}</td>
+                  <td><span class="badge bg-info">{{ r.estado or '-' }}</span></td>
+                  <td>{{ r.fecha_creacion or '-' }}</td>
+                  <td>{{ r.fecha_inicio or '-' }}</td>
+                  <td>{{ r.fecha_termino or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-tools fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'desviaciones' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-random me-2"></i>Desviaciones</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='desviaciones', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if desviaciones %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>N° Solicitud</th>
+                <th>ID Interno</th>
+                <th>Empresa</th>
+                <th>Tipo Solicitud</th>
+                <th>Tipo Riesgo</th>
+                <th>Pabellón</th>
+                <th>Habitación</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in desviaciones %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('desviaciones', r.id) }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.n_solicitud or '-' }}</td>
+                  <td>{{ r.id_interno or '-' }}</td>
+                  <td>{{ r.empresa_contratista or '-' }}</td>
+                  <td>{{ r.tipo_solicitud or '-' }}</td>
+                  <td>{{ r.tipo_riesgo or '-' }}</td>
+                  <td>{{ r.pabellon or '-' }}</td>
+                  <td>{{ r.habitacion or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-random fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'solicitud_ot' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-clipboard-list me-2"></i>Solicitudes OT</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='solicitud_ot', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if solicitudes_ot %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>F. Inicio</th>
+                <th>N° Solicitud</th>
+                <th>Módulo</th>
+                <th>Habitación</th>
+                <th>Tipo Solicitud</th>
+                <th>Estado</th>
+                <th>Tiempo Resp.</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in solicitudes_ot %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('solicitud_ot', r.id) }}</td>
+                  <td>{{ r.fecha_inicio or '-' }}</td>
+                  <td>{{ r.n_solicitud or '-' }}</td>
+                  <td>{{ r.modulo or '-' }}</td>
+                  <td>{{ r.habitacion or '-' }}</td>
+                  <td>{{ r.tipo_solicitud or '-' }}</td>
+                  <td><span class="badge {{ 'bg-success' if r.estado=='Cerrado' else 'bg-warning' }}">{{ r.estado or '-' }}</span></td>
+                  <td>{{ r.tiempo_respuesta_sec and '%02d:%02d'|format((r.tiempo_respuesta_sec//60),(r.tiempo_respuesta_sec%60)) or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-clipboard-list fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'reclamos' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-comments me-2"></i>Reclamos de Usuarios</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='reclamos', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if reclamos %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>N° Solicitud</th>
+                <th>Empresa</th>
+                <th>Tipo Solicitud</th>
+                <th>Pabellón</th>
+                <th>Habitación</th>
+                <th>Estatus</th>
+                <th>Responsable</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in reclamos %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('reclamos', r.id) }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.n_solicitud or '-' }}</td>
+                  <td>{{ r.empresa_contratista or '-' }}</td>
+                  <td>{{ r.tipo_solicitud or '-' }}</td>
+                  <td>{{ r.pabellon or '-' }}</td>
+                  <td>{{ r.habitacion or '-' }}</td>
+                  <td><span class="badge {{ 'bg-success' if r.estatus=='Cerrado' else 'bg-warning' }}">{{ r.estatus or '-' }}</span></td>
+                  <td>{{ r.responsable or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-comments fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'alarmas' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-bell me-2"></i>Activación de Alarmas</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='alarmas', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if alarmas %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Módulo</th>
+                <th>N° Habitación</th>
+                <th>Empresa</th>
+                <th>Tipo Evento</th>
+                <th>Tipo Actividad</th>
+                <th>Hora Reporte</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in alarmas %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('alarmas', r.id) }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.modulo or '-' }}</td>
+                  <td>{{ r.n_habitacion or '-' }}</td>
+                  <td>{{ r.empresa or '-' }}</td>
+                  <td>{{ r.tipo_evento or '-' }}</td>
+                  <td>{{ r.tipo_actividad or '-' }}</td>
+                  <td>{{ r.hora_reporte_salfa and r.hora_reporte_salfa.strftime('%H:%M') or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-bell fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'extensiones' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-calendar-plus me-2"></i>Extensiones / Excepciones</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='extensiones', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if extensiones %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>F. Solicitud</th>
+                <th>Empresa</th>
+                <th>CO</th>
+                <th>Proyecto</th>
+                <th># Clientes</th>
+                <th>Desde</th>
+                <th>Hasta</th>
+                <th>Aprobador</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in extensiones %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('extensiones', r.id) }}</td>
+                  <td>{{ r.fecha_solicitud }}</td>
+                  <td>{{ r.empresa or '-' }}</td>
+                  <td>{{ r.co or '-' }}</td>
+                  <td>{{ r.proyecto or '-' }}</td>
+                  <td>{{ r.cant_clientes is not none and r.cant_clientes or '-' }}</td>
+                  <td>{{ r.desde or '-' }}</td>
+                  <td>{{ r.hasta or '-' }}</td>
+                  <td>{{ r.aprobador or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-calendar-plus fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'onboarding' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-user-plus me-2"></i>Onboarding</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='onboarding', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if onboarding %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha/Hora</th>
+                <th>Nombre</th>
+                <th>RUT</th>
+                <th>Empresa</th>
+                <th>ID Interno</th>
+                <th>Archivo PDF</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in onboarding %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('onboarding', r.id) }}</td>
+                  <td>{{ r.fecha_hora.strftime('%d/%m/%Y %H:%M') }}</td>
+                  <td>{{ r.nombre or '-' }}</td>
+                  <td>{{ r.rut or '-' }}</td>
+                  <td>{{ r.empresa or '-' }}</td>
+                  <td>{{ r.id_interno or '-' }}</td>
+                  <td>{{ r.archivo_pdf or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-user-plus fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'apertura' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-door-open me-2"></i>Apertura de Habitaciones</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='apertura', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if apertura %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Habitación</th>
+                <th>Hora</th>
+                <th>Responsable</th>
+                <th>Estado Chapa</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in apertura %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('apertura', r.id) }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.habitacion or '-' }}</td>
+                  <td>{{ r.hora and r.hora.strftime('%H:%M') or '-' }}</td>
+                  <td>{{ r.responsable or '-' }}</td>
+                  <td>
+                    <span title="{{ r.estado_chapa or '' }}">
+                      {{ (r.estado_chapa or '-')[:40] }}{% if (r.estado_chapa or '')|length > 40 %}...{% endif %}
+                    </span>
+                  </td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-door-open fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'cumplimiento' %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="fas fa-check-circle me-2"></i>Cumplimiento EECC</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='cumplimiento', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      {% if cumplimiento %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                <th>Fecha</th>
+                <th>Empresa</th>
+                <th>N° Contrato</th>
+                <th>CO</th>
+                <th>ID Interno</th>
+                <th>Turno</th>
+                <th>Correo</th>
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in cumplimiento %}
+                <tr>
+                  <td class="table-actions">{{ delbtn('cumplimiento', r.id) }}</td>
+                  <td>{{ r.fecha }}</td>
+                  <td>{{ r.empresa or '-' }}</td>
+                  <td>{{ r.n_contrato or '-' }}</td>
+                  <td>{{ r.co or '-' }}</td>
+                  <td>{{ r.id_interno or '-' }}</td>
+                  <td>{{ r.turno or '-' }}</td>
+                  <td>{{ r.correo_electronico or '-' }}</td>
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-check-circle fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+

@@ -108,6 +108,26 @@ body{
     font-size:.95rem;
 }
 
+.camp-navbar .dropdown-menu{
+    border:0;
+    border-radius:.65rem;
+    box-shadow:0 .5rem 1.25rem rgba(31,41,51,.18);
+    padding:.45rem;
+}
+
+.camp-navbar .dropdown-item{
+    border-radius:.4rem;
+    color:#343a40;
+    font-size:.9rem;
+    padding:.5rem .7rem;
+}
+
+.camp-navbar .dropdown-item:hover,
+.camp-navbar .dropdown-item:focus{
+    background:#fbe9e7;
+    color:var(--brand-red-dark);
+}
+
 .text-primary-red{
     color:var(--brand-red);
 }
