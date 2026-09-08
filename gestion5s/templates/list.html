@@ -45,7 +45,8 @@
             ('extensiones', 'Extensión y excepción'),
             ('onboarding', 'Registro onboarding'),
             ('apertura', 'Apertura de habitación'),
-            ('cumplimiento', 'Cumplimiento EECC')
+            ('cumplimiento', 'Cumplimiento EECC'),
+            ('entradas_salidas', 'Entradas y salidas')
           ] %}
           <select name="vista" class="form-select" onchange="this.form.submit()">
             {% for v, label in opciones %}
@@ -859,6 +860,44 @@
       {% else %}
         <div class="alert alert-info text-center py-4">
           <i class="fas fa-check-circle fa-2x mb-3"></i>
+          <h5>No se encontraron registros</h5>
+        </div>
+      {% endif %}
+    {% elif vista == 'entradas_salidas' %}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h4><i class="fas fa-exchange-alt me-2"></i>Entradas y salidas</h4>
+        <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity='entradas_salidas', **request.args) }}">
+          <i class="fas fa-download me-1"></i> Descargar CSV
+        </a>
+      </div>
+      <p class="small text-muted">Los filtros de este listado y su exportación se aplican a FECHA INGRESO.</p>
+      {% if entradas_salidas %}
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Acciones</th>
+                {% for name, label in entry_exit_fields %}<th>{{ label }}</th>{% endfor %}
+                <th>Registro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in entradas_salidas %}
+                <tr>
+                  <td class="table-actions">{{ record_actions('entradas_salidas', r.id) }}</td>
+                  {% for name, label in entry_exit_fields %}
+                    {% set value = r|attr(name) %}
+                    <td{% if name == 'motivo' %} class="record-long-text"{% endif %}>{{ value if value is not none and value != '' else '-' }}</td>
+                  {% endfor %}
+                  <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info text-center py-4">
+          <i class="fas fa-exchange-alt fa-2x mb-3"></i>
           <h5>No se encontraron registros</h5>
         </div>
       {% endif %}

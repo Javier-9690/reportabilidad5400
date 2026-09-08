@@ -54,7 +54,7 @@ class BulkDeleteHotelRecordsTest(unittest.TestCase):
         self.assertIn("confirmation_token", data)
         return self.client.post(f"/gestion-5s/delete/{entity}/bulk", data=data, follow_redirects=True)
 
-    def test_selected_deletes_only_marked_rows_in_all_fifteen_modules(self):
+    def test_selected_deletes_only_marked_rows_in_all_modules(self):
         for entity in web.ENTITY_MODEL:
             with self.subTest(entity=entity):
                 chosen = [self.create_record(entity), self.create_record(entity)]
@@ -74,7 +74,7 @@ class BulkDeleteHotelRecordsTest(unittest.TestCase):
                 query = parse_qs(urlsplit(response.history[0].location).query)
                 self.assertEqual(query, {"vista": [entity], **{key: [value] for key, value in filters.items()}})
 
-    def test_all_respects_date_boundaries_in_all_fifteen_modules(self):
+    def test_all_respects_date_boundaries_in_all_modules(self):
         for entity in web.ENTITY_MODEL:
             with self.subTest(entity=entity):
                 chosen = [self.create_record(entity, "2026-09-01", "00:00:00"), self.create_record(entity, "2026-09-02", "23:59:59")]

@@ -14,18 +14,20 @@ from flask import (
     flash, send_file, jsonify, abort, session
 )
 
-from gestion5s.editing import EDIT_CONFIG, EXTENSION_FIELDS, edit_fields, parse_edit_values, record_version
+from gestion5s.editing import EDIT_CONFIG, EXTENSION_FIELDS, ENTRY_EXIT_FIELDS, edit_fields, parse_edit_values, record_version
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Date, DateTime, Time, Float, Text
+    create_engine, Column, Integer, String, Date, DateTime, Time, Float, Text, func
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import SQLAlchemyError
 
 # Excel
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font
+from openpyxl.utils.datetime import from_excel
 
 
 # -----------------------------------------------------------------------------
@@ -390,6 +392,32 @@ def safe_time_hhmm(val):
     return time(0, 0)
 
 
+def entry_exit_excel_values(row, epoch):
+    """Normaliza celdas Excel para aplicar la misma validación que al formulario."""
+    values = {}
+    for (name, label), value in zip(ENTRY_EXIT_FIELDS, row):
+        try:
+            if value is None or value == "":
+                values[name] = ""
+            elif name in ("fecha_ingreso", "fecha_salida"):
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    value = from_excel(value, epoch=epoch)
+                values[name] = safe_convert_date(value).isoformat()
+            elif name in ("hora_entrada", "hora_salida"):
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    if not 0 <= value < 1:
+                        raise ValueError("Usa una hora entre 00:00 y 23:59:59.")
+                    value = from_excel(value, epoch=epoch)
+                if isinstance(value, datetime):
+                    value = value.time()
+                values[name] = value.isoformat() if isinstance(value, time) else str(value).strip()
+            else:
+                values[name] = str(value).strip()
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise ValueError(f"{label}: fecha u hora inválida.") from exc
+    return values
+
+
 # -----------------------------------------------------------------------------
 # Modelos (tablas)
 # -----------------------------------------------------------------------------
@@ -634,6 +662,28 @@ class CumplimientoEECCEntry(Base):
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
+class EntradaSalidaEntry(Base):
+    __tablename__ = "entradas_salidas"
+    id = Column(Integer, primary_key=True)
+    fecha_ingreso = Column(Date, nullable=False, index=True)
+    fecha_salida = Column(Date, nullable=True, index=True)
+    hora_entrada = Column(Time, nullable=False)
+    hora_salida = Column(Time, nullable=True)
+    empresa = Column(String(200), nullable=True)
+    id_interno = Column(String(100), nullable=True)
+    nombre = Column(String(200), nullable=True)
+    rut = Column(String(50), nullable=True)
+    turno = Column(String(100), nullable=True)
+    pabellon = Column(String(100), nullable=True)
+    habitacion = Column(String(100), nullable=True)
+    motivo = Column(Text, nullable=True)
+    autorizado = Column(String(200), nullable=True)
+    pendulo = Column(String(100), nullable=True)
+    n_tarjeta = Column(String(100), nullable=True)
+    devolucion = Column(String(200), nullable=True)
+    creado = Column(DateTime, nullable=False, default=now_utc)
+
+
 def ensure_deviation_actions_column(engine):
     """Añade el campo opcional a instalaciones existentes sin alterar sus registros."""
     with engine.begin() as conn:
@@ -704,7 +754,7 @@ def home():
 def panel():
     # tabs: censo | eventos | duplicidades | encuesta | atencion |
     #       robos | miscelaneo | desviaciones | solicitud_ot | reclamos |
-    #       alarmas | extensiones | onboarding | apertura | cumplimiento
+    #       alarmas | extensiones | onboarding | apertura | cumplimiento | entradas_salidas
     tab = request.args.get("tab", "censo")
     db = SessionLocal()
     try:
@@ -990,10 +1040,26 @@ def panel():
                 )
                 db.add(rec); db.commit(); flash("Cumplimiento EECC guardado.")
 
+            elif tab == "entradas_salidas":
+                fields = edit_fields(tab, EntradaSalidaEntry())
+                values, errors = parse_edit_values(tab, fields, request.form)
+                if errors:
+                    return render_template(
+                        "panel.html", tab=tab, week_map=WEEK_MAP, current_tab=tab,
+                        entry_exit_fields=fields, field_errors=errors, form_values=request.form,
+                    ), 422
+                db.add(EntradaSalidaEntry(**values))
+                db.commit()
+                flash("Registro de entradas y salidas guardado.", "success")
+
             return redirect(url_for("panel", tab=tab))
 
         # GET
-        return render_template("panel.html", tab=tab, week_map=WEEK_MAP, current_tab=tab)
+        return render_template(
+            "panel.html", tab=tab, week_map=WEEK_MAP, current_tab=tab,
+            entry_exit_fields=edit_fields(tab, EntradaSalidaEntry()) if tab == "entradas_salidas" else [],
+            field_errors={}, form_values={},
+        )
     finally:
         db.close()
 
@@ -1020,6 +1086,7 @@ def registros():
             semana_sel=semana_sel, d_from=d_from, d_to=d_to, week_map=WEEK_MAP,
             vista=vista, current_tab=None, **listing,
             record_count=len(rows), entity_title=EDIT_CONFIG[vista][0],
+            entry_exit_fields=ENTRY_EXIT_FIELDS,
             bulk_csrf=session.setdefault("hotel_bulk_csrf", secrets.token_hex(32)),
         )
     finally:
@@ -1308,6 +1375,16 @@ def download_entity(entity):
                     "TURNO": r.turno or "",
                 })
 
+        elif entity == "entradas_salidas":
+            rows = hotel_records_query(db, entity, d_from, d_to).order_by(
+                EntradaSalidaEntry.fecha_ingreso, EntradaSalidaEntry.id
+            ).all()
+            w = csv.DictWriter(buf, fieldnames=[label for _, label in ENTRY_EXIT_FIELDS])
+            w.writeheader()
+            for r in rows:
+                w.writerow({label: getattr(r, name) if getattr(r, name) is not None else ""
+                            for name, label in ENTRY_EXIT_FIELDS})
+
         else:
             flash("Entidad no válida.")
             return redirect(url_for("registros"))
@@ -1339,6 +1416,7 @@ ENTITY_MODEL = {
     "onboarding": OnboardingEntry,
     "apertura": AperturaHabitacionEntry,
     "cumplimiento": CumplimientoEECCEntry,
+    "entradas_salidas": EntradaSalidaEntry,
 }
 
 ENTITY_LIST_KEY = {
@@ -1347,12 +1425,13 @@ ENTITY_LIST_KEY = {
     "miscelaneo": "miscelaneo", "desviaciones": "desviaciones",
     "solicitud_ot": "solicitudes_ot", "reclamos": "reclamos", "alarmas": "alarmas",
     "extensiones": "extensiones", "onboarding": "onboarding", "apertura": "apertura",
-    "cumplimiento": "cumplimiento",
+    "cumplimiento": "cumplimiento", "entradas_salidas": "entradas_salidas",
 }
 ENTITY_DATE_FIELD = {
     "encuestas": "fecha_hora", "onboarding": "fecha_hora",
     "miscelaneo": "fecha_creacion", "solicitud_ot": "fecha_inicio",
     "extensiones": "fecha_solicitud",
+    "entradas_salidas": "fecha_ingreso",
 }
 
 
@@ -1683,6 +1762,7 @@ TEMPLATES = {
     "onboarding": ["FECHA_HORA","NOMBRE","RUT","EMPRESA","ID","ARCHIVO_PDF"],
     "apertura": ["FECHA","HABITACION","HORA","RESPONSABLE","ESTADO_CHAPA"],
     "cumplimiento": ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"],
+    "entradas_salidas": [label for _, label in ENTRY_EXIT_FIELDS],
 }
 
 @app.get("/template/<string:entity>.xlsx")
@@ -1705,6 +1785,18 @@ def template_xlsx(entity):
     
     # Escribir los encabezados
     ws.append(headers)
+
+    if entity == "entradas_salidas":
+        ws.freeze_panes = "A2"
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            ws.column_dimensions[cell.column_letter].width = max(20, len(cell.value) + 3)
+        # Formatos de las primeras filas para introducir fechas, horas e identificadores.
+        formats = {1: "DD/MM/YYYY", 2: "DD/MM/YYYY", 3: "HH:MM:SS", 4: "HH:MM:SS",
+                   6: "@", 8: "@", 10: "@", 11: "@", 15: "@"}
+        for row in range(2, 202):
+            for column, number_format in formats.items():
+                ws.cell(row, column).number_format = number_format
     
     # **CORRECCIÓN: Para alarmas, agregar una fila de ejemplo con el formato correcto**
     if entity == "alarmas":
@@ -1794,7 +1886,7 @@ def import_xlsx(entity):
                 except:
                     return None
 
-            for row in ws.iter_rows(min_row=2, values_only=True):
+            for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if all(cell is None or str(cell).strip()=="" for cell in row):
                     continue
 
@@ -2032,6 +2124,18 @@ def import_xlsx(entity):
                         turno=str(row[6] or "").strip(),
                     ))
 
+                elif entity == "entradas_salidas":
+                    try:
+                        form = entry_exit_excel_values(row, wb.epoch)
+                        fields = edit_fields(entity, EntradaSalidaEntry())
+                        values, errors = parse_edit_values(entity, fields, form)
+                        if errors:
+                            labels = dict(ENTRY_EXIT_FIELDS)
+                            raise ValueError("; ".join(f"{labels[name]}: {error}" for name, error in errors.items()))
+                        db.add(EntradaSalidaEntry(**values))
+                    except (ValueError, TypeError, OverflowError) as exc:
+                        raise ValueError(f"Fila {row_number}: {exc}") from exc
+
                 inserted += 1
 
             db.commit()
@@ -2076,7 +2180,9 @@ def dashboard():
                 "extensiones": 0,
                 "onboarding": 0,
                 "apertura": 0,
-                "cumplimiento": 0
+                "cumplimiento": 0,
+                "entradas": 0,
+                "salidas": 0,
             })
 
         # Censo
@@ -2194,6 +2300,15 @@ def dashboard():
         for r in q.all():
             bucket(r.fecha.isoformat())["cumplimiento"] += 1
 
+        # Cada movimiento se cuenta por su propia fecha, aunque su pareja esté fuera del rango.
+        for column, key in ((EntradaSalidaEntry.fecha_ingreso, "entradas"),
+                            (EntradaSalidaEntry.fecha_salida, "salidas")):
+            q = db.query(column, func.count(EntradaSalidaEntry.id)).filter(column.isnot(None))
+            if d_from: q = q.filter(column >= d_from)
+            if d_to: q = q.filter(column <= d_to)
+            for day, count in q.group_by(column).all():
+                bucket(day.isoformat())[key] = count
+
         if not per_day:
             return render_template("dashboard.html", have_data=False, week_map=WEEK_MAP,
                                    d_from=d_from, d_to=d_to, semana_sel=semana_sel, current_tab=None)
@@ -2215,7 +2330,9 @@ def dashboard():
             "extensiones": [],
             "onboarding": [],
             "apertura": [],
-            "cumplimiento": []
+            "cumplimiento": [],
+            "entradas": [],
+            "salidas": [],
         }
 
         for k in ordered_days:
@@ -2235,6 +2352,8 @@ def dashboard():
             series_data["onboarding"].append(g["onboarding"])
             series_data["apertura"].append(g["apertura"])
             series_data["cumplimiento"].append(g["cumplimiento"])
+            series_data["entradas"].append(g["entradas"])
+            series_data["salidas"].append(g["salidas"])
             
             prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
             series_data["atencion_min"].append(round(prom_s/60.0, 2))
@@ -2256,6 +2375,8 @@ def dashboard():
             "onboarding_total": sum(series_data["onboarding"]),
             "apertura_total": sum(series_data["apertura"]),
             "cumplimiento_total": sum(series_data["cumplimiento"]),
+            "entradas_total": sum(series_data["entradas"]),
+            "salidas_total": sum(series_data["salidas"]),
             "atencion_tiempo_prom_global": (
                 seconds_to_mmss(int(mean([int(x*60) for x in series_data["atencion_min"] if x>0])))
                 if any(x>0 for x in series_data["atencion_min"]) else "00:00"

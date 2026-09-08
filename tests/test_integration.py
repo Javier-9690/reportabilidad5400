@@ -17,7 +17,7 @@ from gestion5s.web import ENTITY_MODEL, SessionLocal, TEMPLATES
 TABS = [
     "censo", "eventos", "duplicidades", "encuesta", "atencion",
     "robos", "miscelaneo", "desviaciones", "solicitud_ot", "reclamos",
-    "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento",
+    "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento", "entradas_salidas",
 ]
 
 VIEWS = ["encuestas" if tab == "encuesta" else tab for tab in TABS]
@@ -38,6 +38,7 @@ FORM_DATA = {
     "onboarding": {"fecha_hora": "2026-09-01T10:00", "nombre": "Prueba"},
     "apertura": {"fecha": "2026-09-01", "hora": "08:00"},
     "cumplimiento": {"fecha": "2026-09-01", "empresa": "Prueba"},
+    "entradas_salidas": {"fecha_ingreso": "2026-09-01", "hora_entrada": "08:15", "nombre": "Prueba", "n_tarjeta": "000123"},
 }
 
 IMPORT_ROWS = {
@@ -56,6 +57,7 @@ IMPORT_ROWS = {
     "onboarding": ["2026-09-02 10:00", "", "", "", "", ""],
     "apertura": ["2026-09-02", "", "08:00", "", ""],
     "cumplimiento": ["2026-09-02", "", "", "", "", "", ""],
+    "entradas_salidas": ["2026-09-02", "2026-09-03", "23:15", "07:45", "Empresa", "00042", "Persona", "12.345.678-9", "Noche", "A", "001", "Trabajo", "Recepción", "Sí", "000123", "Pendiente"],
 }
 
 

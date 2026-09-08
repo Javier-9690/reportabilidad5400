@@ -57,6 +57,9 @@
           <a href="{{ url_for('panel', tab='cumplimiento') }}" class="list-group-item list-group-item-action {% if tab=='cumplimiento' %}active{% endif %}">
             <i class="fas fa-check-circle me-2"></i>Cumplimiento EECC
           </a>
+          <a href="{{ url_for('panel', tab='entradas_salidas') }}" class="list-group-item list-group-item-action {% if tab=='entradas_salidas' %}active{% endif %}">
+            <i class="fas fa-exchange-alt me-2"></i>Entradas y salidas
+          </a>
         </div>
       </div>
     </div>
@@ -1072,7 +1075,51 @@
         </div>
       </div>
       {% endif %}
-
+      {% if tab=='entradas_salidas' %}
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Registro de entradas y salidas</h5>
+        </div>
+        <div class="card-body">
+          <div class="d-flex gap-2 flex-wrap mb-4">
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('template_xlsx', entity='entradas_salidas') }}">
+              <i class="fas fa-download me-1"></i> Descargar Plantilla
+            </a>
+            <form method="post" action="{{ url_for('import_xlsx', entity='entradas_salidas') }}" enctype="multipart/form-data" class="d-inline-flex gap-2">
+              <input type="file" class="form-control form-control-sm" name="file" accept=".xlsx" required aria-label="Plantilla de entradas y salidas">
+              <button class="btn btn-primary-custom btn-sm" type="submit"><i class="fas fa-upload me-1"></i> Importar</button>
+            </form>
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('registros', vista='entradas_salidas') }}">
+              <i class="fas fa-list me-1"></i> Ver registros
+            </a>
+          </div>
+          <p class="small text-muted">Si la salida está pendiente, deja su fecha y hora vacías y complétalas después desde Editar.</p>
+          {% if field_errors %}<div class="alert alert-danger" role="alert">Revisa los campos señalados antes de guardar.</div>{% endif %}
+          <form method="post" action="{{ url_for('panel', tab='entradas_salidas') }}">
+            <div class="row g-3">
+              {% for field in entry_exit_fields %}
+              <div class="{{ 'col-12' if field.kind == 'textarea' else 'col-md-6 col-xl-3' }}">
+                <label for="entry-{{ field.name }}" class="form-label{% if field.required %} required{% endif %}">{{ field.label }}</label>
+                {% if field.kind == 'textarea' %}
+                <textarea id="entry-{{ field.name }}" name="{{ field.name }}" rows="3" class="form-control{% if field_errors.get(field.name) %} is-invalid{% endif %}">{{ form_values.get(field.name, '') }}</textarea>
+                {% else %}
+                <input id="entry-{{ field.name }}" name="{{ field.name }}" type="{{ field.kind }}" value="{{ form_values.get(field.name, '') }}"
+                       class="form-control{% if field_errors.get(field.name) %} is-invalid{% endif %}"
+                       {% if field.required %}required{% endif %} {% if field.maxlength %}maxlength="{{ field.maxlength }}"{% endif %}
+                       {% if field.kind == 'time' %}step="any"{% endif %}
+                       {% if field_errors.get(field.name) %}aria-invalid="true" aria-describedby="error-{{ field.name }}"{% endif %}>
+                {% endif %}
+                {% if field_errors.get(field.name) %}<div class="invalid-feedback" id="error-{{ field.name }}">{{ field_errors[field.name] }}</div>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            <div class="mt-4">
+              <button class="btn btn-primary-custom" type="submit"><i class="fas fa-save me-1"></i> Guardar registro</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
 
     </div>
   </div>

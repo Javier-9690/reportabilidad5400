@@ -24,6 +24,25 @@ EXTENSION_FIELDS = (
     ("observacion", "OBSERVACION"),
 )
 
+ENTRY_EXIT_FIELDS = (
+    ("fecha_ingreso", "FECHA INGRESO"),
+    ("fecha_salida", "FECHA SALIDA"),
+    ("hora_entrada", "HORA ENTRADA"),
+    ("hora_salida", "HORA SALIDA"),
+    ("empresa", "EMPRESA"),
+    ("id_interno", "ID"),
+    ("nombre", "NOMBRE"),
+    ("rut", "RUT"),
+    ("turno", "TURNO"),
+    ("pabellon", "PABELLON"),
+    ("habitacion", "HABITACIÓN"),
+    ("motivo", "MOTIVO"),
+    ("autorizado", "AUTORIZADO"),
+    ("pendulo", "PENDULO"),
+    ("n_tarjeta", "N° TARJETA"),
+    ("devolucion", "DEVOLUCIÓN"),
+)
+
 
 # Lista explícita: el formulario nunca puede modificar la clave ni la creación.
 EDIT_CONFIG = {
@@ -42,6 +61,7 @@ EDIT_CONFIG = {
     "onboarding": ("Onboarding", "fecha_hora nombre rut empresa id_interno archivo_pdf"),
     "apertura": ("Apertura de habitación", "fecha habitacion hora responsable estado_chapa"),
     "cumplimiento": ("Cumplimiento EECC", "fecha empresa n_contrato co correo_electronico id_interno turno"),
+    "entradas_salidas": ("Entradas y salidas", " ".join(name for name, _ in ENTRY_EXIT_FIELDS)),
 }
 
 FIELD_LABELS = {
@@ -85,7 +105,10 @@ def record_version(record):
 
 def edit_fields(entity, record):
     fields = []
-    labels = dict(EXTENSION_FIELDS) if entity == "extensiones" else FIELD_LABELS
+    labels = {
+        "extensiones": dict(EXTENSION_FIELDS),
+        "entradas_salidas": dict(ENTRY_EXIT_FIELDS),
+    }.get(entity, FIELD_LABELS)
     for name in EDIT_CONFIG[entity][1].split():
         column = record.__table__.columns[name]
         value = getattr(record, name)
@@ -189,4 +212,13 @@ def parse_edit_values(entity, fields, form):
             values["promedio"] = round(sum(scores) / len(scores), 2) if scores else None
         elif entity == "extensiones" and values["desde"] and values["hasta"] and values["hasta"] < values["desde"]:
             errors["hasta"] = "La fecha hasta debe ser igual o posterior a la fecha desde."
+        elif entity == "entradas_salidas":
+            if (values["fecha_salida"] is None) != (values["hora_salida"] is None):
+                missing = "fecha_salida" if values["fecha_salida"] is None else "hora_salida"
+                errors[missing] = "Completa la fecha y la hora de salida, o deja ambas vacías si está pendiente."
+            elif values["fecha_salida"] is not None:
+                entrada = datetime.combine(values["fecha_ingreso"], values["hora_entrada"])
+                salida = datetime.combine(values["fecha_salida"], values["hora_salida"])
+                if salida < entrada:
+                    errors["fecha_salida"] = "La fecha y hora de salida no pueden ser anteriores al ingreso."
     return values, errors

@@ -176,6 +176,20 @@
           <div class="label">Cumplimiento</div>
         </div>
       </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-primary">
+          <i class="fas fa-sign-in-alt text-primary"></i>
+          <div class="number text-primary">{{ cards.entradas_total }}</div>
+          <div class="label">Registros de entrada</div>
+        </div>
+      </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-warning">
+          <i class="fas fa-sign-out-alt text-warning"></i>
+          <div class="number text-warning">{{ cards.salidas_total }}</div>
+          <div class="label">Registros de salida</div>
+        </div>
+      </div>
     </div>
 
     <!-- Primera fila de gráficos -->
@@ -402,6 +416,22 @@
       </div>
     </div>
 
+    <div class="row">
+      <div class="col-12 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Entradas y salidas por día</h5>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted">Las entradas se cuentan por FECHA INGRESO y las salidas por FECHA SALIDA, dentro del período seleccionado.</p>
+            <div class="chart-container">
+              <canvas id="entradasSalidasChart" role="img" aria-label="Cantidad diaria de registros de entrada y de salida"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       // === Configuración y estilo unificado ===
       const labels = {{ labels|tojson }};
@@ -569,6 +599,20 @@
           makeDataset('Cumplimiento EECC', series.cumplimiento, 'rgba(253, 126, 20, 1)', 'rgba(253, 126, 20, 0.1)')
         ]},
         options: chartOptions
+      });
+      new Chart(document.getElementById('entradasSalidasChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Entradas', series.entradas, '#2c5aa0', 'rgba(44, 90, 160, 0.1)'),
+          makeDataset('Salidas', series.salidas, '#d97706', 'rgba(217, 119, 6, 0.1)')
+        ]},
+        options: {
+          ...chartOptions,
+          scales: {
+            ...chartOptions.scales,
+            y: { ...chartOptions.scales.y, ticks: { ...chartOptions.scales.y.ticks, precision: 0 } }
+          }
+        }
       });
     </script>
   {% endif %}

@@ -14,7 +14,7 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 - Generar reporte de dotación por gerencia.
 - Exportar reporte a Excel.
 - Acceder al módulo Registros hotelería desde la misma cabecera y el mismo dominio.
-- Registrar, importar, consultar, editar, eliminar y exportar los 15 tipos de registros operacionales de hotelería.
+- Registrar, importar, consultar, editar, eliminar y exportar los 16 tipos de registros operacionales de hotelería.
 - Consultar el dashboard KPI consolidado de hotelería por fechas o semanas.
 
 ## Menú principal
@@ -51,7 +51,7 @@ desde una página abierta antes de esta corrección.
 
 ### Eliminar varios registros o todo el listado
 
-Los 15 tipos de registros de hotelería incluyen una casilla en cada fila y
+Los 16 tipos de registros de hotelería incluyen una casilla en cada fila y
 la opción **Seleccionar todos los registros del listado**. El contador muestra
 cuántos están marcados; **Eliminar seleccionados** actúa sobre esas filas.
 
@@ -110,6 +110,55 @@ y reportes de este registro. Los campos nuevos quedan vacíos hasta completarlos
 desde el lápiz, sin asignarles datos que correspondían a otro concepto.
 Para importar, descarga la nueva plantilla de 12 columnas: la anterior de
 11 columnas se rechaza sin guardar filas, para evitar desplazar fechas y datos.
+
+### Registro de entradas y salidas
+
+Disponible en **Registros hotelería > Ingresar registros > Entradas y salidas**
+y en el selector de **Consultar registros**. El formulario, la edición, la
+plantilla Excel y el listado utilizan estos 16 campos, en este orden:
+
+1. FECHA INGRESO
+2. FECHA SALIDA
+3. HORA ENTRADA
+4. HORA SALIDA
+5. EMPRESA
+6. ID
+7. NOMBRE
+8. RUT
+9. TURNO
+10. PABELLON
+11. HABITACIÓN
+12. MOTIVO
+13. AUTORIZADO
+14. PENDULO
+15. N° TARJETA
+16. DEVOLUCIÓN
+
+La fecha de ingreso y la hora de entrada son obligatorias. La salida puede
+quedar pendiente dejando su fecha y hora vacías; al completarla, ambas son
+necesarias y no pueden ser anteriores al ingreso. Se admiten salidas al día
+siguiente y horas a medianoche. Los demás campos permiten texto libre;
+ID, RUT y N° tarjeta conservan ceros iniciales y guiones cuando se ingresan
+como texto. Motivo conserva los saltos de línea.
+
+**Descargar Plantilla** genera el XLSX vacío con encabezados, formatos de
+fecha/hora y celdas de texto para los identificadores. **Importar** acepta
+las fechas y horas de Excel y texto como `08/09/2026` y `23:45:00`.
+Si una fila contiene un dato inválido, se indica su número y no se guarda
+ninguna fila de ese archivo. La descarga CSV incluye los 16 campos.
+
+El lápiz, la eliminación individual, la selección múltiple y **Eliminar todos**
+funcionan como en los otros registros. El listado, CSV y borrado aplican sus
+filtros de fechas o semana a **FECHA INGRESO**.
+
+El dashboard incorpora dos tarjetas y el gráfico **Entradas y salidas por día**.
+Cada entrada se cuenta en FECHA INGRESO y cada salida en FECHA SALIDA dentro
+del período seleccionado. Una salida dentro del período se cuenta aunque
+su ingreso haya ocurrido antes. Las salidas pendientes no suman al gráfico.
+Las cifras representan registros, no personas únicas.
+
+La tabla `entradas_salidas` se crea automáticamente al iniciar si no existe,
+sin modificar ni borrar los registros anteriores.
 
 Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni

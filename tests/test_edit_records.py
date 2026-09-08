@@ -67,7 +67,7 @@ class EditHotelRecordsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return FormValues(response.get_data(as_text=True)).values
 
-    def test_all_fifteen_types_have_edit_icon_and_update_original_record(self):
+    def test_all_types_have_edit_icon_and_update_original_record(self):
         changes = {
             "censo": ("censo_dia", "23", 23),
             "eventos": ("que_ocurrio", 'Cambio con "comillas" & <texto>', 'Cambio con "comillas" & <texto>'),
@@ -84,6 +84,7 @@ class EditHotelRecordsTest(unittest.TestCase):
             "onboarding": ("nombre", "Nombre corregido", "Nombre corregido"),
             "apertura": ("estado_chapa", "Reparada", "Reparada"),
             "cumplimiento": ("fecha", "2026-09-03", date(2026, 9, 3)),
+            "entradas_salidas": ("hora_entrada", "17:25:36", time(17, 25, 36)),
         }
         for entity, (name, value, expected) in changes.items():
             with self.subTest(entity=entity):

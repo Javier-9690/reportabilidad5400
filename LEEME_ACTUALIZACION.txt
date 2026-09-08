@@ -1,64 +1,92 @@
-REPORTABILIDAD 5400 — EXTENSIONES Y EXCEPCIONES
+REPORTABILIDAD 5400 — REGISTRO DE ENTRADAS Y SALIDAS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-CAMPOS DE EXTENSIONES Y EXCEPCIONES
-El formulario, la edición, la plantilla Excel, el listado y la descarga CSV
-utilizan estos campos, en el mismo orden:
-1. FECHA DE SOLICITUD
-2. ID
-3. EMPRESA
-4. CO
-5. GERENCIA
-6. CENTRO COSTOS
-7. CANT. CLIENTES
-8. TIPO DE SOLICITUD
-9. DESDE
-10. HASTA
-11. APROBADOR
-12. OBSERVACION
+NUEVO REGISTRO
+Abre Registros hotelería > Ingresar registros > Entradas y salidas.
+El formulario, la edición, la plantilla Excel, el listado y el CSV utilizan
+los 16 campos solicitados, en este orden:
+1. FECHA INGRESO
+2. FECHA SALIDA
+3. HORA ENTRADA
+4. HORA SALIDA
+5. EMPRESA
+6. ID
+7. NOMBRE
+8. RUT
+9. TURNO
+10. PABELLON
+11. HABITACIÓN
+12. MOTIVO
+13. AUTORIZADO
+14. PENDULO
+15. N° TARJETA
+16. DEVOLUCIÓN
 
-Tipo de solicitud permite escribir el texto que corresponda. El listado
-muestra el ID ingresado, gerencia y observación completa con saltos de línea.
-Una cantidad de cero se muestra como cero. Se mantienen los iconos de editar
-y eliminar, las casillas y la eliminación múltiple de este registro.
+FUNCIONES DEL REGISTRO
+- Descargar Plantilla: archivo XLSX vacío con los 16 encabezados y formatos
+  de fecha/hora y texto para los identificadores.
+- Importar: carga el Excel y guarda sus registros. Si hay una fila inválida,
+  se indica su número y no se guarda ninguna fila del archivo.
+- Formulario: ingreso manual con validación y conservación de lo escrito
+  cuando hay un error.
+- Ver registros: tabla completa, filtros por fecha o semana y descarga CSV.
+- Lápiz: editar el mismo registro conservando su ID y fecha de creación.
+- Papelera, selección múltiple, seleccionar todos y Eliminar todos con la
+  misma confirmación y protección que los otros módulos.
 
-REGISTROS EXISTENTES Y NUEVA PLANTILLA
-Al iniciar la aplicación, se añaden automáticamente las columnas opcionales
-centro_costos y tipo_solicitud a extension_excepcion si faltan.
-Los registros anteriores se conservan; los nuevos campos quedan vacíos hasta
-completarlos desde el lápiz. El dato histórico proyecto se conserva en la base,
-aunque ya no aparece en el formulario, edición, listado ni CSV. No se copia a
-Centro costos, porque corresponde a otro concepto.
-Descarga la nueva plantilla de 12 columnas antes de importar. La anterior de
-11 columnas se rechaza sin guardar filas para evitar desplazar fechas y datos.
+La fecha de ingreso y la hora de entrada son obligatorias. La salida puede
+quedar pendiente dejando su fecha y hora vacías; al completarla se requieren
+ambas y no pueden ser anteriores al ingreso. Se admiten salidas al día
+siguiente y horas a medianoche. Los demás campos son de texto libre.
+ID, RUT y N° tarjeta conservan ceros iniciales y guiones si se ingresan como
+texto. Motivo admite saltos de línea.
+Los filtros del listado, CSV y borrado se aplican a FECHA INGRESO.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON ELIMINACIÓN MÚLTIPLE
+GRÁFICO EN EL DASHBOARD KPI
+Se agregaron las tarjetas Registros de entrada y Registros de salida y el
+gráfico Entradas y salidas por día, con dos series.
+Cada entrada cuenta en FECHA INGRESO y cada salida en FECHA SALIDA dentro
+del período seleccionado. Una salida se cuenta aunque su ingreso esté
+fuera del período. Una salida pendiente no suma a la serie de salidas.
+Las cifras representan registros, no personas únicas.
+
+BASE DE DATOS
+La tabla entradas_salidas se crea automáticamente al iniciar la aplicación
+si aún no existe. No hace falta borrar tablas ni ejecutar una migración manual.
+Se conservan los datos de los registros anteriores.
+
+SI YA INSTALASTE LA VERSIÓN ANTERIOR CON EXTENSIONES Y EXCEPCIONES
 Reemplaza estos archivos, conservando sus carpetas:
 - gestion5s/web.py
 - gestion5s/editing.py
 - gestion5s/templates/panel.html
 - gestion5s/templates/list.html
-- static/css/gestion5s.css
+- gestion5s/templates/edit.html
+- gestion5s/templates/dashboard.html
 - tests/test_integration.py
+- tests/test_edit_records.py
+- tests/test_bulk_delete_records.py
 - README.md
 Y añade:
-- tests/test_extension_fields.py
-La actualización de la base se ejecuta al iniciar; no requiere un comando
-manual ni borrar las tablas existentes.
+- tests/test_entry_exit_records.py
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
 - Reportes agrupa Dotación, Ocupabilidad, EGP y F&A.
-- El icono de lápiz permite editar los 15 tipos de registro.
-- Acciones en desviaciones aparece en el formulario, edición, listado,
-  plantilla Excel, importación y CSV; se aceptan las plantillas anteriores
-  de desviaciones. Su columna se añade automáticamente si falta.
+- Edición por lápiz, eliminación individual, selección múltiple y Eliminar
+  todos para los 16 tipos de registros, incluido el nuevo.
+- Acciones en desviaciones está en el formulario, edición, listado, plantilla,
+  importación y CSV. Su columna se agrega automáticamente si falta.
+- Extensiones y excepciones conserva sus 12 campos actualizados:
+  FECHA DE SOLICITUD, ID, EMPRESA, CO, GERENCIA, CENTRO COSTOS, CANT. CLIENTES,
+  TIPO DE SOLICITUD, DESDE, HASTA, APROBADOR y OBSERVACION.
+  Los dos campos nuevos se agregan automáticamente si faltan y quedan vacíos
+  en los registros históricos hasta completarlos. Proyecto se conserva en
+  la base como dato histórico. Para importar usa la nueva plantilla de 12 columnas.
 - Está corregido el error Not Found después de eliminar individualmente.
-- Los 15 tipos de registros permiten marcar filas, seleccionar todo el listado,
-  Eliminar seleccionados y Eliminar todos, con una pantalla de confirmación.
 
 ALCANCE DE ELIMINAR TODOS
 Abarca los registros del módulo actual que cumplen los filtros aplicados.
@@ -91,6 +119,7 @@ Añade estos archivos nuevos:
 - tests/test_delete_records.py
 - tests/test_deviation_actions.py
 - tests/test_edit_records.py
+- tests/test_entry_exit_records.py
 - tests/test_extension_fields.py
 
 PUBLICAR LA ACTUALIZACIÓN
@@ -102,12 +131,12 @@ Estos cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
 
 COMPROBACIONES
-Pasaron las 31 pruebas funcionales con bases SQLite temporales. Incluyen
-formulario, plantilla, importación, edición, listado y CSV de los 12 campos;
-fechas Excel, cantidad cero, observaciones con saltos de línea, conservación
-del ID y fecha de creación, actualización de una tabla antigua y rechazo de
-la plantilla anterior sin guardar datos. Se verificaron también las mejoras
-previas de los 15 módulos, incluidas la eliminación individual, seleccionada
-y total, filtros, cancelación, confirmaciones inválidas y reversión de una
-eliminación de 501 filas cuando falla el segundo lote.
+Pasaron las 36 pruebas funcionales con bases SQLite temporales. Incluyen los
+16 campos del nuevo registro en formulario, importación, edición, listado y
+CSV; formatos de fecha y hora de Excel; medianoche; salida pendiente; salidas
+al día siguiente; conservación de ceros iniciales; rechazo de datos inválidos
+sin escrituras parciales; conteos por fecha de entrada y salida y filtros.
+Las pruebas generales abarcan edición y borrado de los 16 tipos de registros.
+También se verificó el código JavaScript renderizado del dashboard: inicializa
+los 17 gráficos y entrega las fechas y conteos correctos a las dos series nuevas.
 No se modificaron datos de producción.
