@@ -1093,8 +1093,8 @@
               <i class="fas fa-list me-1"></i> Ver registros
             </a>
           </div>
-          <p class="small text-muted">Si la salida está pendiente, deja su fecha y hora vacías y complétalas después desde Editar.</p>
-          {% if field_errors %}<div class="alert alert-danger" role="alert">Revisa los campos señalados antes de guardar.</div>{% endif %}
+          <p class="small text-muted">Puedes dejar campos vacíos, incluidas fechas y horas, y completarlos después desde Editar. Las filas totalmente vacías de la plantilla se omiten.</p>
+          {% if field_errors %}<div class="alert alert-danger" role="alert">{{ field_errors.get('_form', 'Revisa los campos señalados antes de guardar.') }}</div>{% endif %}
           <form method="post" action="{{ url_for('panel', tab='entradas_salidas') }}">
             <div class="row g-3">
               {% for field in entry_exit_fields %}

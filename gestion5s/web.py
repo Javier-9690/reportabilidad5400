@@ -19,8 +19,9 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Date, DateTime, Time, Float, Text, func
+    create_engine, Column, Integer, String, Date, DateTime, Time, Float, Text, func, MetaData, Table
 )
+from sqlalchemy.schema import CreateTable
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -397,12 +398,17 @@ def entry_exit_excel_values(row, epoch):
     values = {}
     for (name, label), value in zip(ENTRY_EXIT_FIELDS, row):
         try:
+            if isinstance(value, str):
+                value = value.strip()
             if value is None or value == "":
                 values[name] = ""
             elif name in ("fecha_ingreso", "fecha_salida"):
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     value = from_excel(value, epoch=epoch)
-                values[name] = safe_convert_date(value).isoformat()
+                converted = safe_convert_date(value)
+                if converted is None:
+                    raise ValueError("Fecha inválida.")
+                values[name] = converted.isoformat()
             elif name in ("hora_entrada", "hora_salida"):
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     if not 0 <= value < 1:
@@ -665,9 +671,9 @@ class CumplimientoEECCEntry(Base):
 class EntradaSalidaEntry(Base):
     __tablename__ = "entradas_salidas"
     id = Column(Integer, primary_key=True)
-    fecha_ingreso = Column(Date, nullable=False, index=True)
+    fecha_ingreso = Column(Date, nullable=True, index=True)
     fecha_salida = Column(Date, nullable=True, index=True)
-    hora_entrada = Column(Time, nullable=False)
+    hora_entrada = Column(Time, nullable=True)
     hora_salida = Column(Time, nullable=True)
     empresa = Column(String(200), nullable=True)
     id_interno = Column(String(100), nullable=True)
@@ -703,10 +709,46 @@ def ensure_extension_columns(engine):
                 conn.execute(text(f"ALTER TABLE extension_excepcion ADD COLUMN{optional} {name} VARCHAR(200)"))
 
 
+def ensure_optional_entry_exit_fields(engine):
+    """Permite fechas/horas vacías también en las bases de la versión anterior."""
+    table_name = "entradas_salidas"
+    with engine.begin() as conn:
+        if conn.dialect.name == "sqlite":
+            # SQLite requiere una transacción explícita para revertir también el DDL.
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+        columns = {column["name"]: column for column in inspect(conn).get_columns(table_name)}
+        required = [name for name in ("fecha_ingreso", "hora_entrada") if not columns[name]["nullable"]]
+        if not required:
+            return
+        if conn.dialect.name == "postgresql":
+            for name in required:
+                conn.execute(text(f"ALTER TABLE entradas_salidas ALTER COLUMN {name} DROP NOT NULL"))
+        elif conn.dialect.name == "sqlite":
+            # SQLite no permite quitar NOT NULL directamente. Se copia la tabla
+            # dentro de la misma transacción conservando datos, índices y triggers.
+            schema_objects = conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE tbl_name = :name "
+                "AND type IN ('index', 'trigger') AND sql IS NOT NULL"
+            ), {"name": table_name}).scalars().all()
+            original = Table(table_name, MetaData(), autoload_with=conn)
+            replacement = original.to_metadata(MetaData(), name="entradas_salidas_nullable")
+            for name in required:
+                replacement.c[name].nullable = True
+            conn.execute(CreateTable(replacement))
+            conn.execute(replacement.insert().from_select(list(original.c.keys()), original.select()))
+            conn.exec_driver_sql("DROP TABLE entradas_salidas")
+            conn.exec_driver_sql("ALTER TABLE entradas_salidas_nullable RENAME TO entradas_salidas")
+            for statement in schema_objects:
+                conn.exec_driver_sql(statement)
+        else:
+            raise RuntimeError("La actualización de Entradas y salidas requiere SQLite o PostgreSQL.")
+
+
 # Crear tablas si no existen y actualizar las instalaciones anteriores.
 Base.metadata.create_all(ENGINE)
 ensure_deviation_actions_column(ENGINE)
 ensure_extension_columns(ENGINE)
+ensure_optional_entry_exit_fields(ENGINE)
 
 # Compatibilidad con instalaciones anteriores cuya tabla no tenía la fecha de negocio.
 columns = {column["name"] for column in inspect(ENGINE).get_columns("cumplimiento_eecc")}
@@ -1077,7 +1119,7 @@ def registros():
     try:
         Model = ENTITY_MODEL[vista]
         date_column = getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
-        date_order = date_column.desc().nullslast() if vista == "solicitud_ot" else date_column.desc()
+        date_order = date_column.desc().nullslast() if vista in ("solicitud_ot", "entradas_salidas") else date_column.desc()
         rows = hotel_records_query(db, vista, d_from, d_to).order_by(date_order, Model.id.desc()).all()
         listing = {key: [] for key in ENTITY_LIST_KEY.values()}
         listing[ENTITY_LIST_KEY[vista]] = rows
@@ -2131,7 +2173,7 @@ def import_xlsx(entity):
                         values, errors = parse_edit_values(entity, fields, form)
                         if errors:
                             labels = dict(ENTRY_EXIT_FIELDS)
-                            raise ValueError("; ".join(f"{labels[name]}: {error}" for name, error in errors.items()))
+                            raise ValueError("; ".join(f"{labels.get(name, 'Registro')}: {error}" for name, error in errors.items()))
                         db.add(EntradaSalidaEntry(**values))
                     except (ValueError, TypeError, OverflowError) as exc:
                         raise ValueError(f"Fila {row_number}: {exc}") from exc

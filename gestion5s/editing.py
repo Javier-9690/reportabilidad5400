@@ -213,12 +213,13 @@ def parse_edit_values(entity, fields, form):
         elif entity == "extensiones" and values["desde"] and values["hasta"] and values["hasta"] < values["desde"]:
             errors["hasta"] = "La fecha hasta debe ser igual o posterior a la fecha desde."
         elif entity == "entradas_salidas":
-            if (values["fecha_salida"] is None) != (values["hora_salida"] is None):
-                missing = "fecha_salida" if values["fecha_salida"] is None else "hora_salida"
-                errors[missing] = "Completa la fecha y la hora de salida, o deja ambas vacías si está pendiente."
-            elif values["fecha_salida"] is not None:
-                entrada = datetime.combine(values["fecha_ingreso"], values["hora_entrada"])
-                salida = datetime.combine(values["fecha_salida"], values["hora_salida"])
-                if salida < entrada:
+            if all(value is None for value in values.values()):
+                errors["_form"] = "Ingresa al menos un dato para guardar el registro."
+            elif values["fecha_ingreso"] is not None and values["fecha_salida"] is not None:
+                if values["fecha_salida"] < values["fecha_ingreso"]:
+                    errors["fecha_salida"] = "La fecha de salida no puede ser anterior a la fecha de ingreso."
+                elif (values["fecha_salida"] == values["fecha_ingreso"]
+                      and values["hora_entrada"] is not None and values["hora_salida"] is not None
+                      and values["hora_salida"] < values["hora_entrada"]):
                     errors["fecha_salida"] = "La fecha y hora de salida no pueden ser anteriores al ingreso."
     return values, errors

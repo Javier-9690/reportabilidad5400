@@ -1,10 +1,19 @@
-REPORTABILIDAD 5400 — REGISTRO DE ENTRADAS Y SALIDAS
+REPORTABILIDAD 5400 — IMPORTACIÓN CON CAMPOS VACÍOS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-NUEVO REGISTRO
+CAMPOS VACÍOS PERMITIDOS
+Entradas y salidas admite vacíos en cualquiera de sus 16 campos, incluidas
+las fechas y horas. Se puede importar una fila que contenga un solo dato.
+Las filas completamente vacías se omiten. Los vacíos se conservan como tales,
+sin completar fechas u horas artificialmente.
+Los registros incompletos también se pueden ingresar, editar y eliminar.
+Sin FECHA INGRESO se muestran y exportan al abrir el módulo sin filtros.
+El gráfico cuenta únicamente las fechas informadas de cada entrada o salida.
+
+REGISTRO DE ENTRADAS Y SALIDAS
 Abre Registros hotelería > Ingresar registros > Entradas y salidas.
 El formulario, la edición, la plantilla Excel, el listado y el CSV utilizan
 los 16 campos solicitados, en este orden:
@@ -37,10 +46,10 @@ FUNCIONES DEL REGISTRO
 - Papelera, selección múltiple, seleccionar todos y Eliminar todos con la
   misma confirmación y protección que los otros módulos.
 
-La fecha de ingreso y la hora de entrada son obligatorias. La salida puede
-quedar pendiente dejando su fecha y hora vacías; al completarla se requieren
-ambas y no pueden ser anteriores al ingreso. Se admiten salidas al día
-siguiente y horas a medianoche. Los demás campos son de texto libre.
+Todos los campos son opcionales; basta con que el registro tenga algún dato.
+Solo se validan los valores informados. Si hay datos suficientes para comparar
+las fechas u horas, la salida no puede ser anterior al ingreso. Se admiten
+salidas al día siguiente y horas a medianoche. Los demás campos son de texto libre.
 ID, RUT y N° tarjeta conservan ceros iniciales y guiones si se ingresan como
 texto. Motivo admite saltos de línea.
 Los filtros del listado, CSV y borrado se aplican a FECHA INGRESO.
@@ -54,24 +63,23 @@ fuera del período. Una salida pendiente no suma a la serie de salidas.
 Las cifras representan registros, no personas únicas.
 
 BASE DE DATOS
-La tabla entradas_salidas se crea automáticamente al iniciar la aplicación
-si aún no existe. No hace falta borrar tablas ni ejecutar una migración manual.
-Se conservan los datos de los registros anteriores.
+La tabla entradas_salidas se crea automáticamente si no existe. Al iniciar
+sobre una base anterior, se retiran las restricciones de obligatoriedad de
+fecha_ingreso y hora_entrada. PostgreSQL modifica las restricciones; SQLite
+adapta la tabla dentro de una transacción, conservando datos, índices y triggers.
+No hace falta borrar tablas ni ejecutar una migración manual.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON EXTENSIONES Y EXCEPCIONES
+SI YA INSTALASTE LA VERSIÓN ANTERIOR CON ENTRADAS Y SALIDAS
 Reemplaza estos archivos, conservando sus carpetas:
 - gestion5s/web.py
 - gestion5s/editing.py
 - gestion5s/templates/panel.html
 - gestion5s/templates/list.html
 - gestion5s/templates/edit.html
-- gestion5s/templates/dashboard.html
-- tests/test_integration.py
-- tests/test_edit_records.py
-- tests/test_bulk_delete_records.py
-- README.md
-Y añade:
 - tests/test_entry_exit_records.py
+- README.md
+La actualización de la base se realiza al reiniciar el programa.
+La plantilla mantiene los mismos 16 encabezados: no es necesario cambiarla.
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
@@ -131,12 +139,12 @@ Estos cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
 
 COMPROBACIONES
-Pasaron las 36 pruebas funcionales con bases SQLite temporales. Incluyen los
-16 campos del nuevo registro en formulario, importación, edición, listado y
-CSV; formatos de fecha y hora de Excel; medianoche; salida pendiente; salidas
-al día siguiente; conservación de ceros iniciales; rechazo de datos inválidos
-sin escrituras parciales; conteos por fecha de entrada y salida y filtros.
-Las pruebas generales abarcan edición y borrado de los 16 tipos de registros.
-También se verificó el código JavaScript renderizado del dashboard: inicializa
-los 17 gráficos y entrega las fechas y conteos correctos a las dos series nuevas.
+Pasaron las 40 pruebas funcionales con bases SQLite temporales. Se verificaron
+filas con un único dato en cada uno de los 16 campos, blancos y espacios,
+omisión de filas vacías, conservación de vacíos en CSV y edición, filtros,
+gráficos y eliminación individual y múltiple de registros incompletos.
+También se verificó la actualización de una tabla anterior conservando sus
+registros, ID, fecha de creación, índices y triggers. Un fallo simulado antes
+de terminar la adaptación de SQLite revirtió la operación y restauró la tabla
+original con todos sus datos. Se mantuvieron las pruebas de las mejoras previas.
 No se modificaron datos de producción.

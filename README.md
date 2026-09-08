@@ -134,10 +134,12 @@ plantilla Excel y el listado utilizan estos 16 campos, en este orden:
 15. N° TARJETA
 16. DEVOLUCIÓN
 
-La fecha de ingreso y la hora de entrada son obligatorias. La salida puede
-quedar pendiente dejando su fecha y hora vacías; al completarla, ambas son
-necesarias y no pueden ser anteriores al ingreso. Se admiten salidas al día
-siguiente y horas a medianoche. Los demás campos permiten texto libre;
+Los 16 campos son opcionales: se pueden importar, ingresar y editar registros
+con fechas, horas u otros datos vacíos. Basta con que la fila tenga al menos
+un dato; las filas totalmente vacías se omiten. Los vacíos se conservan como
+tales, sin inventar fechas ni horas. Se validan los datos que sí están
+informados y el orden cronológico cuando hay información para compararlo.
+Se admiten salidas al día siguiente y horas a medianoche. Los demás campos permiten texto libre;
 ID, RUT y N° tarjeta conservan ceros iniciales y guiones cuando se ingresan
 como texto. Motivo conserva los saltos de línea.
 
@@ -150,15 +152,21 @@ ninguna fila de ese archivo. La descarga CSV incluye los 16 campos.
 El lápiz, la eliminación individual, la selección múltiple y **Eliminar todos**
 funcionan como en los otros registros. El listado, CSV y borrado aplican sus
 filtros de fechas o semana a **FECHA INGRESO**.
+Los registros sin esa fecha aparecen al abrir el módulo sin filtros y pueden
+exportarse, completarse desde el lápiz o eliminarse como los demás.
 
 El dashboard incorpora dos tarjetas y el gráfico **Entradas y salidas por día**.
 Cada entrada se cuenta en FECHA INGRESO y cada salida en FECHA SALIDA dentro
 del período seleccionado. Una salida dentro del período se cuenta aunque
-su ingreso haya ocurrido antes. Las salidas pendientes no suman al gráfico.
+su ingreso haya ocurrido antes. Solo se cuentan entradas con FECHA INGRESO
+y salidas con FECHA SALIDA; las fechas vacías no se asignan a otro día.
 Las cifras representan registros, no personas únicas.
 
-La tabla `entradas_salidas` se crea automáticamente al iniciar si no existe,
-sin modificar ni borrar los registros anteriores.
+La tabla `entradas_salidas` se crea automáticamente al iniciar si no existe.
+Si se instaló la versión anterior, se retiran las restricciones de obligatoriedad
+de `fecha_ingreso` y `hora_entrada`, conservando los registros. PostgreSQL
+actualiza las restricciones; SQLite realiza la adaptación en una transacción
+que conserva los datos, índices y triggers existentes.
 
 Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
