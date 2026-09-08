@@ -128,7 +128,8 @@
     background:#fbe9e7;
 }
 
-.deviation-actions{
+.deviation-actions,
+.record-long-text{
     min-width:16rem;
     max-width:28rem;
     white-space:pre-wrap;

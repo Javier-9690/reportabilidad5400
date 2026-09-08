@@ -81,6 +81,36 @@ Al iniciar la aplicación se añade automáticamente la columna de texto
 `desviaciones.acciones` si falta, tanto en PostgreSQL como en SQLite. Los
 registros existentes se conservan; el nuevo campo queda vacío hasta completarlo.
 
+### Campos de extensiones y excepciones
+
+El formulario de ingreso, la edición, la plantilla Excel, el listado y la
+descarga CSV utilizan estos 12 campos, en este orden:
+
+1. FECHA DE SOLICITUD
+2. ID
+3. EMPRESA
+4. CO
+5. GERENCIA
+6. CENTRO COSTOS
+7. CANT. CLIENTES
+8. TIPO DE SOLICITUD
+9. DESDE
+10. HASTA
+11. APROBADOR
+12. OBSERVACION
+
+**Tipo de solicitud** es texto libre. El listado muestra también el ID
+ingresado, la gerencia y la observación completa, y conserva las opciones
+de editar, seleccionar y eliminar. Una cantidad de cero se muestra como cero.
+
+Al iniciar, se agregan automáticamente `centro_costos` y `tipo_solicitud` a
+`extension_excepcion` si faltan. Los registros anteriores y su dato histórico
+`proyecto` se conservan en la base; Proyecto deja de aparecer en los formularios
+y reportes de este registro. Los campos nuevos quedan vacíos hasta completarlos
+desde el lápiz, sin asignarles datos que correspondían a otro concepto.
+Para importar, descarga la nueva plantilla de 12 columnas: la anterior de
+11 columnas se rechaza sin guardar filas, para evitar desplazar fechas y datos.
+
 Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
 sobrescribe información previa.

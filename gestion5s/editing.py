@@ -9,6 +9,22 @@ from datetime import date, datetime, time
 from sqlalchemy import Date, DateTime, Float, Integer, Text, Time
 
 
+EXTENSION_FIELDS = (
+    ("fecha_solicitud", "FECHA DE SOLICITUD"),
+    ("id_interno", "ID"),
+    ("empresa", "EMPRESA"),
+    ("co", "CO"),
+    ("gerencia", "GERENCIA"),
+    ("centro_costos", "CENTRO COSTOS"),
+    ("cant_clientes", "CANT. CLIENTES"),
+    ("tipo_solicitud", "TIPO DE SOLICITUD"),
+    ("desde", "DESDE"),
+    ("hasta", "HASTA"),
+    ("aprobador", "APROBADOR"),
+    ("observacion", "OBSERVACION"),
+)
+
+
 # Lista explícita: el formulario nunca puede modificar la clave ni la creación.
 EDIT_CONFIG = {
     "censo": ("Censo", "fecha censo_dia censo_noche total"),
@@ -22,7 +38,7 @@ EDIT_CONFIG = {
     "solicitud_ot": ("Solicitud y OT de usuario", "n_solicitud descripcion_problema tipo_solicitud modulo habitacion tipo_turno jornada via_solicitud correo_usuario tipo_tarea ot fecha_inicio estado tiempo_respuesta_sec satisfaccion_reclamo motivo observacion"),
     "reclamos": ("Reclamos de usuarios", "n_solicitud fecha id_interno empresa_contratista descripcion_problema tipo_solicitud pabellon habitacion via_solicitud ingresar_contacto nombre_usuario responsable estatus notificacion_usuario plan_accion"),
     "alarmas": ("Activación de alarma", "modulo n_habitacion nombre_recepcionista fecha empresa id_interno co aviso_mantencion_h llegada_mantencion_h aviso_lider_h llegada_lider_h hora_reporte_salfa tipo_evento tipo_actividad fecha_reporte turno_recepcion_ingresos observaciones"),
-    "extensiones": ("Extensión y excepción", "fecha_solicitud id_interno empresa co gerencia proyecto cant_clientes desde hasta aprobador observacion"),
+    "extensiones": ("Extensión y excepción", " ".join(name for name, _ in EXTENSION_FIELDS)),
     "onboarding": ("Onboarding", "fecha_hora nombre rut empresa id_interno archivo_pdf"),
     "apertura": ("Apertura de habitación", "fecha habitacion hora responsable estado_chapa"),
     "cumplimiento": ("Cumplimiento EECC", "fecha empresa n_contrato co correo_electronico id_interno turno"),
@@ -69,6 +85,7 @@ def record_version(record):
 
 def edit_fields(entity, record):
     fields = []
+    labels = dict(EXTENSION_FIELDS) if entity == "extensiones" else FIELD_LABELS
     for name in EDIT_CONFIG[entity][1].split():
         column = record.__table__.columns[name]
         value = getattr(record, name)
@@ -97,7 +114,7 @@ def edit_fields(entity, record):
             display = str(value)
 
         fields.append({
-            "name": name, "label": FIELD_LABELS.get(name, name.replace("_", " ").capitalize()),
+            "name": name, "label": labels.get(name, name.replace("_", " ").capitalize()),
             "kind": kind, "value": display, "column": column,
             "required": not column.nullable and column.default is None,
             "maxlength": getattr(column.type, "length", None),

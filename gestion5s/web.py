@@ -14,7 +14,7 @@ from flask import (
     flash, send_file, jsonify, abort, session
 )
 
-from gestion5s.editing import EDIT_CONFIG, edit_fields, parse_edit_values, record_version
+from gestion5s.editing import EDIT_CONFIG, EXTENSION_FIELDS, edit_fields, parse_edit_values, record_version
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
@@ -588,8 +588,11 @@ class ExtensionExcepcionEntry(Base):
     empresa = Column(String(200), nullable=True)
     co = Column(String(100), nullable=True)
     gerencia = Column(String(200), nullable=True)
+    # Se conserva el dato histórico; ya no forma parte del formulario ni la plantilla.
     proyecto = Column(String(200), nullable=True)
+    centro_costos = Column(String(200), nullable=True)
     cant_clientes = Column(Integer, nullable=True)
+    tipo_solicitud = Column(String(200), nullable=True)
     desde = Column(Date, nullable=True)
     hasta = Column(Date, nullable=True)
     aprobador = Column(String(200), nullable=True)
@@ -640,9 +643,20 @@ def ensure_deviation_actions_column(engine):
             conn.execute(text(f"ALTER TABLE desviaciones ADD COLUMN{optional} acciones TEXT"))
 
 
+def ensure_extension_columns(engine):
+    """Agrega los nuevos campos sin reinterpretar ni sobrescribir datos históricos."""
+    with engine.begin() as conn:
+        existing = {column["name"] for column in inspect(conn).get_columns("extension_excepcion")}
+        optional = " IF NOT EXISTS" if conn.dialect.name == "postgresql" else ""
+        for name in ("centro_costos", "tipo_solicitud"):
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE extension_excepcion ADD COLUMN{optional} {name} VARCHAR(200)"))
+
+
 # Crear tablas si no existen y actualizar las instalaciones anteriores.
 Base.metadata.create_all(ENGINE)
 ensure_deviation_actions_column(ENGINE)
+ensure_extension_columns(ENGINE)
 
 # Compatibilidad con instalaciones anteriores cuya tabla no tenía la fecha de negocio.
 columns = {column["name"] for column in inspect(ENGINE).get_columns("cumplimiento_eecc")}
@@ -922,8 +936,9 @@ def panel():
                     empresa=request.form.get("empresa","").strip(),
                     co=request.form.get("co","").strip(),
                     gerencia=request.form.get("gerencia","").strip(),
-                    proyecto=request.form.get("proyecto","").strip(),
+                    centro_costos=request.form.get("centro_costos","").strip(),
                     cant_clientes=(int(request.form.get("cant_clientes")) if request.form.get("cant_clientes") else None),
+                    tipo_solicitud=request.form.get("tipo_solicitud","").strip(),
                     desde=safe_convert_date(request.form.get("desde")),
                     hasta=safe_convert_date(request.form.get("hasta")),
                     aprobador=request.form.get("aprobador","").strip(),
@@ -1237,17 +1252,12 @@ def download_entity(entity):
             if d_from: q = q.filter(ExtensionExcepcionEntry.fecha_solicitud >= d_from)
             if d_to:   q = q.filter(ExtensionExcepcionEntry.fecha_solicitud <= d_to)
             rows = q.order_by(ExtensionExcepcionEntry.fecha_solicitud).all()
-            headers = ["FECHA_SOLICITUD","ID","EMPRESA","CO","GERENCIA","PROYECTO","CANT_CLIENTES",
-                       "DESDE","HASTA","APROBADOR","OBSERVACION"]
+            headers = [label for _, label in EXTENSION_FIELDS]
             w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
-                    "FECHA_SOLICITUD": r.fecha_solicitud.isoformat(), "ID": r.id_interno or "",
-                    "EMPRESA": r.empresa or "", "CO": r.co or "", "GERENCIA": r.gerencia or "",
-                    "PROYECTO": r.proyecto or "", "CANT_CLIENTES": r.cant_clientes if r.cant_clientes is not None else "",
-                    "DESDE": r.desde.isoformat() if r.desde else "",
-                    "HASTA": r.hasta.isoformat() if r.hasta else "",
-                    "APROBADOR": r.aprobador or "", "OBSERVACION": r.observacion or "",
+                    label: getattr(r, name) if getattr(r, name) is not None else ""
+                    for name, label in EXTENSION_FIELDS
                 })
 
         elif entity == "onboarding":
@@ -1669,10 +1679,7 @@ TEMPLATES = {
     "HORA_REPORTE_SALFA", "TIPO_EVENTO", "TIPO_ACTIVIDAD", "FECHA_REPORTE",
     "TURNO_RECEPCION_INGRESOS", "OBSERVACIONES"  # <-- Asegúrate de que OBSERVACIONES esté aquí
     ],
-    "extensiones": [
-        "FECHA_SOLICITUD","ID","EMPRESA","CO","GERENCIA","PROYECTO","CANT_CLIENTES",
-        "DESDE","HASTA","APROBADOR","OBSERVACION"
-    ],
+    "extensiones": [label for _, label in EXTENSION_FIELDS],
     "onboarding": ["FECHA_HORA","NOMBRE","RUT","EMPRESA","ID","ARCHIVO_PDF"],
     "apertura": ["FECHA","HABITACION","HORA","RESPONSABLE","ESTADO_CHAPA"],
     "cumplimiento": ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"],
@@ -1981,18 +1988,17 @@ def import_xlsx(entity):
                     ))
 
                 elif entity == "extensiones":
+                    # Los nombres mantienen alineados los datos si cambia el orden de la plantilla.
+                    values = dict(zip((name for name, _ in EXTENSION_FIELDS), row))
+                    for name in values:
+                        if name in ("fecha_solicitud", "desde", "hasta"):
+                            values[name] = safe_convert_date(values[name])
+                        elif name == "cant_clientes":
+                            values[name] = to_int(values[name], None)
+                        else:
+                            values[name] = str(values[name]).strip() if values[name] is not None else ""
                     db.add(ExtensionExcepcionEntry(
-                        fecha_solicitud=safe_convert_date(row[0]),
-                        id_interno=str(row[1] or "").strip(),
-                        empresa=str(row[2] or "").strip(),
-                        co=str(row[3] or "").strip(),
-                        gerencia=str(row[4] or "").strip(),
-                        proyecto=str(row[5] or "").strip(),
-                        cant_clientes=to_int(row[6], None),
-                        desde=safe_convert_date(row[7]),
-                        hasta=safe_convert_date(row[8]),
-                        aprobador=str(row[9] or "").strip(),
-                        observacion=str(row[10] or "").strip(),
+                        **values,
                     ))
 
                 elif entity == "onboarding":
