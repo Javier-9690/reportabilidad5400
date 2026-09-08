@@ -106,7 +106,26 @@
 
 .table-actions{
     display:flex;
+    align-items:center;
     gap:.25rem;
+}
+
+.table-actions .record-select{
+    margin:0 .35rem 0 0;
+    flex-shrink:0;
+    width:1.05rem;
+    height:1.05rem;
+}
+
+.bulk-records-toolbar{
+    padding:1rem;
+    background:#f8f9fa;
+    border:1px solid #e2e5ea;
+    border-radius:.65rem;
+}
+
+.data-table tbody tr.is-selected{
+    background:#fbe9e7;
 }
 
 .deviation-actions{

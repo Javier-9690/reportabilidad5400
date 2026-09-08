@@ -49,6 +49,23 @@ módulo con sus filtros y muestra la confirmación. Se conserva el prefijo
 `/gestion-5s` en la dirección de regreso, incluso si la eliminación se envía
 desde una página abierta antes de esta corrección.
 
+### Eliminar varios registros o todo el listado
+
+Los 15 tipos de registros de hotelería incluyen una casilla en cada fila y
+la opción **Seleccionar todos los registros del listado**. El contador muestra
+cuántos están marcados; **Eliminar seleccionados** actúa sobre esas filas.
+
+**Eliminar todos** abarca los registros del módulo actual que cumplen los
+filtros de fechas o semana. Para eliminar todo el historial de un módulo,
+abre ese módulo sin filtros. Ambas opciones muestran una pantalla para
+confirmar la cantidad y el rango de fechas antes de ejecutar el borrado.
+**Cancelar** regresa sin eliminar registros.
+
+La confirmación guarda la selección exacta durante 15 minutos. Si alguno de
+esos registros cambia, debe revisarse otra vez; los registros nuevos que se
+creen después de confirmar la selección no se incluyen en el borrado.
+La operación se guarda en una sola transacción y vuelve al mismo listado.
+
 ### Acciones en desviaciones
 
 El formulario de **Desviaciones** incluye el campo opcional **Acciones**.

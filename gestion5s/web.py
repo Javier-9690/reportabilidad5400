@@ -3,6 +3,7 @@ import io
 import csv
 import re
 import secrets
+import hashlib
 from urllib.parse import parse_qs, urlsplit
 from sqlalchemy import inspect, text
 from statistics import mean
@@ -14,6 +15,7 @@ from flask import (
 )
 
 from gestion5s.editing import EDIT_CONFIG, edit_fields, parse_edit_values, record_version
+from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
 from sqlalchemy import (
@@ -988,98 +990,22 @@ def panel():
 def registros():
     d_from, d_to, semana_sel = resolve_filters(request.args)
     vista = request.args.get("vista", "censo")
+    if vista not in ENTITY_MODEL:
+        abort(404)
     db = SessionLocal()
     try:
-        if semana_sel:
-            d_from, d_to = week_range(semana_sel)
-
-        def between(q, col):
-            if d_from: q = q.filter(col >= d_from)
-            if d_to:   q = q.filter(col <= d_to)
-            return q
-
-        census = between(db.query(CensusEntry), CensusEntry.fecha).order_by(CensusEntry.fecha.desc()).all()
-        eventos = between(db.query(EventSeguridad), EventSeguridad.fecha).order_by(EventSeguridad.fecha.desc()).all()
-        duplics = between(db.query(DuplicidadEntry), DuplicidadEntry.fecha).order_by(DuplicidadEntry.fecha.desc()).all()
-
-        encuestas = db.query(EncuestaEntry)
-        if d_from: encuestas = encuestas.filter(EncuestaEntry.fecha_hora >= datetime.combine(d_from, time.min))
-        if d_to:   encuestas = encuestas.filter(EncuestaEntry.fecha_hora <= datetime.combine(d_to, time.max))
-        encuestas = encuestas.order_by(EncuestaEntry.fecha_hora.desc()).all()
-
-        atenciones = between(db.query(AtencionEntry), AtencionEntry.fecha).order_by(AtencionEntry.fecha.desc()).all()
-
-        robos = db.query(RoboHurtoEntry)
-        if d_from: robos = robos.filter(RoboHurtoEntry.fecha >= d_from)
-        if d_to:   robos = robos.filter(RoboHurtoEntry.fecha <= d_to)
-        robos = robos.order_by(RoboHurtoEntry.fecha.desc()).all()
-
-        miscelaneo = db.query(MiscelaneoEntry)
-        if d_from: miscelaneo = miscelaneo.filter(MiscelaneoEntry.fecha_creacion >= d_from)
-        if d_to:   miscelaneo = miscelaneo.filter(MiscelaneoEntry.fecha_creacion <= d_to)
-        miscelaneo = miscelaneo.order_by(
-            MiscelaneoEntry.fecha_creacion.desc(),
-            MiscelaneoEntry.id.desc()
-        ).all()
-
-        desviaciones = db.query(DesviacionEntry)
-        if d_from: desviaciones = desviaciones.filter(DesviacionEntry.fecha >= d_from)
-        if d_to:   desviaciones = desviaciones.filter(DesviacionEntry.fecha <= d_to)
-        desviaciones = desviaciones.order_by(DesviacionEntry.fecha.desc()).all()
-
-        solicitudes_ot = db.query(SolicitudOTEntry)
-        if d_from: solicitudes_ot = solicitudes_ot.filter(SolicitudOTEntry.fecha_inicio >= d_from)
-        if d_to:   solicitudes_ot = solicitudes_ot.filter(SolicitudOTEntry.fecha_inicio <= d_to)
-        solicitudes_ot = solicitudes_ot.order_by(
-            SolicitudOTEntry.fecha_inicio.desc().nullslast(),
-            SolicitudOTEntry.id.desc()
-        ).all()
-
-        reclamos = db.query(ReclamoUsuarioEntry)
-        if d_from: reclamos = reclamos.filter(ReclamoUsuarioEntry.fecha >= d_from)
-        if d_to:   reclamos = reclamos.filter(ReclamoUsuarioEntry.fecha <= d_to)
-        reclamos = reclamos.order_by(ReclamoUsuarioEntry.fecha.desc()).all()
-
-        # --------- NUEVOS 5 MÓDULOS ----------
-        alarmas = db.query(ActivacionAlarmaEntry)
-        if d_from: alarmas = alarmas.filter(ActivacionAlarmaEntry.fecha >= d_from)
-        if d_to:   alarmas = alarmas.filter(ActivacionAlarmaEntry.fecha <= d_to)
-        alarmas = alarmas.order_by(ActivacionAlarmaEntry.fecha.desc()).all()
-
-        extensiones = db.query(ExtensionExcepcionEntry)
-        if d_from: extensiones = extensiones.filter(ExtensionExcepcionEntry.fecha_solicitud >= d_from)
-        if d_to:   extensiones = extensiones.filter(ExtensionExcepcionEntry.fecha_solicitud <= d_to)
-        extensiones = extensiones.order_by(ExtensionExcepcionEntry.fecha_solicitud.desc()).all()
-
-        onboarding = db.query(OnboardingEntry)
-        if d_from: onboarding = onboarding.filter(OnboardingEntry.fecha_hora >= datetime.combine(d_from, time.min))
-        if d_to:   onboarding = onboarding.filter(OnboardingEntry.fecha_hora <= datetime.combine(d_to, time.max))
-        onboarding = onboarding.order_by(OnboardingEntry.fecha_hora.desc()).all()
-
-        apertura = db.query(AperturaHabitacionEntry)
-        if d_from: apertura = apertura.filter(AperturaHabitacionEntry.fecha >= d_from)
-        if d_to:   apertura = apertura.filter(AperturaHabitacionEntry.fecha <= d_to)
-        apertura = apertura.order_by(AperturaHabitacionEntry.fecha.desc()).all()
-
-        cumplimiento = db.query(CumplimientoEECCEntry)
-        if d_from: cumplimiento = cumplimiento.filter(CumplimientoEECCEntry.fecha >= d_from)
-        if d_to:   cumplimiento = cumplimiento.filter(CumplimientoEECCEntry.fecha <= d_to)
-        cumplimiento = cumplimiento.order_by(
-            CumplimientoEECCEntry.fecha.desc(),
-            CumplimientoEECCEntry.id.desc()
-        ).all()
-
+        Model = ENTITY_MODEL[vista]
+        date_column = getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
+        date_order = date_column.desc().nullslast() if vista == "solicitud_ot" else date_column.desc()
+        rows = hotel_records_query(db, vista, d_from, d_to).order_by(date_order, Model.id.desc()).all()
+        listing = {key: [] for key in ENTITY_LIST_KEY.values()}
+        listing[ENTITY_LIST_KEY[vista]] = rows
         return render_template(
             "list.html",
             semana_sel=semana_sel, d_from=d_from, d_to=d_to, week_map=WEEK_MAP,
-            census=census, eventos=eventos, duplics=duplics,
-            encuestas=encuestas, atenciones=atenciones,
-            robos=robos, miscelaneo=miscelaneo, desviaciones=desviaciones,
-            solicitudes_ot=solicitudes_ot, reclamos=reclamos,
-            alarmas=alarmas, extensiones=extensiones, onboarding=onboarding,
-            apertura=apertura, cumplimiento=cumplimiento,
-            vista=vista,
-            current_tab=None
+            vista=vista, current_tab=None, **listing,
+            record_count=len(rows), entity_title=EDIT_CONFIG[vista][0],
+            bulk_csrf=session.setdefault("hotel_bulk_csrf", secrets.token_hex(32)),
         )
     finally:
         db.close()
@@ -1405,6 +1331,39 @@ ENTITY_MODEL = {
     "cumplimiento": CumplimientoEECCEntry,
 }
 
+ENTITY_LIST_KEY = {
+    "censo": "census", "eventos": "eventos", "duplicidades": "duplics",
+    "encuestas": "encuestas", "atencion": "atenciones", "robos": "robos",
+    "miscelaneo": "miscelaneo", "desviaciones": "desviaciones",
+    "solicitud_ot": "solicitudes_ot", "reclamos": "reclamos", "alarmas": "alarmas",
+    "extensiones": "extensiones", "onboarding": "onboarding", "apertura": "apertura",
+    "cumplimiento": "cumplimiento",
+}
+ENTITY_DATE_FIELD = {
+    "encuestas": "fecha_hora", "onboarding": "fecha_hora",
+    "miscelaneo": "fecha_creacion", "solicitud_ot": "fecha_inicio",
+    "extensiones": "fecha_solicitud",
+}
+
+
+def hotel_records_query(db, entity, d_from=None, d_to=None):
+    """Una sola regla de fechas para mostrar y eliminar registros."""
+    Model = ENTITY_MODEL[entity]
+    column = getattr(Model, ENTITY_DATE_FIELD.get(entity, "fecha"))
+    query = db.query(Model)
+    if isinstance(column.type, DateTime):
+        if d_from:
+            query = query.filter(column >= datetime.combine(d_from, time.min))
+        if d_to:
+            query = query.filter(column <= datetime.combine(d_to, time.max))
+    else:
+        if d_from:
+            query = query.filter(column >= d_from)
+        if d_to:
+            query = query.filter(column <= d_to)
+    return query
+
+
 def records_return_url(entity, target):
     """Vuelve al listado del módulo con sus filtros, dentro de la aplicación."""
     filters = {}
@@ -1428,6 +1387,148 @@ def records_return_url(entity, target):
     except ValueError:
         pass
     return url_for("registros", vista=entity, **filters)
+
+
+def verify_bulk_csrf():
+    expected = session.get("hotel_bulk_csrf", "")
+    if not expected or not secrets.compare_digest(
+        request.form.get("csrf_token", "").encode(), expected.encode()
+    ):
+        abort(400, description="La sesión del formulario expiró. Vuelve al listado.")
+
+
+def bulk_delete_filters(form):
+    """No transforma filtros inválidos en una eliminación sin restricciones."""
+    filters = {}
+    try:
+        for name in ("from", "to"):
+            raw = form.get(name, "").strip()
+            if raw:
+                filters[name] = date.fromisoformat(raw).isoformat()
+        raw_week = form.get("semana", "").strip()
+        if raw_week:
+            week = int(raw_week)
+            if week not in WEEK_MAP:
+                raise ValueError("Semana inválida")
+            filters["semana"] = str(week)
+            start, end = week_range(week)
+            filters.update({"from": start.isoformat(), "to": end.isoformat()})
+        d_from = date.fromisoformat(filters["from"]) if "from" in filters else None
+        d_to = date.fromisoformat(filters["to"]) if "to" in filters else None
+        if d_from and d_to and d_to < d_from:
+            raise ValueError("Rango inválido")
+    except (ValueError, TypeError):
+        abort(400, description="Los filtros no son válidos. Vuelve al listado y revisa las fechas.")
+    return filters, d_from, d_to
+
+
+def bulk_records_digest(records):
+    digest = hashlib.sha256()
+    for record in sorted(records, key=lambda row: row.id):
+        digest.update(record_version(record).encode("ascii"))
+    return digest.hexdigest()
+
+
+def records_in_batches(query, Model, ids, lock=False):
+    records = []
+    for offset in range(0, len(ids), 500):
+        batch = query.filter(Model.id.in_(ids[offset:offset + 500])).order_by(Model.id)
+        records.extend((batch.with_for_update() if lock else batch).all())
+    return records
+
+
+def bulk_delete_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt="hotel-bulk-delete")
+
+
+@app.post("/delete/<string:entity>/bulk/confirm")
+def confirm_bulk_delete(entity):
+    Model = ENTITY_MODEL.get(entity)
+    if Model is None:
+        abort(404)
+    verify_bulk_csrf()
+    filters, d_from, d_to = bulk_delete_filters(request.form)
+    return_url = url_for("registros", vista=entity, **filters)
+    mode = request.form.get("mode")
+    if mode not in ("selected", "all"):
+        abort(400, description="Selecciona una opción de eliminación.")
+
+    db = SessionLocal()
+    try:
+        query = hotel_records_query(db, entity, d_from, d_to)
+        if mode == "selected":
+            raw_ids = request.form.getlist("ids")
+            if not raw_ids:
+                flash("Selecciona al menos un registro para eliminar.", "warning")
+                return redirect(return_url)
+            if any(not re.fullmatch(r"[0-9]{1,10}", value) or not 1 <= int(value) <= 2147483647 for value in raw_ids):
+                abort(400, description="La selección de registros no es válida.")
+            ids = sorted({int(value) for value in raw_ids})
+            records = records_in_batches(query, Model, ids)
+            if len(records) != len(ids):
+                flash("La selección cambió o incluye registros fuera del listado. Vuelve a seleccionarlos.", "warning")
+                return redirect(return_url)
+        else:
+            records = query.order_by(Model.id).all()
+            ids = [record.id for record in records]
+        if not records:
+            flash("No hay registros para eliminar con estos filtros.", "info")
+            return redirect(return_url)
+
+        token = bulk_delete_serializer().dumps({
+            "entity": entity, "mode": mode, "ids": ids, "filters": filters,
+            "digest": bulk_records_digest(records), "csrf": session["hotel_bulk_csrf"],
+        })
+        return render_template(
+            "bulk_delete_confirm.html", entity=entity, entity_title=EDIT_CONFIG[entity][0],
+            count=len(ids), mode=mode, d_from=d_from, d_to=d_to,
+            return_url=return_url, confirmation_token=token,
+            bulk_csrf=session["hotel_bulk_csrf"],
+        )
+    finally:
+        db.close()
+
+
+@app.post("/delete/<string:entity>/bulk")
+def delete_records_bulk(entity):
+    Model = ENTITY_MODEL.get(entity)
+    if Model is None:
+        abort(404)
+    verify_bulk_csrf()
+    try:
+        payload = bulk_delete_serializer().loads(request.form.get("confirmation_token", ""), max_age=900)
+    except BadData:
+        flash("La confirmación venció o no es válida. Revisa el listado y vuelve a confirmar.", "warning")
+        return redirect(url_for("registros", vista=entity))
+    if payload.get("entity") != entity or payload.get("csrf") != session["hotel_bulk_csrf"]:
+        abort(400, description="La confirmación no corresponde a esta selección.")
+
+    ids = payload["ids"]
+    filters, d_from, d_to = bulk_delete_filters(payload["filters"])
+    return_url = url_for("registros", vista=entity, **filters)
+    db = SessionLocal()
+    try:
+        records = records_in_batches(hotel_records_query(db, entity, d_from, d_to), Model, ids, lock=True)
+        if len(records) != len(ids) or bulk_records_digest(records) != payload["digest"]:
+            flash("Los registros cambiaron desde la confirmación. No se eliminó ninguno; revisa el listado.", "warning")
+            return redirect(return_url)
+
+        deleted = 0
+        for offset in range(0, len(ids), 500):
+            deleted += db.query(Model).filter(Model.id.in_(ids[offset:offset + 500])).delete(synchronize_session=False)
+        if deleted != len(ids):
+            db.rollback()
+            flash("La selección cambió. No se eliminó ningún registro; vuelve a intentarlo.", "warning")
+        else:
+            db.commit()
+            flash(f"Se eliminaron {deleted} registros de {EDIT_CONFIG[entity][0]}.", "success")
+    except SQLAlchemyError:
+        db.rollback()
+        app.logger.exception("Error al eliminar varios registros de hotelería")
+        flash("No se pudo completar la eliminación. No se guardó ningún borrado; vuelve a intentarlo.", "danger")
+    finally:
+        db.close()
+    return redirect(return_url)
 
 
 @app.route("/edit/<string:entity>/<int:rid>", methods=["GET", "POST"])

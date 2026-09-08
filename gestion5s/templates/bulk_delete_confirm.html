@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Confirmar eliminación | {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="content-container mx-auto" style="max-width:760px;">
+  <h1 class="page-title"><i class="fas fa-trash me-2" aria-hidden="true"></i>Confirmar eliminación</h1>
+  <p class="fs-5">Vas a eliminar <strong>{{ count }} {{ 'registro' if count == 1 else 'registros' }}</strong> de <strong>{{ entity_title }}</strong>.</p>
+  <div class="filter-card">
+    <p class="mb-2"><strong>Selección:</strong> {{ 'Todos los registros del listado' if mode == 'all' else 'Los registros que marcaste' }}</p>
+    <p class="mb-0"><strong>Fechas:</strong>
+      {% if d_from or d_to %}
+        {{ d_from.strftime('%d/%m/%Y') if d_from else 'Sin fecha inicial' }} — {{ d_to.strftime('%d/%m/%Y') if d_to else 'Sin fecha final' }}
+      {% else %}
+        Todo el historial de este módulo
+      {% endif %}
+    </p>
+  </div>
+  <p>Esta acción no se puede deshacer.</p>
+  <form method="post" action="{{ url_for('delete_records_bulk', entity=entity) }}" class="d-flex flex-wrap gap-2">
+    <input type="hidden" name="csrf_token" value="{{ bulk_csrf }}">
+    <input type="hidden" name="confirmation_token" value="{{ confirmation_token }}">
+    <button class="btn btn-danger" type="submit"><i class="fas fa-trash me-1" aria-hidden="true"></i>Confirmar eliminación de {{ count }} {{ 'registro' if count == 1 else 'registros' }}</button>
+    <a class="btn btn-outline-secondary" href="{{ return_url }}">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

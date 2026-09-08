@@ -1,40 +1,58 @@
-REPORTABILIDAD 5400 — CORRECCIÓN AL ELIMINAR Y MEJORAS ANTERIORES
+REPORTABILIDAD 5400 — SELECCIÓN MÚLTIPLE Y ELIMINAR TODOS
 
-Este ZIP contiene el programa completo actualizado.
+Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-CORRECCIÓN DEL ERROR NOT FOUND DESPUÉS DE ELIMINAR
-El registro se borraba correctamente, pero el formulario enviaba la dirección
-/registros sin el prefijo /gestion-5s. El navegador abría una página inexistente.
-La corrección vuelve a /gestion-5s/registros con el módulo y los filtros
-seleccionados, y muestra la confirmación de eliminación.
-También acepta las direcciones que envían formularios abiertos antes del cambio.
+ELIMINAR VARIOS REGISTROS
+1. Abre Registros hotelería > Consultar registros y selecciona el módulo.
+2. Aplica los filtros de fechas o semana que necesites.
+3. Marca las casillas de las filas que quieras eliminar, o utiliza
+   Seleccionar todos los registros del listado.
+4. El contador muestra cuántos registros están marcados.
+5. Pulsa Eliminar seleccionados. Revisa la cantidad, el módulo y las fechas
+   en la pantalla siguiente y confirma la eliminación o pulsa Cancelar.
 
-SI YA APLICASTE LA VERSIÓN ANTERIOR CON ACCIONES EN DESVIACIONES
-Para corregir el error de eliminación, reemplaza estos dos archivos:
+ELIMINAR TODOS
+El botón Eliminar todos elimina todos los registros del módulo actual que
+cumplen los filtros aplicados, después de mostrar la confirmación.
+Para borrar todo el historial de un módulo, abre su listado sin filtros.
+La operación se limita al módulo seleccionado. Funciona en los 15 tipos de
+registros de hotelería.
+
+COMPORTAMIENTO DEL BORRADO
+- La primera pantalla de confirmación todavía no borra registros.
+- Cancelar vuelve al listado sin eliminar nada.
+- La confirmación identifica exactamente los registros revisados y dura
+  15 minutos. Si alguno cambió, es necesario revisar la selección otra vez.
+- Los registros nuevos creados después de abrir la confirmación se conservan.
+- Si ocurre un error durante el borrado, se revierte toda la operación.
+- Al terminar se vuelve al mismo módulo con sus filtros y una confirmación.
+
+SI YA INSTALASTE LA VERSIÓN ANTERIOR
+Para añadir la selección múltiple, reemplaza:
 - gestion5s/web.py
 - gestion5s/templates/list.html
-Actualiza también README.md y añade tests/test_delete_records.py si mantienes
-la documentación y las pruebas sincronizadas.
+- static/css/gestion5s.css
+- README.md
+Y añade:
+- gestion5s/templates/bulk_delete_confirm.html
+- static/js/registros.js
+- tests/test_bulk_delete_records.py
+Esta funcionalidad no requiere añadir ni modificar tablas.
 
 MEJORAS ANTERIORES INCLUIDAS
-1. Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
-   Reportes contiene Dotación, Ocupabilidad, EGP y F&A.
-2. El lápiz junto a la papelera permite editar los 15 tipos de registro.
-   Guardar cambios actualiza la misma fila; Cancelar sale sin guardar.
-3. Desviaciones incluye Acciones en el formulario, la edición, el listado,
-   la plantilla Excel, la importación y la descarga CSV.
-   La columna ACCIONES se agrega al final de la plantilla, después de CORREO_DESTINO.
-   Las plantillas antiguas siguen funcionando y dejan el campo nuevo vacío.
+- Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
+- Reportes agrupa Dotación, Ocupabilidad, EGP y F&A.
+- El icono de lápiz permite editar los 15 tipos de registro.
+- Acciones en desviaciones aparece en el formulario, edición, listado,
+  plantilla Excel, importación y CSV; se aceptan las plantillas antiguas.
+- Está corregido el error Not Found después de eliminar individualmente.
 
-DATOS EXISTENTES
-Esta corrección del regreso al listado no requiere cambios de base de datos.
-Si todavía no instalaste la versión con Acciones, al iniciar la aplicación se
-agrega automáticamente la columna desviaciones.acciones si falta, conservando
-los registros anteriores. Es compatible con PostgreSQL y SQLite.
+Si aún no instalaste Acciones en desviaciones, el inicio de la aplicación
+agregará la columna opcional automáticamente, conservando los registros.
 
-PARA APLICAR TODAS LAS MEJORAS DESDE EL REPOSITORIO ORIGINAL
+ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza estos archivos, conservando sus carpetas:
 - README.md
 - gestion5s/templates/base.html
@@ -49,25 +67,27 @@ Reemplaza estos archivos, conservando sus carpetas:
 
 Añade estos archivos nuevos:
 - gestion5s/editing.py
+- gestion5s/templates/bulk_delete_confirm.html
 - gestion5s/templates/edit.html
+- static/js/registros.js
+- tests/test_bulk_delete_records.py
 - tests/test_delete_records.py
 - tests/test_deviation_actions.py
 - tests/test_edit_records.py
 
 PUBLICAR LA ACTUALIZACIÓN
-1. Descomprime el ZIP y copia los archivos indicados a sus respectivas carpetas.
+1. Descomprime el ZIP y copia los archivos indicados a sus carpetas.
 2. Guarda los cambios en la rama de GitHub que utiliza tu servicio de Render.
 3. Espera al despliegue automático o despliega el último commit desde Render.
 No subas el ZIP como sustituto de los archivos del programa.
-Los cambios aún no están publicados en GitHub ni desplegados en Render,
+Estos cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
 
-VALIDACIÓN
-Se reprodujo el error en una base temporal: la fila se eliminaba y el regreso
-respondía 404. Después de la corrección, las 17 pruebas pasaron.
-Se verificó el flujo de eliminación y regreso al listado en los 15 tipos de
-registro, conservando los filtros. También se probaron formularios antiguos,
-un segundo intento sobre una fila eliminada y direcciones de regreso inválidas.
-Las pruebas anteriores de edición, Acciones, importaciones y páginas siguen pasando.
-Todas estas comprobaciones se hicieron con SQLite temporal, sin modificar datos
-de producción.
+COMPROBACIONES
+Se verificaron las 27 pruebas funcionales con SQLite temporal y la sintaxis
+del JavaScript. Las comprobaciones incluyen selección y eliminación de todos
+en los 15 módulos, fechas y semanas, conservación de otros módulos, cancelar,
+confirmaciones inválidas o vencidas, registros cambiados o creados después de
+la confirmación y reversión de una eliminación de 501 filas cuando falla el
+segundo lote. También se conservaron las pruebas de las mejoras anteriores.
+No se ejecutaron borrados sobre datos de producción.
