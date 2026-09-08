@@ -77,7 +77,7 @@
           action="{{ url_for('delete_record', entity=entity, rid=id) }}"
           onsubmit="return confirm('¿Está seguro de que desea eliminar este registro?');"
           style="display:inline;">
-      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <input type="hidden" name="next" value="{{ request.script_root ~ request.full_path }}">
       <button class="btn btn-sm btn-outline-danger" type="submit" title="Eliminar registro" aria-label="Eliminar registro {{ id }}">
         <i class="fas fa-trash" aria-hidden="true"></i>
       </button>
@@ -465,7 +465,7 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Acciones</th>
+                <th>Opciones</th>
                 <th>Fecha</th>
                 <th>N° Solicitud</th>
                 <th>ID Interno</th>
@@ -474,6 +474,7 @@
                 <th>Tipo Riesgo</th>
                 <th>Pabellón</th>
                 <th>Habitación</th>
+                <th>Acciones</th>
                 <th>Registro</th>
               </tr>
             </thead>
@@ -489,6 +490,7 @@
                   <td>{{ r.tipo_riesgo or '-' }}</td>
                   <td>{{ r.pabellon or '-' }}</td>
                   <td>{{ r.habitacion or '-' }}</td>
+                  <td class="deviation-actions">{{ r.acciones or '-' }}</td>
                   <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
                 </tr>
               {% endfor %}

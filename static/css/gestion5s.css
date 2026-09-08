@@ -109,6 +109,13 @@
     gap:.25rem;
 }
 
+.deviation-actions{
+    min-width:16rem;
+    max-width:28rem;
+    white-space:pre-wrap;
+    overflow-wrap:anywhere;
+}
+
 .stats-card{
     height:100%;
     min-height:145px;

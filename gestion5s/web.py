@@ -510,6 +510,7 @@ class DesviacionEntry(Base):
     quien_informa = Column(String(200), nullable=True)
     riesgo_material = Column(String(200), nullable=True)
     correo_destino = Column(String(200), nullable=True)
+    acciones = Column(Text, nullable=True)
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 class SolicitudOTEntry(Base):
@@ -628,8 +629,18 @@ class CumplimientoEECCEntry(Base):
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
-# Crear tablas si no existen
+def ensure_deviation_actions_column(engine):
+    """Añade el campo opcional a instalaciones existentes sin alterar sus registros."""
+    with engine.begin() as conn:
+        existing = {column["name"] for column in inspect(conn).get_columns("desviaciones")}
+        if "acciones" not in existing:
+            optional = " IF NOT EXISTS" if conn.dialect.name == "postgresql" else ""
+            conn.execute(text(f"ALTER TABLE desviaciones ADD COLUMN{optional} acciones TEXT"))
+
+
+# Crear tablas si no existen y actualizar las instalaciones anteriores.
 Base.metadata.create_all(ENGINE)
+ensure_deviation_actions_column(ENGINE)
 
 # Compatibilidad con instalaciones anteriores cuya tabla no tenía la fecha de negocio.
 columns = {column["name"] for column in inspect(ENGINE).get_columns("cumplimiento_eecc")}
@@ -818,6 +829,7 @@ def panel():
                     quien_informa=request.form.get("quien_informa","").strip(),
                     riesgo_material=request.form.get("riesgo_material","").strip(),
                     correo_destino=request.form.get("correo_destino","").strip(),
+                    acciones=request.form.get("acciones","").strip(),
                 )
                 db.add(rec); db.commit(); flash("Desviación guardada.")
 
@@ -1208,7 +1220,7 @@ def download_entity(entity):
             if d_to:   q = q.filter(DesviacionEntry.fecha <= d_to)
             rows = q.order_by(DesviacionEntry.fecha).all()
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
-                       "tipo_solicitud","pabellon","habitacion","via_solicitud","quien_informa","riesgo_material","correo_destino"]
+                       "tipo_solicitud","pabellon","habitacion","via_solicitud","quien_informa","riesgo_material","correo_destino","acciones"]
             w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
@@ -1219,6 +1231,7 @@ def download_entity(entity):
                     "habitacion": r.habitacion or "", "via_solicitud": r.via_solicitud or "",
                     "quien_informa": r.quien_informa or "", "riesgo_material": r.riesgo_material or "",
                     "correo_destino": r.correo_destino or "",
+                    "acciones": r.acciones or "",
                 })
 
         elif entity == "solicitud_ot":
@@ -1392,12 +1405,15 @@ ENTITY_MODEL = {
     "cumplimiento": CumplimientoEECCEntry,
 }
 
-def edit_return_url(entity, target):
+def records_return_url(entity, target):
     """Vuelve al listado del módulo con sus filtros, dentro de la aplicación."""
     filters = {}
+    list_path = url_for("registros")
+    # Admite los formularios anteriores, que enviaban /registros sin el prefijo.
+    allowed_paths = {list_path, list_path.removeprefix(request.script_root)}
     try:
         parts = urlsplit(target or "")
-        if not parts.scheme and not parts.netloc and parts.path == url_for("registros"):
+        if not parts.scheme and not parts.netloc and parts.path in allowed_paths:
             query = parse_qs(parts.query)
             for name in ("from", "to"):
                 if query.get(name):
@@ -1437,7 +1453,7 @@ def edit_record(entity, rid):
         fields = edit_fields(entity, record)
         version = record_version(record)
         total_auto = entity == "censo" and record.total == record.censo_dia + record.censo_noche
-        return_url = edit_return_url(entity, request.form.get("next") if request.method == "POST" else request.args.get("next"))
+        return_url = records_return_url(entity, request.form.get("next") if request.method == "POST" else request.args.get("next"))
         errors, status, conflict = {}, 200, False
 
         if request.method == "POST":
@@ -1493,15 +1509,14 @@ def delete_record(entity, rid):
         else:
             db.delete(obj)
             db.commit()
-            flash("Registro eliminado.")
+            flash("Registro eliminado.", "success")
     except Exception as e:
         db.rollback()
         flash(f"No se pudo eliminar: {e}")
     finally:
         db.close()
 
-    nxt = request.form.get("next")
-    return redirect(nxt or url_for("registros"))
+    return redirect(records_return_url(entity, request.form.get("next")))
 
 # -----------------------------------------------------------------------------
 # PLANTILLAS EXCEL + IMPORTACIÓN POR MÓDULO
@@ -1533,7 +1548,7 @@ TEMPLATES = {
     ],
     "desviaciones": [
         "N_SOLICITUD","FECHA","ID","EMPRESA_CONTRATISTA","DESCRIPCION_PROBLEMA","TIPO_RIESGO",
-        "TIPO_SOLICITUD","PABELLON","HABITACION","VIA_SOLICITUD","QUIEN_INFORMA","RIESGO_MATERIAL","CORREO_DESTINO"
+        "TIPO_SOLICITUD","PABELLON","HABITACION","VIA_SOLICITUD","QUIEN_INFORMA","RIESGO_MATERIAL","CORREO_DESTINO","ACCIONES"
     ],
     "solicitud_ot": [
         "N_SOLICITUD","DESCRIPCION_PROBLEMA","TIPO_SOLICITUD","MODULO","HABITACION","TIPO_TURNO","JORNADA",
@@ -1648,7 +1663,9 @@ def import_xlsx(entity):
         headers = [normalize_header(c.value) for c in next(ws.iter_rows(min_row=1, max_row=1))]
         expected = [normalize_header(h) for h in TEMPLATES[entity]]
         
-        if headers != expected:
+        # La plantilla anterior de desviaciones sigue siendo válida; Acciones queda vacío.
+        legacy_deviations = entity == "desviaciones" and headers == expected[:-1]
+        if headers != expected and not legacy_deviations:
             flash(f"Encabezados inválidos. Esperado: {', '.join(TEMPLATES[entity])}")
             return redirect(url_for("panel", tab=entity if entity != "eventos" else "eventos"))
 
@@ -1789,6 +1806,7 @@ def import_xlsx(entity):
                         quien_informa=str(row[10] or "").strip(),
                         riesgo_material=str(row[11] or "").strip(),
                         correo_destino=str(row[12] or "").strip(),
+                        acciones=str(row[13] if len(row) > 13 and row[13] is not None else "").strip(),
                     ))
 
                 elif entity == "solicitud_ot":

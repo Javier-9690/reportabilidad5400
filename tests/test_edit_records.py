@@ -76,7 +76,7 @@ class EditHotelRecordsTest(unittest.TestCase):
             "atencion": ("tiempo_promedio_sec", "125:07", 7507),
             "robos": ("hora", "17:25:36", time(17, 25, 36)),
             "miscelaneo": ("comentario", "Seguimiento\nSegunda línea", "Seguimiento\nSegunda línea"),
-            "desviaciones": ("quien_informa", "Recepción", "Recepción"),
+            "desviaciones": ("acciones", "Reparar y verificar el cierre.", "Reparar y verificar el cierre."),
             "solicitud_ot": ("tiempo_respuesta_sec", "00:00", 0),
             "reclamos": ("estatus", "Cerrado", "Cerrado"),
             "alarmas": ("aviso_mantencion_h", "1.25", 1.25),

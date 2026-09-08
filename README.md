@@ -44,6 +44,26 @@ guardar; los errores conservan lo escrito para corregirlo. Si otra persona
 modificó el registro mientras estaba abierto, se solicita cargar su versión
 actual para evitar sobrescribirla. La edición no requiere migrar tablas.
 
+Después de eliminar un registro, la aplicación vuelve al listado del mismo
+módulo con sus filtros y muestra la confirmación. Se conserva el prefijo
+`/gestion-5s` en la dirección de regreso, incluso si la eliminación se envía
+desde una página abierta antes de esta corrección.
+
+### Acciones en desviaciones
+
+El formulario de **Desviaciones** incluye el campo opcional **Acciones**.
+También se puede editar desde el lápiz y se muestra completo en la columna
+**Acciones** del listado, con sus saltos de línea. Los iconos de editar y
+eliminar aparecen en la columna **Opciones**.
+
+La plantilla Excel agrega **ACCIONES** al final, después de **CORREO_DESTINO**,
+y la descarga CSV incluye el mismo dato. Las plantillas anteriores de
+desviaciones se siguen aceptando y dejan Acciones vacío.
+
+Al iniciar la aplicación se añade automáticamente la columna de texto
+`desviaciones.acciones` si falta, tanto en PostgreSQL como en SQLite. Los
+registros existentes se conservan; el nuevo campo queda vacío hasta completarlo.
+
 Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
 sobrescribe información previa.

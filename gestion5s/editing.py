@@ -18,7 +18,7 @@ EDIT_CONFIG = {
     "atencion": ("Atención al público", "fecha tiempo_promedio_sec cantidad"),
     "robos": ("Robos y hurtos", "fecha hora modulo habitacion empresa nombre_cliente rut medio_reclamo especies observaciones recepciona"),
     "miscelaneo": ("Misceláneo", "ot division area lugar ubicacion disciplina especialidad falla empresa fecha_creacion fecha_inicio fecha_termino fecha_aprobacion estado comentario"),
-    "desviaciones": ("Desviaciones", "n_solicitud fecha id_interno empresa_contratista descripcion_problema tipo_riesgo tipo_solicitud pabellon habitacion via_solicitud quien_informa riesgo_material correo_destino"),
+    "desviaciones": ("Desviaciones", "n_solicitud fecha id_interno empresa_contratista descripcion_problema tipo_riesgo tipo_solicitud pabellon habitacion via_solicitud quien_informa riesgo_material correo_destino acciones"),
     "solicitud_ot": ("Solicitud y OT de usuario", "n_solicitud descripcion_problema tipo_solicitud modulo habitacion tipo_turno jornada via_solicitud correo_usuario tipo_tarea ot fecha_inicio estado tiempo_respuesta_sec satisfaccion_reclamo motivo observacion"),
     "reclamos": ("Reclamos de usuarios", "n_solicitud fecha id_interno empresa_contratista descripcion_problema tipo_solicitud pabellon habitacion via_solicitud ingresar_contacto nombre_usuario responsable estatus notificacion_usuario plan_accion"),
     "alarmas": ("Activación de alarma", "modulo n_habitacion nombre_recepcionista fecha empresa id_interno co aviso_mantencion_h llegada_mantencion_h aviso_lider_h llegada_lider_h hora_reporte_salfa tipo_evento tipo_actividad fecha_reporte turno_recepcion_ingresos observaciones"),
