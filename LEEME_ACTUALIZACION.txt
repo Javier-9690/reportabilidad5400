@@ -1,0 +1,66 @@
+REPORTABILIDAD 5400 — MENÚ Y EDICIÓN DE REGISTROS
+
+Esta carpeta contiene el programa completo con las dos mejoras solicitadas.
+Base: https://github.com/Javier-9690/reportabilidad5400
+Commit de origen: f67683f33208d1917fd766649ef897df63ced824
+
+EDITAR REGISTROS DE HOTELERÍA
+1. Abre Registros hotelería > Consultar registros y selecciona el módulo.
+2. En la columna Acciones, pulsa el icono de lápiz junto a la papelera.
+3. El formulario muestra los datos del registro seleccionado.
+4. Modifica los campos y pulsa Guardar cambios. Volverás al listado con
+   los filtros que tenías seleccionados.
+5. Cancelar o Volver a registros permite salir sin guardar cambios.
+
+La edición está disponible para los 15 tipos de registro y actualiza la
+misma fila, conservando su identificador y su fecha de creación.
+Los errores de fechas, horas, cantidades o tiempos mm:ss se muestran junto
+al campo correspondiente. El formulario conserva lo escrito para corregirlo.
+El censo permite calcular el total automáticamente o usar un total manual.
+Las encuestas recalculan el total y el promedio de sus puntajes.
+Si otra persona actualizó el registro mientras estaba abierto, el programa
+pide cargar la versión actual antes de volver a editarlo.
+
+MENÚ PRINCIPAL
+Importar | Censos | Sin Match | Curva | Nuevo ID | Reportes | Registros hotelería
+Reportes: Dotación, Ocupabilidad, EGP y F&A.
+Registros hotelería: Ingresar registros, Consultar registros y Dashboard KPI.
+Dashboard ya no figura como pestaña del menú principal.
+
+ARCHIVOS A REEMPLAZAR RESPECTO DEL REPOSITORIO ORIGINAL
+- README.md
+- gestion5s/templates/base.html
+- gestion5s/templates/dashboard.html
+- gestion5s/templates/list.html
+- gestion5s/templates/panel.html
+- gestion5s/web.py
+- templates/base.html
+- templates/dashboard.html
+
+ARCHIVOS NUEVOS QUE DEBES AÑADIR
+- gestion5s/editing.py
+- gestion5s/templates/edit.html
+- tests/test_edit_records.py
+
+SI YA APLICASTE EL ZIP ANTERIOR
+Para añadir la edición, reemplaza gestion5s/web.py, gestion5s/templates/list.html
+ y README.md. Añade gestion5s/editing.py, gestion5s/templates/edit.html y
+ tests/test_edit_records.py, conservando sus carpetas.
+
+CÓMO APLICAR LA ACTUALIZACIÓN
+1. Descomprime este ZIP.
+2. Reemplaza y añade los archivos indicados en sus respectivas carpetas
+   dentro de tu repositorio. No subas el ZIP como sustituto de los archivos.
+3. Guarda los cambios en la rama que utiliza tu servicio de Render.
+4. Espera al despliegue automático o despliega el último commit desde Render.
+
+No se han publicado estos cambios en GitHub ni se ha desplegado el servicio:
+la conexión disponible al repositorio tiene permiso de lectura.
+Estas mejoras no requieren migrar tablas ni reemplazar la base de datos.
+
+VALIDACIÓN
+Se ejecutaron las 10 pruebas de la aplicación en una base SQLite temporal.
+Todas pasaron, incluyendo edición de los 15 tipos, conservación del registro
+original, cálculos, filtros, validación y protección contra formularios antiguos.
+También pasaron las pruebas existentes de carga de páginas, ingreso, importación,
+exportación y eliminación. No se ejecutaron pruebas sobre datos de producción.

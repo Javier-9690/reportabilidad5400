@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Sistema de Gestión 5400 - Registros{% endblock %}
+{% block title %}Consultar registros | {{ super() }}{% endblock %}
 
 {% block content %}
 <div class="content-container">
-  <h1 class="page-title">Registros del Sistema</h1>
+  <h1 class="page-title">Consultar registros de hotelería</h1>
 
   <!-- Filtros -->
   <div class="filter-card">
@@ -66,15 +66,20 @@
     </form>
   </div>
 
-  {# Macro botón eliminar #}
-  {% macro delbtn(entity, id) -%}
+  {# Acciones disponibles para cada registro #}
+  {% macro record_actions(entity, id) -%}
+    <a class="btn btn-sm btn-outline-primary"
+       href="{{ url_for('edit_record', entity=entity, rid=id, next=request.script_root ~ request.full_path) }}"
+       title="Editar registro" aria-label="Editar registro {{ id }}">
+      <i class="fas fa-pen" aria-hidden="true"></i>
+    </a>
     <form method="post"
           action="{{ url_for('delete_record', entity=entity, rid=id) }}"
           onsubmit="return confirm('¿Está seguro de que desea eliminar este registro?');"
           style="display:inline;">
       <input type="hidden" name="next" value="{{ request.full_path }}">
-      <button class="btn btn-sm btn-outline-danger" type="submit" title="Eliminar registro">
-        <i class="fas fa-trash"></i>
+      <button class="btn btn-sm btn-outline-danger" type="submit" title="Eliminar registro" aria-label="Eliminar registro {{ id }}">
+        <i class="fas fa-trash" aria-hidden="true"></i>
       </button>
     </form>
   {%- endmacro %}
@@ -107,7 +112,7 @@
               {% for r in census %}
                 <tr>
                   <td class="table-actions">
-                    {{ delbtn('censo', r.id) }}
+                    {{ record_actions('censo', r.id) }}
                   </td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.censo_dia }}</td>
@@ -154,7 +159,7 @@
               {% for r in eventos %}
                 <tr>
                   <td class="table-actions">
-                    {{ delbtn('eventos', r.id) }}
+                    {{ record_actions('eventos', r.id) }}
                   </td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.horario }}</td>
@@ -207,7 +212,7 @@
               {% for r in duplics %}
                 <tr>
                   <td class="table-actions">
-                    {{ delbtn('duplicidades', r.id) }}
+                    {{ record_actions('duplicidades', r.id) }}
                   </td>
                   <td>{{ r.semana }}</td>
                   <td>{{ r.fecha }}</td>
@@ -272,7 +277,7 @@
               {% for r in encuestas %}
                 <tr>
                   <td class="table-actions">
-                    {{ delbtn('encuestas', r.id) }}
+                    {{ record_actions('encuestas', r.id) }}
                   </td>
                   <td>{{ r.fecha_hora.strftime('%d/%m/%Y %H:%M') }}</td>
                   <td>{{ r.q1_puntaje if r.q1_puntaje is not none else '-' }}</td>
@@ -326,7 +331,7 @@
               {% for r in atenciones %}
                 <tr>
                   <td class="table-actions">
-                    {{ delbtn('atencion', r.id) }}
+                    {{ record_actions('atencion', r.id) }}
                   </td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ '%02d:%02d'|format((r.tiempo_promedio_sec//60),(r.tiempo_promedio_sec%60)) }}</td>
@@ -375,7 +380,7 @@
             <tbody>
               {% for r in robos %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('robos', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('robos', r.id) }}</td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.hora and r.hora.strftime('%H:%M') or '-' }}</td>
                   <td>{{ r.modulo or '-' }}</td>
@@ -427,7 +432,7 @@
             <tbody>
               {% for r in miscelaneo %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('miscelaneo', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('miscelaneo', r.id) }}</td>
                   <td>{{ r.ot or '-' }}</td>
                   <td>{{ r.division or '-' }}</td>
                   <td>{{ r.area or '-' }}</td>
@@ -475,7 +480,7 @@
             <tbody>
               {% for r in desviaciones %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('desviaciones', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('desviaciones', r.id) }}</td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.n_solicitud or '-' }}</td>
                   <td>{{ r.id_interno or '-' }}</td>
@@ -522,7 +527,7 @@
             <tbody>
               {% for r in solicitudes_ot %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('solicitud_ot', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('solicitud_ot', r.id) }}</td>
                   <td>{{ r.fecha_inicio or '-' }}</td>
                   <td>{{ r.n_solicitud or '-' }}</td>
                   <td>{{ r.modulo or '-' }}</td>
@@ -569,7 +574,7 @@
             <tbody>
               {% for r in reclamos %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('reclamos', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('reclamos', r.id) }}</td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.n_solicitud or '-' }}</td>
                   <td>{{ r.empresa_contratista or '-' }}</td>
@@ -616,7 +621,7 @@
             <tbody>
               {% for r in alarmas %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('alarmas', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('alarmas', r.id) }}</td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.modulo or '-' }}</td>
                   <td>{{ r.n_habitacion or '-' }}</td>
@@ -663,7 +668,7 @@
             <tbody>
               {% for r in extensiones %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('extensiones', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('extensiones', r.id) }}</td>
                   <td>{{ r.fecha_solicitud }}</td>
                   <td>{{ r.empresa or '-' }}</td>
                   <td>{{ r.co or '-' }}</td>
@@ -709,7 +714,7 @@
             <tbody>
               {% for r in onboarding %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('onboarding', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('onboarding', r.id) }}</td>
                   <td>{{ r.fecha_hora.strftime('%d/%m/%Y %H:%M') }}</td>
                   <td>{{ r.nombre or '-' }}</td>
                   <td>{{ r.rut or '-' }}</td>
@@ -752,7 +757,7 @@
             <tbody>
               {% for r in apertura %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('apertura', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('apertura', r.id) }}</td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.habitacion or '-' }}</td>
                   <td>{{ r.hora and r.hora.strftime('%H:%M') or '-' }}</td>
@@ -800,7 +805,7 @@
             <tbody>
               {% for r in cumplimiento %}
                 <tr>
-                  <td class="table-actions">{{ delbtn('cumplimiento', r.id) }}</td>
+                  <td class="table-actions">{{ record_actions('cumplimiento', r.id) }}</td>
                   <td>{{ r.fecha }}</td>
                   <td>{{ r.empresa or '-' }}</td>
                   <td>{{ r.n_contrato or '-' }}</td>
@@ -824,5 +829,3 @@
   </div>
 </div>
 {% endblock %}
-
-

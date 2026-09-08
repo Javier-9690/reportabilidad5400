@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Gestión 5S | Reportabilidad 5400{% endblock %}</title>
+    <title>{% block title %}Registros hotelería | Reportabilidad 5400{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
@@ -19,7 +19,7 @@
             <img src="/static/img/aramark.png" class="camp-logo camp-logo-aramark" alt="Aramark">
         </a>
 
-        <a class="camp-title" href="/" aria-label="Dashboard principal">
+        <a class="camp-title" href="/" aria-label="Inicio">
             <i class="bi bi-clipboard-check"></i>
             <span>Reportabilidad 5400</span>
         </a>
@@ -36,21 +36,27 @@
             </button>
             <div class="collapse navbar-collapse justify-content-center" id="mainNav">
                 <ul class="navbar-nav align-items-lg-center gap-lg-1 text-center">
-                    <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" href="/imports"><i class="bi bi-upload"></i> Importar</a></li>
                     <li class="nav-item"><a class="nav-link" href="/censos"><i class="bi bi-calendar-check"></i> Censos</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/no-match"><i class="bi bi-magic"></i> Sin match</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/no-match"><i class="bi bi-magic"></i> Sin Match</a></li>
                     <li class="nav-item"><a class="nav-link" href="/curva"><i class="bi bi-graph-up-arrow"></i> Curva</a></li>
                     <li class="nav-item"><a class="nav-link" href="/curva/nuevo"><i class="bi bi-plus-circle"></i> Nuevo ID</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/reports/dotacion-gerencia"><i class="bi bi-table"></i> Dotación</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/reports/ocupabilidad"><i class="bi bi-bar-chart-line"></i> Ocupabilidad</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/reports/egp"><i class="bi bi-building"></i> EGP</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/reports/fa"><i class="bi bi-briefcase"></i> F&amp;A</a></li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-grid-3x3-gap"></i> Gestión 5S
+                        <a class="nav-link dropdown-toggle" href="#" id="reportsMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-file-earmark-bar-graph"></i> Reportes
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
+                        <ul class="dropdown-menu" aria-labelledby="reportsMenu">
+                            <li><a class="dropdown-item" href="/reports/dotacion-gerencia"><i class="bi bi-table me-2"></i>Dotación</a></li>
+                            <li><a class="dropdown-item" href="/reports/ocupabilidad"><i class="bi bi-bar-chart-line me-2"></i>Ocupabilidad</a></li>
+                            <li><a class="dropdown-item" href="/reports/egp"><i class="bi bi-building me-2"></i>EGP</a></li>
+                            <li><a class="dropdown-item" href="/reports/fa"><i class="bi bi-briefcase me-2"></i>F&amp;A</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle active" href="#" id="hotelRecordsMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-grid-3x3-gap"></i> Registros hotelería
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="hotelRecordsMenu">
                             <li><a class="dropdown-item" href="{{ url_for('panel') }}"><i class="bi bi-pencil-square me-2"></i>Ingresar registros</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('registros') }}"><i class="bi bi-database me-2"></i>Consultar registros</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('dashboard') }}"><i class="bi bi-graph-up me-2"></i>Dashboard KPI</a></li>

@@ -2,14 +2,18 @@ import os
 import io
 import csv
 import re
+import secrets
+from urllib.parse import parse_qs, urlsplit
 from sqlalchemy import inspect, text
 from statistics import mean
 from datetime import datetime, date, time, timedelta, timezone
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, send_file, jsonify
+    flash, send_file, jsonify, abort, session
 )
+
+from gestion5s.editing import EDIT_CONFIG, edit_fields, parse_edit_values, record_version
 
 # ---------- BD ----------
 from sqlalchemy import (
@@ -1368,7 +1372,7 @@ def download_entity(entity):
     finally:
         db.close()
         
-# --- Mapa entidad → Modelo para eliminar ---
+# --- Mapa entidad → Modelo para editar y eliminar ---
 ENTITY_MODEL = {
     "censo": CensusEntry,
     "eventos": EventSeguridad,
@@ -1387,6 +1391,91 @@ ENTITY_MODEL = {
     "apertura": AperturaHabitacionEntry,
     "cumplimiento": CumplimientoEECCEntry,
 }
+
+def edit_return_url(entity, target):
+    """Vuelve al listado del módulo con sus filtros, dentro de la aplicación."""
+    filters = {}
+    try:
+        parts = urlsplit(target or "")
+        if not parts.scheme and not parts.netloc and parts.path == url_for("registros"):
+            query = parse_qs(parts.query)
+            for name in ("from", "to"):
+                if query.get(name):
+                    try:
+                        filters[name] = date.fromisoformat(query[name][0]).isoformat()
+                    except ValueError:
+                        pass
+            if query.get("semana") and query["semana"][0].isdigit():
+                week = int(query["semana"][0])
+                if week in WEEK_MAP:
+                    filters["semana"] = week
+    except ValueError:
+        pass
+    return url_for("registros", vista=entity, **filters)
+
+
+@app.route("/edit/<string:entity>/<int:rid>", methods=["GET", "POST"])
+def edit_record(entity, rid):
+    Model = ENTITY_MODEL.get(entity)
+    if Model is None or entity not in EDIT_CONFIG:
+        abort(404)
+
+    csrf_token = session.setdefault("hotel_edit_csrf", secrets.token_hex(32))
+    if request.method == "POST" and not secrets.compare_digest(
+        request.form.get("csrf_token", "").encode(), csrf_token.encode()
+    ):
+        abort(400, description="La sesión del formulario expiró. Vuelve a abrir el registro.")
+
+    db = SessionLocal()
+    try:
+        query = db.query(Model).filter(Model.id == rid)
+        # PostgreSQL bloquea la fila durante el guardado para evitar sobrescrituras.
+        record = (query.with_for_update() if request.method == "POST" else query).first()
+        if record is None:
+            abort(404, description="El registro no existe o fue eliminado.")
+
+        fields = edit_fields(entity, record)
+        version = record_version(record)
+        total_auto = entity == "censo" and record.total == record.censo_dia + record.censo_noche
+        return_url = edit_return_url(entity, request.form.get("next") if request.method == "POST" else request.args.get("next"))
+        errors, status, conflict = {}, 200, False
+
+        if request.method == "POST":
+            total_auto = request.form.get("censo_total_auto") == "1"
+            if request.form.get("record_version") != version:
+                errors["_form"] = "Este registro cambió desde que lo abriste. Carga la versión actual antes de editarlo de nuevo."
+                status, conflict = 409, True
+            else:
+                values, errors = parse_edit_values(entity, fields, request.form)
+                if errors:
+                    status = 422
+                else:
+                    try:
+                        for name, value in values.items():
+                            setattr(record, name, value)
+                        db.commit()
+                    except SQLAlchemyError:
+                        db.rollback()
+                        app.logger.exception("Error al editar un registro de hotelería")
+                        errors["_form"] = "No se pudieron guardar los cambios. Inténtalo nuevamente."
+                        status = 503
+                    else:
+                        flash("Registro actualizado correctamente.", "success")
+                        return redirect(return_url)
+
+            # Conserva lo escrito si hay errores; no sustituye el token de una versión antigua.
+            version = request.form.get("record_version", "")
+            for field in fields:
+                field["value"] = request.form.get(field["name"], field["value"])
+
+        return render_template(
+            "edit.html", entity=entity, entity_title=EDIT_CONFIG[entity][0],
+            record_id=rid, fields=fields, errors=errors, return_url=return_url,
+            csrf_token=csrf_token, version=version, total_auto=total_auto, conflict=conflict,
+        ), status
+    finally:
+        db.close()
+
 
 @app.post("/delete/<string:entity>/<int:rid>")
 def delete_record(entity, rid):

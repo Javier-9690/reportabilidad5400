@@ -13,17 +13,36 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 - Aplicar corrección automática o corrección manual por ID exacto de curva.
 - Generar reporte de dotación por gerencia.
 - Exportar reporte a Excel.
-- Acceder al módulo Gestión 5S desde la misma cabecera y el mismo dominio.
-- Registrar, importar, consultar, eliminar y exportar los 15 tipos de registros operacionales de Gestión 5S.
-- Consultar el dashboard KPI consolidado de Gestión 5S por fechas o semanas.
+- Acceder al módulo Registros hotelería desde la misma cabecera y el mismo dominio.
+- Registrar, importar, consultar, editar, eliminar y exportar los 15 tipos de registros operacionales de hotelería.
+- Consultar el dashboard KPI consolidado de hotelería por fechas o semanas.
 
-## Gestión 5S integrada
+## Menú principal
 
-El sistema 5S se encuentra en estas rutas dentro de la aplicación principal:
+Importar · Censos · Sin Match · Curva · Nuevo ID · Reportes · Registros hotelería.
+
+- **Reportes**: Dotación, Ocupabilidad, EGP y F&A.
+- **Registros hotelería**: Ingresar registros, Consultar registros y Dashboard KPI.
+
+El Dashboard general no figura en el menú; sigue disponible desde el encabezado.
+
+## Registros hotelería
+
+El módulo antes llamado Gestión 5S se encuentra en estas rutas dentro de la aplicación principal:
 
 - `/gestion-5s/panel`: ingreso manual e importación Excel.
 - `/gestion-5s/registros`: consulta, eliminación y descarga CSV.
+- `/gestion-5s/edit/<entidad>/<id>`: edición del registro desde el icono de lápiz junto a la papelera.
 - `/gestion-5s/dashboard`: indicadores y gráficos.
+
+En **Consultar registros**, el lápiz abre un formulario con los datos actuales.
+**Guardar cambios** actualiza el mismo registro y vuelve al listado con sus
+filtros; **Cancelar** vuelve sin guardar. El censo permite calcular el total
+automáticamente o mantener un total manual. Las encuestas recalculan su total
+y promedio. Fechas, horas, cantidades y tiempos `mm:ss` se validan antes de
+guardar; los errores conservan lo escrito para corregirlo. Si otra persona
+modificó el registro mientras estaba abierto, se solicita cargar su versión
+actual para evitar sobrescribirla. La edición no requiere migrar tablas.
 
 Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Editar registro | {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="content-container">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h1 class="page-title mb-2"><i class="fas fa-pen me-2" aria-hidden="true"></i>Editar registro</h1>
+      <p class="text-muted mb-0">{{ entity_title }} · Registro #{{ record_id }}</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ return_url }}"><i class="fas fa-arrow-left me-1" aria-hidden="true"></i>Volver a registros</a>
+  </div>
+
+  {% if errors %}
+  <div class="alert alert-danger" role="alert">
+    {% if errors.get('_form') %}{{ errors['_form'] }}{% else %}Revisa los campos señalados antes de guardar.{% endif %}
+    {% if conflict %}
+      <a class="alert-link d-block mt-2" href="{{ url_for('edit_record', entity=entity, rid=record_id, next=return_url) }}">Cargar la versión actual del registro</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('edit_record', entity=entity, rid=record_id) }}">
+    <input type="hidden" name="next" value="{{ return_url }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="record_version" value="{{ version }}">
+
+    {% if entity == 'censo' %}
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="censo_total_auto" id="censoTotalAuto" value="1" {% if total_auto %}checked{% endif %}>
+        <label class="form-check-label" for="censoTotalAuto">Calcular el total sumando censo día y censo noche</label>
+      </div>
+    {% elif entity == 'encuestas' %}
+      <p class="small text-muted">El total y el promedio se recalculan al guardar según los puntajes ingresados.</p>
+    {% endif %}
+
+    <div class="row g-3">
+      {% for field in fields %}
+      <div class="{{ 'col-12' if field.kind == 'textarea' else 'col-md-6 col-xl-4' }}">
+        <label for="edit-{{ field.name }}" class="form-label{% if field.required %} required{% endif %}">{{ field.label }}</label>
+        {% if field.kind == 'textarea' %}
+          <textarea id="edit-{{ field.name }}" name="{{ field.name }}" class="form-control{% if errors.get(field.name) %} is-invalid{% endif %}" rows="3" {% if field.required %}required{% endif %} {% if errors.get(field.name) %}aria-invalid="true" aria-describedby="error-{{ field.name }}"{% endif %}>{{ field.value }}</textarea>
+        {% else %}
+          <input id="edit-{{ field.name }}" name="{{ field.name }}" type="{{ 'text' if field.kind == 'duration' else field.kind }}" value="{{ field.value }}" class="form-control{% if errors.get(field.name) %} is-invalid{% endif %}"
+            {% if field.required %}required{% endif %}
+            {% if field.maxlength %}maxlength="{{ field.maxlength }}"{% endif %}
+            {% if field.kind == 'number' %}step="{{ field.step }}" min="{{ field.minimum }}" {% if field.maximum is not none %}max="{{ field.maximum }}"{% endif %}{% endif %}
+            {% if field.kind in ['time', 'datetime-local'] %}step="any"{% endif %}
+            {% if field.kind == 'duration' %}pattern="[0-9]+:[0-5][0-9]" placeholder="03:54" title="Minutos:segundos, por ejemplo 03:54"{% endif %}
+            {% if errors.get(field.name) %}aria-invalid="true" aria-describedby="error-{{ field.name }}"{% endif %}>
+        {% endif %}
+        {% if errors.get(field.name) %}<div class="invalid-feedback" id="error-{{ field.name }}">{{ errors[field.name] }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-4">
+      <button class="btn btn-primary-custom" type="submit" {% if conflict %}disabled{% endif %}><i class="fas fa-save me-1" aria-hidden="true"></i>Guardar cambios</button>
+      <a class="btn btn-outline-secondary" href="{{ return_url }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if entity == 'censo' %}
+<script>
+(() => {
+  const automatic = document.getElementById('censoTotalAuto');
+  const day = document.getElementById('edit-censo_dia');
+  const night = document.getElementById('edit-censo_noche');
+  const total = document.getElementById('edit-total');
+  function updateTotal() {
+    total.readOnly = automatic.checked;
+    if (automatic.checked) total.value = Number(day.value || 0) + Number(night.value || 0);
+  }
+  automatic.addEventListener('change', updateTotal);
+  day.addEventListener('input', updateTotal);
+  night.addEventListener('input', updateTotal);
+  updateTotal();
+})();
+</script>
+{% endif %}
+{% endblock %}
