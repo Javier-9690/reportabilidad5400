@@ -34,9 +34,11 @@ extremos y todos los días intermedios, aunque no tengan registros.
 
 | Fila del reporte | Registro de origen | Fecha utilizada | Campo de estado |
 | --- | --- | --- | --- |
+| Doble asignación | Duplicidades | Fecha | Estatus |
 | Reclamos usuarios | Reclamos de usuarios | Fecha | Estatus |
 | Solicitudes de usuarios | Solicitud y OT de usuario | Fecha inicio | Estado |
 | Samtech usuarios | Samtech usuarios | Fecha creación | Estado |
+| Desviaciones clientes | Desviaciones | Fecha | No tiene campo de estado |
 
 El reporte diario reproduce las secciones de la referencia: registros, casos
 abiertos, casos cerrados y comparación con porcentaje de cierre. Tiene encabezados
@@ -56,7 +58,8 @@ Los enlaces **Ver registros** abren cada listado con el mismo período.
 Los conteos muestran el **estado actual de los registros fechados en el período**.
 Un caso que después se cierra permanece en su fecha de origen. El informe no
 reconstruye estados históricos ni cuenta los cierres por el día en que ocurrieron,
-porque estos tres registros no comparten un historial de cambios de estado.
+porque estos registros no comparten un historial de cambios de estado.
+La Fecha cierre de Duplicidades no reemplaza su Fecha del registro.
 Las fechas de término y aprobación de Samtech no reemplazan su Fecha creación.
 
 Se ignoran mayúsculas, tildes, espacios repetidos, guiones y guiones bajos en los
@@ -75,13 +78,20 @@ valores, incluidos Cancelado y Rechazado, quedan **Sin clasificar**. Cuando exis
 se muestran en una sección adicional y en las conclusiones. Así, el total de
 registros siempre coincide con abiertos + cerrados + sin clasificar.
 
+**Desviaciones clientes** participa en las cinco filas de volumen, sus totales,
+conclusiones y ambos gráficos. Como su formulario no tiene campo de estado, se
+incluye en **Sin clasificar**, sin atribuirle un estado abierto o cerrado a partir
+de Acciones. Su porcentaje de cierre por categoría muestra **No aplica**. Las
+conclusiones distinguen estos casos de los estados vacíos o no reconocidos de
+los otros registros; no solicitan completar un campo que no existe.
+
 **% cerrado = cerrados / (abiertos + cerrados)**. El total del período se calcula
 con los conteos acumulados, sin promediar los porcentajes diarios. Sin casos
 clasificables se muestra 0% y se explica esa ausencia. Los casos sin clasificar
 no se incluyen en el denominador.
 
 Los registros sin la fecha de referencia quedan fuera del período. Se informa
-cuántos existen en el histórico de las tres categorías, para completar sus fechas;
+cuántos existen en el histórico de las cinco categorías, para completar sus fechas;
 ese conteo no se atribuye al rango solicitado. Los criterios y estados pendientes
 pueden consultarse al pie del reporte.
 
@@ -95,9 +105,12 @@ El archivo se llama `reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx` e incluye:
   y porcentajes mediante fórmulas. Las fechas y la columna de ítems quedan fijas.
 - **Conclusiones**: indicadores, resumen por categoría, conclusiones, dos gráficos
   de Excel y criterios del informe.
-- **Reclamos usuarios**, **Solicitudes OT** y **Samtech usuarios**: todos los campos
+- **Doble asignación**, **Reclamos usuarios**, **Solicitudes OT**, **Samtech usuarios**
+  y **Desviaciones clientes**: todos los campos
   vigentes de cada registro del rango, encabezados fijos, autofiltro y Estado
   agrupado. Los textos e identificadores conservan su valor, incluidos ceros iniciales.
+  Desviaciones conserva el campo Acciones y muestra **Sin campo de estado** en
+  Estado agrupado. En total, el archivo incluye siete hojas.
 
 Los conteos diarios usan `COUNTIFS` sobre las hojas de detalle. Los totales y
 porcentajes usan fórmulas con resultados guardados para que puedan verse también

@@ -1,92 +1,89 @@
-REPORTABILIDAD 5400 — REPORTE GESTIÓN DE USUARIOS
+REPORTABILIDAD 5400 — CORRECCIÓN DEL REPORTE: CINCO CATEGORÍAS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-NUEVO REPORTE
+CORRECCIÓN INCLUIDA
+El reporte ahora considera Doble asignación y Desviaciones clientes junto a
+Reclamos usuarios, Solicitudes de usuarios y Samtech usuarios.
 Abre Reportes > Gestión de usuarios, completa Desde y Hasta y pulsa Generar reporte.
-La ruta es /reports/usuarios. Se incluyen ambos extremos y todos los días del rango.
+Se incluyen ambos extremos y todos los días del rango, incluso si tienen cero casos.
 
-ORIGEN DE LOS DATOS
-- Reclamos usuarios: registro Reclamos de usuarios, columna Fecha y campo Estatus.
-- Solicitudes de usuarios: Solicitud y OT de usuario, Fecha inicio y campo Estado.
-- Samtech usuarios: Samtech usuarios, Fecha creación y campo Estado.
-Cada fila cuenta un registro; los tickets repetidos cuentan por separado.
-Las fechas de término y aprobación de Samtech no reemplazan Fecha creación.
+ORIGEN DE LOS DATOS Y ORDEN DE LAS FILAS
+1. Doble asignación: registro Duplicidades, columna Fecha y campo Estatus.
+2. Reclamos usuarios: Reclamos de usuarios, columna Fecha y campo Estatus.
+3. Solicitudes de usuarios: Solicitud y OT de usuario, Fecha inicio y campo Estado.
+4. Samtech usuarios: Samtech usuarios, Fecha creación y campo Estado.
+5. Desviaciones clientes: registro Desviaciones, columna Fecha, sin campo de estado.
+Cada fila guardada cuenta una vez. Los tickets repetidos cuentan por separado.
+Fecha cierre de Duplicidades no reemplaza su Fecha del registro. Las fechas de
+inicio, término y aprobación de Samtech no reemplazan su Fecha creación.
 
-REPORTE DIARIO
-- Registros de las tres categorías, por día y total del período.
-- Casos abiertos, desglosados por categoría y estado.
-- Casos cerrados.
-- Estados vacíos o sin clasificar, cuando existen.
-- Comparación de abiertos y cerrados con porcentaje de cierre.
-Se mantienen la estructura de la imagen, encabezados rojos y totales amarillos.
-La tabla tiene barras horizontales sincronizadas y una columna de etiquetas fija.
-Los días sin registros muestran cero.
+ALCANCE
+- Las cinco filas figuran en la tabla diaria, en el mismo orden de la imagen.
+- El total diario y el total del período suman las cinco categorías.
+- El dashboard actualiza los indicadores, conclusiones y resumen por categoría.
+- Ambos gráficos incluyen las cinco categorías, con cinco series de volumen.
+- Ver registros abre cada categoría con las mismas fechas del reporte.
+- Se mantienen encabezados rojos, totales amarillos y barras horizontales.
 
-DASHBOARD DE CONCLUSIONES
-Incluye indicadores de registros, abiertos, cerrados, sin clasificar y porcentaje
-cerrado; resumen por categoría; gráficos de registros diarios y estado actual;
-y conclusiones calculadas sobre volumen, pendientes para seguimiento, día de
-mayor ingreso y datos por completar. Ver registros abre cada categoría con el
-mismo rango de fechas.
+ESTADOS Y PORCENTAJE DE CIERRE
+Doble asignación se clasifica por Estatus. Desviaciones no tiene ese campo:
+sus casos aportan al volumen total y se muestran en Sin clasificar, sin atribuir
+un estado abierto o cerrado a partir de Acciones. Su porcentaje por categoría
+muestra No aplica. Las conclusiones explican esta condición y la distinguen de
+los estados vacíos o no reconocidos que sí necesitan revisión en otras categorías.
 
-CRITERIOS
-El informe muestra el estado ACTUAL de los casos fechados en el período. Cuando
-un caso se cierra, se mantiene en su fecha de origen. No se reconstruye un estado
-histórico ni se atribuye el cierre al día en que ocurrió.
-Se reconocen mayúsculas/minúsculas, tildes y variaciones de espacios, guiones
-y guiones bajos. Abierto/Abierta, No iniciada/No iniciado, En progreso/En proceso/
-En curso/En ejecución/Iniciado/Iniciada y Pendiente/En espera cuentan como abiertos.
+El reporte utiliza el estado ACTUAL de los casos fechados en el período. Un caso
+cerrado permanece en su fecha de origen; no se reconstruyen estados históricos
+ni se atribuyen los cierres al día en que ocurrieron.
+Abierto/Abierta, No iniciada/No iniciado, En progreso/En proceso/En curso/
+En ejecución/Iniciado/Iniciada y Pendiente/En espera cuentan como abiertos.
 Cerrado/Cerrada, Resuelto/Resuelta, Finalizado/Finalizada, Completado/Completada y
 Terminado/Terminada cuentan como cerrados. Otros valores, incluidos Cancelado,
-Rechazado y los vacíos, se muestran como Sin clasificar.
+Rechazado y los vacíos, quedan Sin clasificar. Se normalizan mayúsculas, tildes,
+espacios, guiones y guiones bajos sin modificar los estados guardados.
 
 Porcentaje cerrado = Cerrados / (Abiertos + Cerrados).
 El total del período usa los conteos acumulados, sin promediar porcentajes diarios.
-Sin casos clasificables se muestra 0% y se informa esa ausencia.
-Los estados sin clasificar quedan fuera del denominador, visibles en el informe.
-El total de registros siempre cuadra con abiertos + cerrados + sin clasificar.
-
-Los registros sin la fecha utilizada por su categoría quedan fuera del rango.
-Se informa cuántos existen en el histórico para completar esas fechas, sin
-atribuirlos al período seleccionado. Los estados originales no se modifican.
+Sin casos clasificables se muestra 0% y se explica esa ausencia. Desviaciones y
+los estados sin clasificar quedan fuera del denominador. El total de registros
+siempre coincide con abiertos + cerrados + sin clasificar.
+Los registros sin fecha de referencia quedan fuera del rango. Se informa cuántos
+hay en el histórico de estas categorías, sin atribuirlos al período solicitado.
 
 EXCEL PARA ENVÍO
-Exportar Excel descarga reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx con cinco hojas:
+Exportar Excel descarga reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx con siete hojas:
 1. Reporte diario: fechas reales, conteos, totales y porcentajes con fórmulas.
 2. Conclusiones: indicadores, resumen, conclusiones, dos gráficos y criterios.
-3. Reclamos usuarios: todos los campos de los registros del rango.
-4. Solicitudes OT: todos los campos de los registros del rango.
-5. Samtech usuarios: todos los campos de los registros del rango.
-Las tres hojas de detalle incluyen Estado agrupado, encabezados fijos y autofiltro.
-Los IDs y tickets mantienen sus ceros iniciales. Los campos vacíos siguen vacíos.
-Los conteos usan COUNTIFS sobre las hojas de detalle. Se guardan resultados de las
-fórmulas para visores y los gráficos de Excel se enlazan a los datos.
+3. Doble asignación: todos los campos de Duplicidades dentro del rango.
+4. Reclamos usuarios: todos los campos de los registros del rango.
+5. Solicitudes OT: todos los campos de los registros del rango.
+6. Samtech usuarios: todos los campos de los registros del rango.
+7. Desviaciones clientes: todos los campos, incluido Acciones, dentro del rango.
+Las cinco hojas de detalle incluyen Estado agrupado, encabezados fijos y autofiltro.
+Desviaciones muestra Sin campo de estado en Estado agrupado. Los campos vacíos
+siguen vacíos; los textos e identificadores conservan sus ceros iniciales.
+Los conteos usan COUNTIFS sobre las hojas de detalle, con resultados guardados
+para visores. Los gráficos de Excel se enlazan a las cinco categorías y se
+mantienen completos al imprimir el dashboard.
 
 La descarga consulta nuevamente la información y registra la hora de exportación
-UTC. Las conclusiones corresponden a esa exportación. Tras editar registros en el
-programa, genera un archivo nuevo. Si cambias Desde o Hasta, pulsa Generar reporte
-antes de exportar; el botón evita descargar con fechas editadas sin aplicar.
-El archivo Excel se descarga para enviarlo; el programa no lo envía por correo.
+UTC. Las conclusiones corresponden a esa exportación. Tras editar registros,
+genera un archivo nuevo. Si cambias Desde o Hasta, pulsa Generar reporte antes
+de exportar. El archivo se descarga para enviarlo; el programa no envía correos.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON BUSCADOR
+SI YA INSTALASTE LA VERSIÓN ANTERIOR DEL REPORTE
 Reemplaza estos archivos, conservando sus carpetas:
 - README.md
-- app.py
-- gestion5s/templates/base.html
-- templates/base.html
-
-Añade estos archivos nuevos:
 - gestion5s/user_report_excel.py
-- gestion5s/user_report_routes.py
 - gestion5s/user_reports.py
-- static/css/user_report.css
 - static/js/user_report.js
 - templates/user_report.html
 - tests/test_user_report_interface.cjs
 - tests/test_user_reports.py
+No se necesitan archivos adicionales respecto de esa entrega.
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
@@ -109,6 +106,7 @@ MEJORAS ANTERIORES INCLUIDAS
   listado, edición, exportación, eliminación y gráfico por Fecha creación.
 - Campos y fechas vacíos admitidos en los cinco registros nuevos de la conversación.
 El README detalla las columnas y el funcionamiento de cada módulo.
+
 
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza estos archivos, conservando sus carpetas:
@@ -156,23 +154,22 @@ Añade estos archivos nuevos:
 PUBLICAR LA ACTUALIZACIÓN
 1. Descomprime el ZIP y copia los archivos indicados a sus carpetas.
 2. Guarda los cambios en la rama de GitHub que utiliza tu servicio de Render.
-3. Espera al despliegue automático o despliega el último commit desde Render.
+3. Espera el despliegue automático o despliega el último commit desde Render.
 No subas el ZIP como sustituto de los archivos del programa.
-Los cambios aún no están publicados en GitHub ni desplegados en Render,
-porque la conexión disponible al repositorio tiene permiso de lectura.
-Este reporte utiliza las dependencias existentes y no requiere migraciones
-ni nuevas tablas. Las mejoras anteriores conservan sus migraciones automáticas.
+Los cambios aún no están publicados en GitHub ni desplegados en Render, porque
+la conexión disponible al repositorio tiene permiso de lectura.
+La corrección del reporte usa las dependencias existentes y no requiere nuevas
+tablas ni migraciones. Se conservan las migraciones de las mejoras anteriores.
 
 COMPROBACIONES
-Pasaron las 87 pruebas funcionales con bases SQLite temporales, incluidas 13
-pruebas nuevas del reporte. Cubren las tres fuentes, fechas, estados, conteos,
-días vacíos, porcentajes ponderados, datos sin fecha, exportación, valores y
-fórmulas, gráficos, textos literales, errores y conservación de datos.
-Las pruebas JavaScript verificaron gráficos, cambios de fechas, regreso del
-navegador y disponibilidad del Excel si no carga la biblioteca de gráficos.
-Se verificaron 380 fórmulas con recálculo en LibreOffice Calc entre una muestra
-de 13 días y otra de un día. Se revisaron las cinco hojas y la presentación de
-las tablas, gráficos y áreas de impresión. Los archivos de prueba usaron datos
-sintéticos y no se incluyen como información real en este paquete.
-No se modificaron datos de producción. No se ejecutó una prueba contra
-PostgreSQL real ni una revisión visual de la página en un navegador.
+Pasaron las 88 pruebas funcionales con bases SQLite temporales, incluidas las
+14 pruebas del reporte. Cubren las cinco fuentes, límites de fechas, días vacíos,
+estados, campos opcionales, fórmulas, totales, porcentajes ponderados, detalle
+completo, gráficos, filtros, errores y conservación de datos. Se comprobó que
+Acciones no se interprete como un estado ni modifique los conteos de cierre.
+Las pruebas JavaScript verificaron ambas visualizaciones con cinco categorías,
+los colores, los cambios de fechas y el regreso del navegador.
+Se verificaron 504 fórmulas mediante recálculo en LibreOffice, con exportaciones
+de 13 días y un día. Se revisaron visualmente la tabla, el dashboard, las cinco
+series y los gráficos completos al imprimir. Los datos usados fueron sintéticos;
+no se accedió a la base de producción ni se incluyeron datos de prueba en el ZIP.

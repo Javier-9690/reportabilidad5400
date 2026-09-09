@@ -102,7 +102,9 @@ def export_user_report(report):
                     sheet.write_number(row, column, value, formats["raw_number"])
                 else:
                     sheet.write_string(row, column, str(value), formats["source_text"])
-            sheet.write_string(row, last_column, STATUS_LABELS[classify_status(record[category["status"]])], formats["text"])
+            status_label = (STATUS_LABELS[classify_status(record[category["status"]])]
+                            if category["status"] else "Sin campo de estado")
+            sheet.write_string(row, last_column, status_label, formats["text"])
         last_row = max(5, len(category["details"]) + 4)
         sheet.autofilter(4, 0, last_row, last_column)
         sheet.freeze_panes(5, 0)
@@ -168,7 +170,8 @@ def export_user_report(report):
                     criteria = f"{ranges['date']},{xl_rowcol_to_cell(header_row, column, row_abs=True)}"
                     if kind != "records":
                         code = {"closed": "cerrado", "unclassified": "sin_clasificar"}.get(kind, kind)
-                        criteria += f',{ranges["status"]},"{STATUS_LABELS[code]}"'
+                        status_label = STATUS_LABELS[code] if category["status"] else "Sin campo de estado"
+                        criteria += f',{ranges["status"]},"{status_label}"'
                     formula = f"=COUNTIFS({criteria})"
                 daily.write_formula(current_row, column, formula, value_format, cached)
             if item["kind"] == "percent":
@@ -238,26 +241,31 @@ def export_user_report(report):
             if key == "open":
                 refs = [daily_ref(category["entity"] + "_" + code) for code in OPEN_STATUSES
                         if category["entity"] + "_" + code in row_index]
-                formula = "=SUM(" + ",".join(refs) + ")"
+                formula = "=SUM(" + ",".join(refs) + ")" if refs else "=0"
             elif category["entity"] + "_" + key in row_index:
                 formula = "=" + daily_ref(category["entity"] + "_" + key)
             else:
                 formula = "=0"
             merged_value(row, first, last, formula, formats["number"], cached=category["totals"][key])
-        merged_value(row, 15, 18, f"=IF(SUM(I{row+1},K{row+1})=0,0,K{row+1}/SUM(I{row+1},K{row+1}))",
-                     formats["summary_rate"], cached=category["totals"]["rate"])
+        if category["status"]:
+            merged_value(row, 15, 18, f"=IF(SUM(I{row+1},K{row+1})=0,0,K{row+1}/SUM(I{row+1},K{row+1}))",
+                         formats["summary_rate"], cached=category["totals"]["rate"])
+        else:
+            merged_value(row, 15, 18, "No aplica", formats["summary_rate"])
         dashboard.set_row(row, 25)
-    dashboard.merge_range("A16:S16", "Conclusiones del período", formats["section"])
-    for row, conclusion in enumerate(report["conclusions"], 16):
+    summary_last_row = 10 + len(report["categories"]) - 1
+    conclusions_row = summary_last_row + 3
+    dashboard.merge_range(conclusions_row, 0, conclusions_row, 18, "Conclusiones del período", formats["section"])
+    for row, conclusion in enumerate(report["conclusions"], conclusions_row + 1):
         dashboard.merge_range(row, 0, row, 18, conclusion, formats["text"])
         dashboard.set_row(row, 32)
-    chart_row = 17 + len(report["conclusions"])
+    chart_row = conclusions_row + 2 + len(report["conclusions"])
     trend = book.add_chart({"type": "line"})
-    for category, color in zip(report["categories"], ("#B42318", "#1667A5", "#198754")):
+    for category in report["categories"]:
         trend.add_series({"name": category["label"], "categories": ["Reporte diario", first_header, 1, first_header, total_column - 1],
                           "values": ["Reporte diario", row_index[category["entity"] + "_records"], 1,
                                      row_index[category["entity"] + "_records"], total_column - 1],
-                          "line": {"color": color, "width": 2}, "smooth": False})
+                          "line": {"color": category["color"], "width": 2}, "smooth": False})
     trend.set_title({"name": "Registros por día"})
     trend.set_x_axis({"date_axis": True, "num_format": "[$-340A]d-mmm"})
     daily_max = max(max(c["counts"]["records"]) for c in report["categories"])
@@ -267,8 +275,8 @@ def export_user_report(report):
     dashboard.insert_chart(chart_row, 0, trend)
     status = book.add_chart({"type": "bar", "subtype": "stacked"})
     for label, column, color in (("Abiertos", 8, "#CA8100"), ("Cerrados", 10, "#198754"), ("Sin clasificar", 12, "#777F87")):
-        status.add_series({"name": label, "categories": ["Conclusiones", 10, 0, 12, 0],
-                           "values": ["Conclusiones", 10, column, 12, column],
+        status.add_series({"name": label, "categories": ["Conclusiones", 10, 0, summary_last_row, 0],
+                           "values": ["Conclusiones", 10, column, summary_last_row, column],
                            "fill": {"color": color}, "border": {"none": True}})
     status.set_title({"name": "Estado actual por categoría"})
     status.set_x_axis({"min": 0, "num_format": "0", "major_unit": count_axis_step(max(c["totals"]["records"] for c in report["categories"]))})
@@ -277,7 +285,7 @@ def export_user_report(report):
     dashboard.insert_chart(chart_row, 10, status)
     note_row = chart_row + 18
     dashboard.merge_range(note_row, 0, note_row, 18, "Criterios del informe", formats["section"])
-    notes = [report["method_note"], report["rate_note"],
+    notes = [report["method_note"], report["rate_note"], report["without_status_note"],
              "Cada fila guardada cuenta una vez. Los tickets repetidos cuentan por separado. Se incluyen todos los días del rango.",
              "Fechas utilizadas: " + "; ".join(f"{c['label']}: {c['date_label']}" for c in report["categories"]),
              "Registros sin fecha en el histórico, excluidos del rango: " + "; ".join(f"{c['label']}: {c['undated']}" for c in report["categories"])]
@@ -291,7 +299,9 @@ def export_user_report(report):
     dashboard.set_landscape()
     dashboard.set_paper(8)
     dashboard.set_print_scale(85)
-    dashboard.set_h_pagebreaks([note_row])
+    # Los gráficos deben empezar completos en una página al imprimir el resumen
+    # de las cinco categorías; las conclusiones pueden ocupar más de media hoja.
+    dashboard.set_h_pagebreaks([chart_row])
     dashboard.repeat_rows(0, 2)
     dashboard.print_area(0, 0, note_row + len(notes), 18)
     dashboard.set_footer("&LReportabilidad 5400&R&P / &N")

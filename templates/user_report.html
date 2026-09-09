@@ -9,7 +9,7 @@
     <div>
       <div class="report-eyebrow">Reportes de hotelería</div>
       <h1 class="h3 mb-1">Gestión de usuarios</h1>
-      <p class="mb-0">Reclamos usuarios, Solicitudes de usuarios y Samtech usuarios.</p>
+      <p class="mb-0">Doble asignación, Reclamos usuarios, Solicitudes de usuarios, Samtech usuarios y Desviaciones clientes.</p>
     </div>
     {% if report %}
     <a class="btn btn-success report-export-btn" id="exportUserReport"
@@ -48,6 +48,7 @@
       <span class="text-muted">{{ report.start.strftime('%d/%m/%Y') }} al {{ report.end.strftime('%d/%m/%Y') }} · {{ report.days|length }} días</span>
     </div>
     <p class="small text-muted">{{ report.method_note }}</p>
+    <p class="small text-muted">{{ report.without_status_note }}</p>
     <div class="user-report-kpis mb-3">
       {% for key, label in [('records', 'Total registros'), ('open', 'Casos abiertos'), ('closed', 'Casos cerrados'), ('unclassified', 'Sin clasificar')] %}
       <div class="card shadow-sm user-kpi user-kpi-{{ key }}"><div class="card-body">
@@ -68,7 +69,7 @@
     <div class="row g-3 mb-3">
       <div class="col-lg-6"><div class="card shadow-sm h-100">
         <div class="card-header fw-semibold">Registros por día</div>
-        <div class="card-body"><div class="user-report-chart"><canvas id="userDailyChart" role="img" aria-label="Registros diarios de las tres categorías. Datos disponibles en el reporte diario."></canvas></div></div>
+        <div class="card-body"><div class="user-report-chart"><canvas id="userDailyChart" role="img" aria-label="Registros diarios de las cinco categorías. Datos disponibles en el reporte diario."></canvas></div></div>
       </div></div>
       <div class="col-lg-6"><div class="card shadow-sm h-100">
         <div class="card-header fw-semibold">Estado actual por categoría</div>
@@ -84,7 +85,7 @@
         <tbody>{% for category in report.categories %}<tr>
           <th scope="row">{{ category.label }}</th>
           {% for key in ['records', 'open', 'closed', 'unclassified'] %}<td>{{ category.totals[key] }}</td>{% endfor %}
-          <td>{{ ('%.1f'|format(category.totals.rate * 100))|replace('.', ',') }}%</td>
+          <td>{% if category.status %}{{ ('%.1f'|format(category.totals.rate * 100))|replace('.', ',') }}%{% else %}No aplica{% endif %}</td>
           <td><a href="/gestion-5s/registros?vista={{ category.entity }}&amp;from={{ report.start.isoformat() }}&amp;to={{ report.end.isoformat() }}">Ver registros</a></td>
         </tr>{% endfor %}</tbody>
       </table></div>
@@ -124,8 +125,8 @@
         </li>{% endfor %}</ul>
         <p>Se reconocen los siguientes estados sin distinguir mayúsculas, tildes ni espacios repetidos:</p>
         <dl>{% for key, aliases in status_aliases.items() %}<dt>{{ status_labels[key] }}</dt><dd>{{ aliases|join(', ') }}</dd>{% endfor %}</dl>
-        <p>Los estados vacíos u otros valores, incluidos cancelado y rechazado, se muestran como Sin clasificar.</p>
-        {% if report.totals.unclassified %}
+        <p>Los estados vacíos u otros valores, incluidos cancelado y rechazado, se muestran como Sin clasificar. {{ report.without_status_note }}</p>
+        {% if report.totals.unknown_status %}
         <h3 class="h6">Estados sin clasificar dentro del rango</h3>
         <ul>{% for category in report.categories %}{% for item in category.unknown_states %}<li>{{ category.label }}: {{ item.state }} — {{ item.count }} registros.</li>{% endfor %}{% endfor %}</ul>
         {% endif %}
@@ -136,6 +137,7 @@
       'labels': report.day_labels,
       'dates': report.days|map('string')|list,
       'categories': report.categories|map(attribute='label')|list,
+      'colors': report.categories|map(attribute='color')|list,
       'daily': report.categories|map(attribute='counts.records')|list,
       'open': report.categories|map(attribute='totals.open')|list,
       'closed': report.categories|map(attribute='totals.closed')|list,

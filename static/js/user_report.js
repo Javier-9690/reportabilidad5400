@@ -27,7 +27,7 @@
     return;
   }
   const data = JSON.parse(source.textContent);
-  const colors = ['#b42318', '#1667a5', '#198754'];
+  const colors = data.colors;
   new Chart(document.getElementById('userDailyChart'), {
     type: 'line',
     data: { labels: data.labels, datasets: data.categories.map((label, index) => ({

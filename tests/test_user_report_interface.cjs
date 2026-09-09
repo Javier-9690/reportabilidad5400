@@ -6,8 +6,10 @@ const vm = require('node:vm');
 const script = fs.readFileSync(path.join(__dirname, '../static/js/user_report.js'), 'utf8');
 const sample = {
   labels: ['31-ago', '1-sep', '2-sep'], dates: ['2026-08-31', '2026-09-01', '2026-09-02'],
-  categories: ['Reclamos usuarios', 'Solicitudes de usuarios', 'Samtech usuarios'],
-  daily: [[2, 0, 0], [1, 2, 0], [3, 1, 0]], open: [1, 2, 2], closed: [1, 1, 1], unclassified: [0, 0, 1]
+  categories: ['Doble asignación', 'Reclamos usuarios', 'Solicitudes de usuarios', 'Samtech usuarios', 'Desviaciones clientes'],
+  colors: ['#7950A3', '#B42318', '#1667A5', '#198754', '#B86A00'],
+  daily: [[2, 1, 0], [2, 0, 0], [1, 2, 0], [3, 1, 0], [3, 0, 2]],
+  open: [1, 1, 2, 2, 0], closed: [1, 1, 1, 1, 0], unclassified: [1, 0, 0, 1, 5]
 };
 
 function element(values = {}) {
@@ -43,6 +45,9 @@ function run({ withReport = true, chartAvailable = true, restoredDate } = {}) {
 const report = run();
 assert.equal(report.charts.length, 2);
 assert.deepEqual(report.charts[0].config.data.datasets.map(series => series.data), sample.daily);
+assert.deepEqual(report.charts[0].config.data.datasets.map(series => series.label), sample.categories);
+assert.deepEqual(report.charts[0].config.data.datasets.map(series => series.borderColor), sample.colors);
+assert.deepEqual(report.charts[1].config.data.labels, sample.categories);
 assert.deepEqual(report.charts[1].config.data.datasets.map(series => series.data), [sample.open, sample.closed, sample.unclassified]);
 assert.equal(report.nodes.reportFiltersChanged.hidden, true);
 assert.equal(report.exported.getAttribute('aria-disabled'), 'false');
