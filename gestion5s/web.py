@@ -14,7 +14,10 @@ from flask import (
     flash, send_file, jsonify, abort, session
 )
 
-from gestion5s.editing import EDIT_CONFIG, EXTENSION_FIELDS, ENTRY_EXIT_FIELDS, edit_fields, parse_edit_values, record_version
+from gestion5s.editing import (
+    EDIT_CONFIG, EXTENSION_FIELDS, ENTRY_EXIT_FIELDS, BLOCKED_ROOM_FIELDS,
+    OPTIONAL_RECORD_FIELDS, edit_fields, parse_edit_values, record_version,
+)
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
@@ -393,23 +396,24 @@ def safe_time_hhmm(val):
     return time(0, 0)
 
 
-def entry_exit_excel_values(row, epoch):
+def record_excel_values(row, epoch, fields):
     """Normaliza celdas Excel para aplicar la misma validación que al formulario."""
     values = {}
-    for (name, label), value in zip(ENTRY_EXIT_FIELDS, row):
+    for field, value in zip(fields, row):
+        name, label = field["name"], field["label"]
         try:
             if isinstance(value, str):
                 value = value.strip()
             if value is None or value == "":
                 values[name] = ""
-            elif name in ("fecha_ingreso", "fecha_salida"):
+            elif field["kind"] == "date":
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     value = from_excel(value, epoch=epoch)
                 converted = safe_convert_date(value)
                 if converted is None:
                     raise ValueError("Fecha inválida.")
                 values[name] = converted.isoformat()
-            elif name in ("hora_entrada", "hora_salida"):
+            elif field["kind"] == "time":
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     if not 0 <= value < 1:
                         raise ValueError("Usa una hora entre 00:00 y 23:59:59.")
@@ -687,6 +691,24 @@ class EntradaSalidaEntry(Base):
     pendulo = Column(String(100), nullable=True)
     n_tarjeta = Column(String(100), nullable=True)
     devolucion = Column(String(200), nullable=True)
+    creado = Column(DateTime, nullable=False, default=now_utc)
+
+
+class HabitacionBloqueadaEntry(Base):
+    __tablename__ = "habitaciones_bloqueadas"
+    id = Column(Integer, primary_key=True)
+    fecha_bloqueo = Column(Date, nullable=True, index=True)
+    habitacion = Column(String(100), nullable=True)
+    ot = Column(String(100), nullable=True)
+    empresa = Column(String(200), nullable=True)
+    id_interno = Column(String(100), nullable=True)
+    motivo = Column(Text, nullable=True)
+    comunicado = Column(Text, nullable=True)
+    fecha_liberada_ingeclean = Column(Date, nullable=True)
+    fecha_liberada_facility = Column(Date, nullable=True)
+    fecha_liberada_mantencion = Column(Date, nullable=True)
+    fecha_liberada_investigacion = Column(Date, nullable=True)
+    observacion = Column(Text, nullable=True)
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
@@ -1082,24 +1104,25 @@ def panel():
                 )
                 db.add(rec); db.commit(); flash("Cumplimiento EECC guardado.")
 
-            elif tab == "entradas_salidas":
-                fields = edit_fields(tab, EntradaSalidaEntry())
+            elif tab in OPTIONAL_RECORD_FIELDS:
+                Model = ENTITY_MODEL[tab]
+                fields = edit_fields(tab, Model())
                 values, errors = parse_edit_values(tab, fields, request.form)
                 if errors:
                     return render_template(
                         "panel.html", tab=tab, week_map=WEEK_MAP, current_tab=tab,
-                        entry_exit_fields=fields, field_errors=errors, form_values=request.form,
+                        form_fields=fields, field_errors=errors, form_values=request.form,
                     ), 422
-                db.add(EntradaSalidaEntry(**values))
+                db.add(Model(**values))
                 db.commit()
-                flash("Registro de entradas y salidas guardado.", "success")
+                flash(f"Registro de {EDIT_CONFIG[tab][0].lower()} guardado.", "success")
 
             return redirect(url_for("panel", tab=tab))
 
         # GET
         return render_template(
             "panel.html", tab=tab, week_map=WEEK_MAP, current_tab=tab,
-            entry_exit_fields=edit_fields(tab, EntradaSalidaEntry()) if tab == "entradas_salidas" else [],
+            form_fields=edit_fields(tab, ENTITY_MODEL[tab]()) if tab in OPTIONAL_RECORD_FIELDS else [],
             field_errors={}, form_values={},
         )
     finally:
@@ -1119,7 +1142,7 @@ def registros():
     try:
         Model = ENTITY_MODEL[vista]
         date_column = getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
-        date_order = date_column.desc().nullslast() if vista in ("solicitud_ot", "entradas_salidas") else date_column.desc()
+        date_order = date_column.desc().nullslast() if vista == "solicitud_ot" or vista in OPTIONAL_RECORD_FIELDS else date_column.desc()
         rows = hotel_records_query(db, vista, d_from, d_to).order_by(date_order, Model.id.desc()).all()
         listing = {key: [] for key in ENTITY_LIST_KEY.values()}
         listing[ENTITY_LIST_KEY[vista]] = rows
@@ -1128,7 +1151,7 @@ def registros():
             semana_sel=semana_sel, d_from=d_from, d_to=d_to, week_map=WEEK_MAP,
             vista=vista, current_tab=None, **listing,
             record_count=len(rows), entity_title=EDIT_CONFIG[vista][0],
-            entry_exit_fields=ENTRY_EXIT_FIELDS,
+            record_columns=OPTIONAL_RECORD_FIELDS.get(vista, ()), current_records=rows,
             bulk_csrf=session.setdefault("hotel_bulk_csrf", secrets.token_hex(32)),
         )
     finally:
@@ -1417,15 +1440,17 @@ def download_entity(entity):
                     "TURNO": r.turno or "",
                 })
 
-        elif entity == "entradas_salidas":
+        elif entity in OPTIONAL_RECORD_FIELDS:
+            Model = ENTITY_MODEL[entity]
+            columns = OPTIONAL_RECORD_FIELDS[entity]
             rows = hotel_records_query(db, entity, d_from, d_to).order_by(
-                EntradaSalidaEntry.fecha_ingreso, EntradaSalidaEntry.id
+                getattr(Model, ENTITY_DATE_FIELD[entity]), Model.id
             ).all()
-            w = csv.DictWriter(buf, fieldnames=[label for _, label in ENTRY_EXIT_FIELDS])
+            w = csv.DictWriter(buf, fieldnames=[label for _, label in columns])
             w.writeheader()
             for r in rows:
                 w.writerow({label: getattr(r, name) if getattr(r, name) is not None else ""
-                            for name, label in ENTRY_EXIT_FIELDS})
+                            for name, label in columns})
 
         else:
             flash("Entidad no válida.")
@@ -1459,6 +1484,7 @@ ENTITY_MODEL = {
     "apertura": AperturaHabitacionEntry,
     "cumplimiento": CumplimientoEECCEntry,
     "entradas_salidas": EntradaSalidaEntry,
+    "habitaciones_bloqueadas": HabitacionBloqueadaEntry,
 }
 
 ENTITY_LIST_KEY = {
@@ -1468,12 +1494,14 @@ ENTITY_LIST_KEY = {
     "solicitud_ot": "solicitudes_ot", "reclamos": "reclamos", "alarmas": "alarmas",
     "extensiones": "extensiones", "onboarding": "onboarding", "apertura": "apertura",
     "cumplimiento": "cumplimiento", "entradas_salidas": "entradas_salidas",
+    "habitaciones_bloqueadas": "habitaciones_bloqueadas",
 }
 ENTITY_DATE_FIELD = {
     "encuestas": "fecha_hora", "onboarding": "fecha_hora",
     "miscelaneo": "fecha_creacion", "solicitud_ot": "fecha_inicio",
     "extensiones": "fecha_solicitud",
     "entradas_salidas": "fecha_ingreso",
+    "habitaciones_bloqueadas": "fecha_bloqueo",
 }
 
 
@@ -1805,6 +1833,7 @@ TEMPLATES = {
     "apertura": ["FECHA","HABITACION","HORA","RESPONSABLE","ESTADO_CHAPA"],
     "cumplimiento": ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"],
     "entradas_salidas": [label for _, label in ENTRY_EXIT_FIELDS],
+    "habitaciones_bloqueadas": [label for _, label in BLOCKED_ROOM_FIELDS],
 }
 
 @app.get("/template/<string:entity>.xlsx")
@@ -1828,14 +1857,18 @@ def template_xlsx(entity):
     # Escribir los encabezados
     ws.append(headers)
 
-    if entity == "entradas_salidas":
+    if entity in OPTIONAL_RECORD_FIELDS:
         ws.freeze_panes = "A2"
         for cell in ws[1]:
             cell.font = Font(bold=True)
             ws.column_dimensions[cell.column_letter].width = max(20, len(cell.value) + 3)
         # Formatos de las primeras filas para introducir fechas, horas e identificadores.
-        formats = {1: "DD/MM/YYYY", 2: "DD/MM/YYYY", 3: "HH:MM:SS", 4: "HH:MM:SS",
-                   6: "@", 8: "@", 10: "@", 11: "@", 15: "@"}
+        formats = {
+            "entradas_salidas": {1: "DD/MM/YYYY", 2: "DD/MM/YYYY", 3: "HH:MM:SS", 4: "HH:MM:SS",
+                                 6: "@", 8: "@", 10: "@", 11: "@", 15: "@"},
+            "habitaciones_bloqueadas": {1: "DD/MM/YYYY", 2: "@", 3: "@", 5: "@",
+                                       8: "DD/MM/YYYY", 9: "DD/MM/YYYY", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY"},
+        }[entity]
         for row in range(2, 202):
             for column, number_format in formats.items():
                 ws.cell(row, column).number_format = number_format
@@ -2166,15 +2199,16 @@ def import_xlsx(entity):
                         turno=str(row[6] or "").strip(),
                     ))
 
-                elif entity == "entradas_salidas":
+                elif entity in OPTIONAL_RECORD_FIELDS:
                     try:
-                        form = entry_exit_excel_values(row, wb.epoch)
-                        fields = edit_fields(entity, EntradaSalidaEntry())
+                        Model = ENTITY_MODEL[entity]
+                        fields = edit_fields(entity, Model())
+                        form = record_excel_values(row, wb.epoch, fields)
                         values, errors = parse_edit_values(entity, fields, form)
                         if errors:
-                            labels = dict(ENTRY_EXIT_FIELDS)
+                            labels = dict(OPTIONAL_RECORD_FIELDS[entity])
                             raise ValueError("; ".join(f"{labels.get(name, 'Registro')}: {error}" for name, error in errors.items()))
-                        db.add(EntradaSalidaEntry(**values))
+                        db.add(Model(**values))
                     except (ValueError, TypeError, OverflowError) as exc:
                         raise ValueError(f"Fila {row_number}: {exc}") from exc
 
@@ -2224,7 +2258,7 @@ def dashboard():
                 "apertura": 0,
                 "cumplimiento": 0,
                 "entradas": 0,
-                "salidas": 0,
+                "habitaciones_bloqueadas": 0,
             })
 
         # Censo
@@ -2342,10 +2376,12 @@ def dashboard():
         for r in q.all():
             bucket(r.fecha.isoformat())["cumplimiento"] += 1
 
-        # Cada movimiento se cuenta por su propia fecha, aunque su pareja esté fuera del rango.
-        for column, key in ((EntradaSalidaEntry.fecha_ingreso, "entradas"),
-                            (EntradaSalidaEntry.fecha_salida, "salidas")):
-            q = db.query(column, func.count(EntradaSalidaEntry.id)).filter(column.isnot(None))
+        # Entradas y bloqueos se cuentan únicamente por sus fechas de registro.
+        for Model, column, key in (
+            (EntradaSalidaEntry, EntradaSalidaEntry.fecha_ingreso, "entradas"),
+            (HabitacionBloqueadaEntry, HabitacionBloqueadaEntry.fecha_bloqueo, "habitaciones_bloqueadas"),
+        ):
+            q = db.query(column, func.count(Model.id)).filter(column.isnot(None))
             if d_from: q = q.filter(column >= d_from)
             if d_to: q = q.filter(column <= d_to)
             for day, count in q.group_by(column).all():
@@ -2374,7 +2410,7 @@ def dashboard():
             "apertura": [],
             "cumplimiento": [],
             "entradas": [],
-            "salidas": [],
+            "habitaciones_bloqueadas": [],
         }
 
         for k in ordered_days:
@@ -2395,7 +2431,7 @@ def dashboard():
             series_data["apertura"].append(g["apertura"])
             series_data["cumplimiento"].append(g["cumplimiento"])
             series_data["entradas"].append(g["entradas"])
-            series_data["salidas"].append(g["salidas"])
+            series_data["habitaciones_bloqueadas"].append(g["habitaciones_bloqueadas"])
             
             prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
             series_data["atencion_min"].append(round(prom_s/60.0, 2))
@@ -2418,7 +2454,7 @@ def dashboard():
             "apertura_total": sum(series_data["apertura"]),
             "cumplimiento_total": sum(series_data["cumplimiento"]),
             "entradas_total": sum(series_data["entradas"]),
-            "salidas_total": sum(series_data["salidas"]),
+            "habitaciones_bloqueadas_total": sum(series_data["habitaciones_bloqueadas"]),
             "atencion_tiempo_prom_global": (
                 seconds_to_mmss(int(mean([int(x*60) for x in series_data["atencion_min"] if x>0])))
                 if any(x>0 for x in series_data["atencion_min"]) else "00:00"

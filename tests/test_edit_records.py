@@ -85,6 +85,7 @@ class EditHotelRecordsTest(unittest.TestCase):
             "apertura": ("estado_chapa", "Reparada", "Reparada"),
             "cumplimiento": ("fecha", "2026-09-03", date(2026, 9, 3)),
             "entradas_salidas": ("hora_entrada", "17:25:36", time(17, 25, 36)),
+            "habitaciones_bloqueadas": ("observacion", "Habitación revisada", "Habitación revisada"),
         }
         for entity, (name, value, expected) in changes.items():
             with self.subTest(entity=entity):

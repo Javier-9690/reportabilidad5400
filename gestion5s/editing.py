@@ -43,6 +43,26 @@ ENTRY_EXIT_FIELDS = (
     ("devolucion", "DEVOLUCIÓN"),
 )
 
+BLOCKED_ROOM_FIELDS = (
+    ("fecha_bloqueo", "FECHA DE BLOQUEO"),
+    ("habitacion", "HABITACIÓN"),
+    ("ot", "OT"),
+    ("empresa", "EMPRESA"),
+    ("id_interno", "ID"),
+    ("motivo", "MOTIVO"),
+    ("comunicado", "COMUNICADO"),
+    ("fecha_liberada_ingeclean", "FECHA LIBERADA POR INGECLEAN"),
+    ("fecha_liberada_facility", "FECHA LIBERADA POR FACILITY"),
+    ("fecha_liberada_mantencion", "FECHA LIBERADA POR MANTENCION"),
+    ("fecha_liberada_investigacion", "FECHA LIBERADA PROCESO INVESTIGACION"),
+    ("observacion", "OBSERVACIÓN"),
+)
+
+OPTIONAL_RECORD_FIELDS = {
+    "entradas_salidas": ENTRY_EXIT_FIELDS,
+    "habitaciones_bloqueadas": BLOCKED_ROOM_FIELDS,
+}
+
 
 # Lista explícita: el formulario nunca puede modificar la clave ni la creación.
 EDIT_CONFIG = {
@@ -62,6 +82,7 @@ EDIT_CONFIG = {
     "apertura": ("Apertura de habitación", "fecha habitacion hora responsable estado_chapa"),
     "cumplimiento": ("Cumplimiento EECC", "fecha empresa n_contrato co correo_electronico id_interno turno"),
     "entradas_salidas": ("Entradas y salidas", " ".join(name for name, _ in ENTRY_EXIT_FIELDS)),
+    "habitaciones_bloqueadas": ("Habitaciones bloqueadas", " ".join(name for name, _ in BLOCKED_ROOM_FIELDS)),
 }
 
 FIELD_LABELS = {
@@ -108,6 +129,7 @@ def edit_fields(entity, record):
     labels = {
         "extensiones": dict(EXTENSION_FIELDS),
         "entradas_salidas": dict(ENTRY_EXIT_FIELDS),
+        "habitaciones_bloqueadas": dict(BLOCKED_ROOM_FIELDS),
     }.get(entity, FIELD_LABELS)
     for name in EDIT_CONFIG[entity][1].split():
         column = record.__table__.columns[name]
@@ -222,4 +244,12 @@ def parse_edit_values(entity, fields, form):
                       and values["hora_entrada"] is not None and values["hora_salida"] is not None
                       and values["hora_salida"] < values["hora_entrada"]):
                     errors["fecha_salida"] = "La fecha y hora de salida no pueden ser anteriores al ingreso."
+        elif entity == "habitaciones_bloqueadas":
+            if all(value is None for value in values.values()):
+                errors["_form"] = "Ingresa al menos un dato para guardar el registro."
+            elif values["fecha_bloqueo"] is not None:
+                for name in ("fecha_liberada_ingeclean", "fecha_liberada_facility",
+                             "fecha_liberada_mantencion", "fecha_liberada_investigacion"):
+                    if values[name] is not None and values[name] < values["fecha_bloqueo"]:
+                        errors[name] = "La fecha de liberación no puede ser anterior a la fecha de bloqueo."
     return values, errors

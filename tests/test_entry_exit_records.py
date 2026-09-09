@@ -85,12 +85,13 @@ class EntryExitRecordsTest(unittest.TestCase):
         response = self.client.get("/gestion-5s/dashboard", query_string=filters)
         self.assertEqual(response.status_code, 200)
         page = response.get_data(as_text=True)
-        self.assertIn('id="entradasSalidasChart"', page)
-        self.assertIn("Entradas y salidas por día", page)
-        self.assertIn("Registros de entrada", page)
-        self.assertIn("Registros de salida", page)
+        self.assertIn('id="entradaHabitacionesChart"', page)
+        self.assertIn("Entrada a habitaciones", page)
+        self.assertNotIn("Registros de salida", page)
+        self.assertNotIn("Entradas y salidas por día", page)
         labels = json.loads(re.search(r"const labels = (.*?);", page).group(1))
         series = json.loads(re.search(r"const series = (.*?);", page).group(1))
+        self.assertNotIn("salidas", series)
         return labels, series
 
     def test_all_sixteen_fields_round_trip_through_form_listing_csv_and_editor(self):
@@ -237,9 +238,8 @@ class EntryExitRecordsTest(unittest.TestCase):
         self.assertEqual(len(self.csv_rows()), 4)
         self.assertEqual(len(self.csv_rows(**{"from": "2026-09-08", "to": "2026-09-09"})), 1)
         labels, series = self.dashboard(**{"from": "2026-09-08", "to": "2026-09-09"})
-        self.assertEqual(labels, ["2026-09-08", "2026-09-09"])
-        self.assertEqual(series["entradas"], [1, 0])
-        self.assertEqual(series["salidas"], [0, 1])
+        self.assertEqual(labels, ["2026-09-08"])
+        self.assertEqual(series["entradas"], [1])
 
         route = f"/gestion-5s/edit/entradas_salidas/{incomplete['id']}"
         data = FormValues(self.client.get(route).get_data(as_text=True)).values
@@ -328,7 +328,7 @@ class EntryExitRecordsTest(unittest.TestCase):
         with self.engine.connect() as conn:
             self.assertEqual(conn.scalar(text("SELECT COUNT(*) FROM sqlite_master WHERE name='auditar_entradas'")), 1)
 
-    def test_dashboard_counts_each_event_on_its_date_and_respects_filters(self):
+    def test_dashboard_counts_only_entries_and_respects_filters(self):
         empty = self.client.get("/gestion-5s/dashboard")
         self.assertEqual(empty.status_code, 200)
         for incoming, outgoing in (("2026-09-01", "2026-09-09"), ("2026-09-08", "2026-09-10"),
@@ -336,13 +336,11 @@ class EntryExitRecordsTest(unittest.TestCase):
             self.create(dict(FORM, fecha_ingreso=incoming, fecha_salida=outgoing,
                              hora_entrada="08:00", hora_salida="09:00" if outgoing else ""))
         labels, series = self.dashboard(**{"from": "2026-09-08", "to": "2026-09-09"})
-        self.assertEqual(labels, ["2026-09-08", "2026-09-09"])
-        self.assertEqual(series["entradas"], [2, 0])
-        self.assertEqual(series["salidas"], [0, 1])
+        self.assertEqual(labels, ["2026-09-08"])
+        self.assertEqual(series["entradas"], [2])
         labels, series = self.dashboard(semana=89)
-        self.assertEqual(labels, ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10"])
+        self.assertEqual(labels, ["2026-09-07", "2026-09-08"])
         self.assertEqual(sum(series["entradas"]), 3)
-        self.assertEqual(sum(series["salidas"]), 3)
         self.assertEqual(len(self.csv_rows(**{"from": "2026-09-08", "to": "2026-09-09"})), 2)
         self.assertEqual(len(self.csv_rows(semana=89)), 3)
 

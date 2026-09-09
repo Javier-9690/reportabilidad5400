@@ -17,7 +17,7 @@ from gestion5s.web import ENTITY_MODEL, SessionLocal, TEMPLATES
 TABS = [
     "censo", "eventos", "duplicidades", "encuesta", "atencion",
     "robos", "miscelaneo", "desviaciones", "solicitud_ot", "reclamos",
-    "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento", "entradas_salidas",
+    "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento", "entradas_salidas", "habitaciones_bloqueadas",
 ]
 
 VIEWS = ["encuestas" if tab == "encuesta" else tab for tab in TABS]
@@ -39,6 +39,7 @@ FORM_DATA = {
     "apertura": {"fecha": "2026-09-01", "hora": "08:00"},
     "cumplimiento": {"fecha": "2026-09-01", "empresa": "Prueba"},
     "entradas_salidas": {"fecha_ingreso": "2026-09-01", "hora_entrada": "08:15", "nombre": "Prueba", "n_tarjeta": "000123"},
+    "habitaciones_bloqueadas": {"fecha_bloqueo": "2026-09-01", "habitacion": "001", "motivo": "Reparación"},
 }
 
 IMPORT_ROWS = {
@@ -58,6 +59,7 @@ IMPORT_ROWS = {
     "apertura": ["2026-09-02", "", "08:00", "", ""],
     "cumplimiento": ["2026-09-02", "", "", "", "", "", ""],
     "entradas_salidas": ["2026-09-02", "2026-09-03", "23:15", "07:45", "Empresa", "00042", "Persona", "12.345.678-9", "Noche", "A", "001", "Trabajo", "Recepción", "Sí", "000123", "Pendiente"],
+    "habitaciones_bloqueadas": ["2026-09-02", "001", "000123", "Empresa", "00042", "Mantención", "Recepción informada", "2026-09-03", "", "", "", "Seguimiento"],
 }
 
 

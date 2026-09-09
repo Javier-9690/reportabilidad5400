@@ -1,109 +1,97 @@
-REPORTABILIDAD 5400 — IMPORTACIÓN CON CAMPOS VACÍOS
+REPORTABILIDAD 5400 — ENTRADA A HABITACIONES Y HABITACIONES BLOQUEADAS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-CAMPOS VACÍOS PERMITIDOS
-Entradas y salidas admite vacíos en cualquiera de sus 16 campos, incluidas
-las fechas y horas. Se puede importar una fila que contenga un solo dato.
-Las filas completamente vacías se omiten. Los vacíos se conservan como tales,
-sin completar fechas u horas artificialmente.
-Los registros incompletos también se pueden ingresar, editar y eliminar.
-Sin FECHA INGRESO se muestran y exportan al abrir el módulo sin filtros.
-El gráfico cuenta únicamente las fechas informadas de cada entrada o salida.
+CAMBIO EN EL DASHBOARD
+La tarjeta y el gráfico se llaman Entrada a habitaciones y muestran únicamente
+las entradas según FECHA INGRESO dentro del período o semana seleccionados.
+Se retiraron la tarjeta, serie y conteos de salida. Las fechas de salida tampoco
+añaden días al eje del dashboard.
+Los campos y datos de salida se conservan en el registro Entradas y salidas,
+su formulario, edición, listado y exportación.
 
-REGISTRO DE ENTRADAS Y SALIDAS
-Abre Registros hotelería > Ingresar registros > Entradas y salidas.
-El formulario, la edición, la plantilla Excel, el listado y el CSV utilizan
-los 16 campos solicitados, en este orden:
-1. FECHA INGRESO
-2. FECHA SALIDA
-3. HORA ENTRADA
-4. HORA SALIDA
-5. EMPRESA
-6. ID
-7. NOMBRE
-8. RUT
-9. TURNO
-10. PABELLON
-11. HABITACIÓN
-12. MOTIVO
-13. AUTORIZADO
-14. PENDULO
-15. N° TARJETA
-16. DEVOLUCIÓN
+NUEVO REGISTRO: HABITACIONES BLOQUEADAS
+Abre Registros hotelería > Ingresar registros > Habitaciones bloqueadas.
+El formulario, la plantilla Excel, la edición, el listado y el CSV contienen
+estos 12 campos en el orden solicitado:
+1. FECHA DE BLOQUEO
+2. HABITACIÓN
+3. OT
+4. EMPRESA
+5. ID
+6. MOTIVO
+7. COMUNICADO
+8. FECHA LIBERADA POR INGECLEAN
+9. FECHA LIBERADA POR FACILITY
+10. FECHA LIBERADA POR MANTENCION
+11. FECHA LIBERADA PROCESO INVESTIGACION
+12. OBSERVACIÓN
 
-FUNCIONES DEL REGISTRO
-- Descargar Plantilla: archivo XLSX vacío con los 16 encabezados y formatos
-  de fecha/hora y texto para los identificadores.
-- Importar: carga el Excel y guarda sus registros. Si hay una fila inválida,
-  se indica su número y no se guarda ninguna fila del archivo.
-- Formulario: ingreso manual con validación y conservación de lo escrito
-  cuando hay un error.
-- Ver registros: tabla completa, filtros por fecha o semana y descarga CSV.
-- Lápiz: editar el mismo registro conservando su ID y fecha de creación.
-- Papelera, selección múltiple, seleccionar todos y Eliminar todos con la
-  misma confirmación y protección que los otros módulos.
+FUNCIONES
+- Descargar Plantilla: XLSX con encabezados y formatos de fecha y texto.
+- Importar: carga archivos con los 12 encabezados, aunque tengan campos vacíos.
+- Formulario de ingreso manual y Ver registros.
+- Consulta con filtros por fechas o semana y descarga CSV.
+- Lápiz para editar el mismo registro conservando su ID y fecha de creación.
+- Papelera, selección múltiple y Eliminar todos con confirmación.
+- Tarjeta y gráfico Habitaciones bloqueadas en el dashboard KPI.
 
-Todos los campos son opcionales; basta con que el registro tenga algún dato.
-Solo se validan los valores informados. Si hay datos suficientes para comparar
-las fechas u horas, la salida no puede ser anterior al ingreso. Se admiten
-salidas al día siguiente y horas a medianoche. Los demás campos son de texto libre.
-ID, RUT y N° tarjeta conservan ceros iniciales y guiones si se ingresan como
-texto. Motivo admite saltos de línea.
-Los filtros del listado, CSV y borrado se aplican a FECHA INGRESO.
+CAMPOS VACÍOS Y VALIDACIONES
+Todos los campos del nuevo registro son opcionales. Basta un dato en la fila;
+las filas totalmente vacías se omiten. Las fechas de liberación se pueden
+completar por separado. Si se informa la fecha de bloqueo, una liberación no
+puede ser anterior a ella; no se exige orden entre las cuatro liberaciones.
+Los valores inválidos se señalan y una fila inválida cancela toda la importación.
+Habitación, OT e ID se guardan como texto para conservar ceros iniciales.
+Motivo, Comunicado y Observación conservan saltos de línea.
 
-GRÁFICO EN EL DASHBOARD KPI
-Se agregaron las tarjetas Registros de entrada y Registros de salida y el
-gráfico Entradas y salidas por día, con dos series.
-Cada entrada cuenta en FECHA INGRESO y cada salida en FECHA SALIDA dentro
-del período seleccionado. Una salida se cuenta aunque su ingreso esté
-fuera del período. Una salida pendiente no suma a la serie de salidas.
-Las cifras representan registros, no personas únicas.
+GRÁFICO Y FILTROS DE HABITACIONES BLOQUEADAS
+La tarjeta y el gráfico cuentan registros por FECHA DE BLOQUEO en el período
+seleccionado. Representan los bloqueos registrados; no calculan cuántas
+habitaciones siguen bloqueadas ni requieren completar todas las liberaciones.
+El listado, CSV y borrado se filtran por esa misma fecha. Para consultar o
+exportar también registros sin fecha, abre el módulo sin filtros.
 
 BASE DE DATOS
-La tabla entradas_salidas se crea automáticamente si no existe. Al iniciar
-sobre una base anterior, se retiran las restricciones de obligatoriedad de
-fecha_ingreso y hora_entrada. PostgreSQL modifica las restricciones; SQLite
-adapta la tabla dentro de una transacción, conservando datos, índices y triggers.
-No hace falta borrar tablas ni ejecutar una migración manual.
+La tabla habitaciones_bloqueadas se crea automáticamente al iniciar si no existe.
+Se conservan las tablas y registros anteriores. No hace falta borrar tablas
+ni ejecutar un comando de migración para agregar este registro.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON ENTRADAS Y SALIDAS
+SI YA INSTALASTE LA VERSIÓN ANTERIOR CON CAMPOS VACÍOS
 Reemplaza estos archivos, conservando sus carpetas:
 - gestion5s/web.py
 - gestion5s/editing.py
 - gestion5s/templates/panel.html
 - gestion5s/templates/list.html
 - gestion5s/templates/edit.html
+- gestion5s/templates/dashboard.html
+- tests/test_integration.py
+- tests/test_edit_records.py
 - tests/test_entry_exit_records.py
 - README.md
-La actualización de la base se realiza al reiniciar el programa.
-La plantilla mantiene los mismos 16 encabezados: no es necesario cambiarla.
+Y añade:
+- tests/test_blocked_rooms.py
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
 - Reportes agrupa Dotación, Ocupabilidad, EGP y F&A.
-- Edición por lápiz, eliminación individual, selección múltiple y Eliminar
-  todos para los 16 tipos de registros, incluido el nuevo.
-- Acciones en desviaciones está en el formulario, edición, listado, plantilla,
-  importación y CSV. Su columna se agrega automáticamente si falta.
-- Extensiones y excepciones conserva sus 12 campos actualizados:
-  FECHA DE SOLICITUD, ID, EMPRESA, CO, GERENCIA, CENTRO COSTOS, CANT. CLIENTES,
-  TIPO DE SOLICITUD, DESDE, HASTA, APROBADOR y OBSERVACION.
-  Los dos campos nuevos se agregan automáticamente si faltan y quedan vacíos
-  en los registros históricos hasta completarlos. Proyecto se conserva en
-  la base como dato histórico. Para importar usa la nueva plantilla de 12 columnas.
-- Está corregido el error Not Found después de eliminar individualmente.
+- Edición por lápiz, eliminación individual y múltiple para los 17 tipos de registros.
+- Acciones en desviaciones: formulario, edición, plantilla, importación, listado y CSV.
+- Extensiones y excepciones: sus 12 campos actualizados, con Centro costos
+  y Tipo de solicitud, conservando los registros anteriores.
+- Entradas y salidas: sus 16 campos, incluidos fechas, horas y datos de tarjeta;
+  se permite dejar cualquiera vacío y completar el registro después.
+- Está corregido el error Not Found tras eliminar un registro.
 
-ALCANCE DE ELIMINAR TODOS
-Abarca los registros del módulo actual que cumplen los filtros aplicados.
-Para borrar todo su historial, abre el módulo sin filtros. Cancelar vuelve
-sin eliminar. La confirmación identifica los registros revisados y dura
-15 minutos: si alguno cambia, debe revisarse la selección otra vez.
-Los registros nuevos creados después de abrir la confirmación se conservan.
-Si ocurre un error durante el borrado, se revierte toda la operación.
-Al terminar se vuelve al mismo módulo con sus filtros y una confirmación.
+ELIMINAR TODOS
+Se aplica al módulo actual y a los filtros seleccionados. Para eliminar todo
+su historial, abre el módulo sin filtros. Siempre hay una confirmación previa
+con la cantidad de registros; Cancelar vuelve sin borrar.
+La confirmación dura 15 minutos y detecta cambios en los registros seleccionados.
+Los nuevos registros creados después de abrirla se conservan. Si ocurre un error,
+se revierte todo el borrado y se vuelve al listado del módulo.
 
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza estos archivos, conservando sus carpetas:
@@ -123,6 +111,7 @@ Añade estos archivos nuevos:
 - gestion5s/templates/bulk_delete_confirm.html
 - gestion5s/templates/edit.html
 - static/js/registros.js
+- tests/test_blocked_rooms.py
 - tests/test_bulk_delete_records.py
 - tests/test_delete_records.py
 - tests/test_deviation_actions.py
@@ -139,12 +128,14 @@ Estos cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
 
 COMPROBACIONES
-Pasaron las 40 pruebas funcionales con bases SQLite temporales. Se verificaron
-filas con un único dato en cada uno de los 16 campos, blancos y espacios,
-omisión de filas vacías, conservación de vacíos en CSV y edición, filtros,
-gráficos y eliminación individual y múltiple de registros incompletos.
-También se verificó la actualización de una tabla anterior conservando sus
-registros, ID, fecha de creación, índices y triggers. Un fallo simulado antes
-de terminar la adaptación de SQLite revirtió la operación y restauró la tabla
-original con todos sus datos. Se mantuvieron las pruebas de las mejoras previas.
+Pasaron las 45 pruebas funcionales con bases SQLite temporales. Incluyen los
+12 campos en formulario, edición, plantilla, importación, listado y CSV;
+las cinco fechas en formatos Excel o texto; fechas de liberación independientes;
+campos vacíos, espacios y registros con un solo dato; ceros iniciales;
+validaciones sin escrituras parciales y filtros por fecha o semana.
+Se verificó que el dashboard cuente solo entradas y bloqueos, sin incluir
+fechas de salida o liberación en los conteos ni en el eje de días.
+Las pruebas generales verificaron edición y eliminación de los 17 módulos.
+El JavaScript renderizado inicializa los 18 gráficos y entrega los conteos
+correctos a Entrada a habitaciones y Habitaciones bloqueadas.
 No se modificaron datos de producción.

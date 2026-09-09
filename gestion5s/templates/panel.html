@@ -60,6 +60,9 @@
           <a href="{{ url_for('panel', tab='entradas_salidas') }}" class="list-group-item list-group-item-action {% if tab=='entradas_salidas' %}active{% endif %}">
             <i class="fas fa-exchange-alt me-2"></i>Entradas y salidas
           </a>
+          <a href="{{ url_for('panel', tab='habitaciones_bloqueadas') }}" class="list-group-item list-group-item-action {% if tab=='habitaciones_bloqueadas' %}active{% endif %}">
+            <i class="fas fa-ban me-2"></i>Habitaciones bloqueadas
+          </a>
         </div>
       </div>
     </div>
@@ -1075,29 +1078,31 @@
         </div>
       </div>
       {% endif %}
-      {% if tab=='entradas_salidas' %}
+      {% if tab in ['entradas_salidas', 'habitaciones_bloqueadas'] %}
+      {% set record_icon = 'fa-ban' if tab == 'habitaciones_bloqueadas' else 'fa-exchange-alt' %}
+      {% set record_title = 'Habitaciones bloqueadas' if tab == 'habitaciones_bloqueadas' else 'Registro de entradas y salidas' %}
       <div class="card">
         <div class="card-header">
-          <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Registro de entradas y salidas</h5>
+          <h5 class="mb-0"><i class="fas {{ record_icon }} me-2"></i>{{ record_title }}</h5>
         </div>
         <div class="card-body">
           <div class="d-flex gap-2 flex-wrap mb-4">
-            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('template_xlsx', entity='entradas_salidas') }}">
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('template_xlsx', entity=tab) }}">
               <i class="fas fa-download me-1"></i> Descargar Plantilla
             </a>
-            <form method="post" action="{{ url_for('import_xlsx', entity='entradas_salidas') }}" enctype="multipart/form-data" class="d-inline-flex gap-2">
-              <input type="file" class="form-control form-control-sm" name="file" accept=".xlsx" required aria-label="Plantilla de entradas y salidas">
+            <form method="post" action="{{ url_for('import_xlsx', entity=tab) }}" enctype="multipart/form-data" class="d-inline-flex gap-2">
+              <input type="file" class="form-control form-control-sm" name="file" accept=".xlsx" required aria-label="Plantilla de {{ record_title }}">
               <button class="btn btn-primary-custom btn-sm" type="submit"><i class="fas fa-upload me-1"></i> Importar</button>
             </form>
-            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('registros', vista='entradas_salidas') }}">
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('registros', vista=tab) }}">
               <i class="fas fa-list me-1"></i> Ver registros
             </a>
           </div>
-          <p class="small text-muted">Puedes dejar campos vacíos, incluidas fechas y horas, y completarlos después desde Editar. Las filas totalmente vacías de la plantilla se omiten.</p>
+          <p class="small text-muted">Puedes dejar campos vacíos y completarlos después desde Editar. Las filas totalmente vacías de la plantilla se omiten.</p>
           {% if field_errors %}<div class="alert alert-danger" role="alert">{{ field_errors.get('_form', 'Revisa los campos señalados antes de guardar.') }}</div>{% endif %}
-          <form method="post" action="{{ url_for('panel', tab='entradas_salidas') }}">
+          <form method="post" action="{{ url_for('panel', tab=tab) }}">
             <div class="row g-3">
-              {% for field in entry_exit_fields %}
+              {% for field in form_fields %}
               <div class="{{ 'col-12' if field.kind == 'textarea' else 'col-md-6 col-xl-3' }}">
                 <label for="entry-{{ field.name }}" class="form-label{% if field.required %} required{% endif %}">{{ field.label }}</label>
                 {% if field.kind == 'textarea' %}

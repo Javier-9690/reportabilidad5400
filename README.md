@@ -14,7 +14,7 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 - Generar reporte de dotación por gerencia.
 - Exportar reporte a Excel.
 - Acceder al módulo Registros hotelería desde la misma cabecera y el mismo dominio.
-- Registrar, importar, consultar, editar, eliminar y exportar los 16 tipos de registros operacionales de hotelería.
+- Registrar, importar, consultar, editar, eliminar y exportar los 17 tipos de registros operacionales de hotelería.
 - Consultar el dashboard KPI consolidado de hotelería por fechas o semanas.
 
 ## Menú principal
@@ -51,7 +51,7 @@ desde una página abierta antes de esta corrección.
 
 ### Eliminar varios registros o todo el listado
 
-Los 16 tipos de registros de hotelería incluyen una casilla en cada fila y
+Los 17 tipos de registros de hotelería incluyen una casilla en cada fila y
 la opción **Seleccionar todos los registros del listado**. El contador muestra
 cuántos están marcados; **Eliminar seleccionados** actúa sobre esas filas.
 
@@ -155,18 +155,55 @@ filtros de fechas o semana a **FECHA INGRESO**.
 Los registros sin esa fecha aparecen al abrir el módulo sin filtros y pueden
 exportarse, completarse desde el lápiz o eliminarse como los demás.
 
-El dashboard incorpora dos tarjetas y el gráfico **Entradas y salidas por día**.
-Cada entrada se cuenta en FECHA INGRESO y cada salida en FECHA SALIDA dentro
-del período seleccionado. Una salida dentro del período se cuenta aunque
-su ingreso haya ocurrido antes. Solo se cuentan entradas con FECHA INGRESO
-y salidas con FECHA SALIDA; las fechas vacías no se asignan a otro día.
-Las cifras representan registros, no personas únicas.
+El dashboard muestra la tarjeta y el gráfico **Entrada a habitaciones**, con
+el conteo de entradas por FECHA INGRESO dentro del período seleccionado.
+Se retiraron la tarjeta y la serie de salidas. Las fechas de salida tampoco
+añaden días al eje del dashboard. Los datos de salida siguen disponibles en
+el formulario, el listado, la edición y la exportación del registro.
+Las entradas sin fecha no se asignan a otro día. Las cifras representan
+registros, no personas únicas.
 
 La tabla `entradas_salidas` se crea automáticamente al iniciar si no existe.
 Si se instaló la versión anterior, se retiran las restricciones de obligatoriedad
 de `fecha_ingreso` y `hora_entrada`, conservando los registros. PostgreSQL
 actualiza las restricciones; SQLite realiza la adaptación en una transacción
 que conserva los datos, índices y triggers existentes.
+
+### Habitaciones bloqueadas
+
+Disponible en **Registros hotelería > Ingresar registros > Habitaciones bloqueadas**
+y en el selector de **Consultar registros**. Incluye formulario, plantilla Excel,
+importación, edición, listado, descarga CSV y eliminación individual o múltiple.
+Los 12 campos aparecen en este orden:
+
+1. FECHA DE BLOQUEO
+2. HABITACIÓN
+3. OT
+4. EMPRESA
+5. ID
+6. MOTIVO
+7. COMUNICADO
+8. FECHA LIBERADA POR INGECLEAN
+9. FECHA LIBERADA POR FACILITY
+10. FECHA LIBERADA POR MANTENCION
+11. FECHA LIBERADA PROCESO INVESTIGACION
+12. OBSERVACIÓN
+
+Todos son opcionales y pueden completarse por separado. Las filas de Excel
+completamente vacías se omiten. Habitación, OT e ID se guardan como texto para
+conservar ceros iniciales; Motivo, Comunicado y Observación admiten varias líneas.
+Las fechas informadas se validan y, cuando se conoce la fecha de bloqueo, ninguna
+liberación puede ser anterior a ella. No se exige un orden entre las cuatro
+liberaciones. Una fila inválida cancela toda la importación indicando su número.
+
+La tarjeta y el gráfico **Habitaciones bloqueadas** cuentan registros por
+**FECHA DE BLOQUEO**, respetando el período o semana seleccionados. Este conteo
+representa los bloqueos registrados en el período; no calcula cuántas habitaciones
+siguen bloqueadas ni requiere que se completen todas las fechas de liberación.
+El listado, la exportación y el borrado usan la misma fecha de bloqueo para filtrar.
+Los registros sin fecha se consultan y exportan sin filtros.
+
+La tabla `habitaciones_bloqueadas` se crea automáticamente al iniciar la aplicación.
 
 Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
