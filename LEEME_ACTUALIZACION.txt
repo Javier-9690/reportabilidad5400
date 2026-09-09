@@ -1,83 +1,68 @@
-REPORTABILIDAD 5400 — ORDENAMIENTO Y HABITACIONES LIBERADAS
+REPORTABILIDAD 5400 — FORMULARIOS REVISADOS Y LISTADOS COMPLETOS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-NUEVO REGISTRO: ORDENAMIENTO
-Abre Registros hotelería > Ingresar registros > Ordenamiento.
-El formulario, la edición, la plantilla Excel, el listado y la exportación
-contienen estos 10 campos, en el orden solicitado:
-1. FECHA EJECUCIÓN
-2. EMPRESA
-3. HABITACIÓN
-4. NOMBRE
-5. RUT
-6. TURNO
-7. REASIGNACIÓN
-8. MOTIVO CAMBIO
-9. PROCESADO
-10. PENDIENTE
+FORMULARIOS DE LOS 19 MÓDULOS
+Se revisaron los campos de ingreso y edición contra la estructura de la base
+de datos. Ambos formularios utilizan ahora los mismos controles y validaciones.
+- Campos con etiquetas asociadas y sin nombres ni identificadores duplicados.
+- Fechas y horas válidas; números enteros o decimales según corresponda.
+- Duraciones mm:ss, con minutos de cualquier longitud y segundos de 00 a 59.
+- Puntajes de encuesta de 1 a 5 o vacíos, y total y promedio automáticos.
+- Límites de texto compatibles con las columnas existentes.
+- Campos obligatorios señalados; se mantienen los campos opcionales.
+- Los errores aparecen junto a los campos y conservan lo escrito.
+- Si falla el guardado, se revierte la operación y el formulario conserva los datos.
+Se corrigieron casos que antes producían un error 500 o guardaban silenciosamente
+vacío un valor numérico inválido. No se modifican tablas ni registros existentes.
+Los formularios anteriores de ID y tiempos siguen siendo compatibles.
 
-NUEVO REGISTRO: HABITACIONES LIBERADAS
-Abre Registros hotelería > Ingresar registros > Habitaciones liberadas.
-Contiene estos 7 campos, en el orden solicitado:
-1. Habitacion
-2. Empresa
-3. Entrega /devolucion
-4. Fecha de devolucion
-5. Comentario
-6. USO A PARTIR DE
-7. Observación
+VER REGISTROS EN TODOS
+Los 19 módulos muestran Ver registros junto a Descargar Plantilla e Importar.
+El botón abre directamente el listado correspondiente. La encuesta funciona
+con las dos variantes anteriores de su enlace. Limpiar filtros mantiene el
+módulo actual para que no tengas que seleccionarlo otra vez.
 
-FUNCIONES DE AMBOS REGISTROS
-- Descargar Plantilla: XLSX vacío con los encabezados y formatos de fecha y texto.
-- Importar: carga la plantilla completada, aunque tenga campos o fechas vacíos.
-- Formulario de ingreso manual y Ver registros.
-- Consulta por período o semana y descarga de registros en CSV.
-- Lápiz para editar conservando el ID y la fecha de creación del registro.
-- Papelera, selección múltiple y Eliminar todos con confirmación.
-- Tarjeta y gráfico en el dashboard KPI para cada nuevo módulo.
+TODOS LOS DATOS VISIBLES
+Cada listado muestra todos los campos vigentes del registro y su fecha de creación.
+Se agregaron las columnas que no aparecían en los listados de eventos, duplicidades,
+encuestas, robos y hurtos, misceláneo, desviaciones, solicitudes OT, reclamos y alarmas.
+Los textos aparecen completos, con sus saltos de línea y sin recortes ni puntos
+suspensivos. La encuesta muestra respuestas, puntajes, comentarios, total y promedio.
+Los ceros se muestran como cero y la duración cero como 00:00.
+El campo histórico Proyecto de Extensiones sigue guardado internamente, tal como
+se solicitó cuando se sustituyeron las columnas de ese registro.
 
-CAMPOS VACÍOS Y VALIDACIONES
-Todos los campos son opcionales, incluidas las fechas. Basta un dato para
-guardar o importar una fila; las filas totalmente vacías se omiten.
-Los vacíos se conservan como tales y pueden completarse después desde Editar.
-Se admiten fechas de Excel y texto DD/MM/AAAA o AAAA-MM-DD. Si un dato informado
-es inválido, se muestra el número de fila y no se guarda ninguna fila del archivo.
-Habitación, RUT y Reasignación conservan ceros iniciales al ingresarse como texto.
-Motivo cambio, Comentario y Observación admiten varias líneas.
-Reasignación, Procesado, Pendiente y Entrega /devolucion son texto libre.
+BARRAS DE DESPLAZAMIENTO
+Si las columnas no caben en la pantalla, aparece desplazamiento horizontal.
+La tabla tiene una segunda barra sincronizada encima, para recorrer las columnas
+sin bajar hasta la última fila. También permite desplazamiento vertical y mantiene
+visibles los encabezados. Se puede enfocar con el teclado para desplazarse.
+El lápiz, la papelera y las opciones de selección y eliminación se conservan.
 
-GRÁFICOS Y FILTROS
-Ordenamiento se cuenta y filtra por FECHA EJECUCIÓN.
-Habitaciones liberadas se cuenta y filtra por Fecha de devolucion.
-USO A PARTIR DE se guarda por separado y no sustituye la fecha de devolución.
-Los gráficos respetan el período o semana seleccionados y cuentan registros,
-no habitaciones únicas. El listado, CSV y borrado usan la misma fecha principal.
-Para consultar o exportar también registros sin esa fecha, abre el módulo
-sin filtros; los gráficos no asignan esas filas a un día inventado.
+ONBOARDING
+Archivo PDF (nombre) permite escribir el nombre o completarlo al seleccionar
+un PDF. Se registra únicamente el nombre del archivo, como en la base anterior;
+no se almacena el contenido del PDF. El nombre puede corregirse antes de guardar.
 
-BASE DE DATOS
-Las tablas ordenamiento y habitaciones_liberadas se crean automáticamente
-al iniciar la aplicación si no existen. Se conservan las tablas y registros
-anteriores. No hace falta borrar tablas ni ejecutar un comando de migración
-para agregar estos registros.
-
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON HABITACIONES BLOQUEADAS
+SI YA INSTALASTE LA VERSIÓN ANTERIOR CON ORDENAMIENTO Y HABITACIONES LIBERADAS
 Reemplaza estos archivos, conservando sus carpetas:
 - README.md
 - gestion5s/editing.py
-- gestion5s/templates/dashboard.html
 - gestion5s/templates/edit.html
 - gestion5s/templates/list.html
 - gestion5s/templates/panel.html
 - gestion5s/web.py
-- tests/test_edit_records.py
-- tests/test_integration.py
+- static/css/gestion5s.css
+- static/js/registros.js
 
-Y añade:
-- tests/test_room_operations.py
+Añade estos archivos nuevos:
+- gestion5s/templates/record_fields.html
+- static/js/hotel_forms.js
+- tests/test_form_structure.py
+- tests/test_hotel_interface.cjs
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
@@ -86,22 +71,22 @@ MEJORAS ANTERIORES INCLUIDAS
 - Acciones en desviaciones: formulario, edición, plantilla, importación, listado y CSV.
 - Extensiones y excepciones: sus 12 campos actualizados, con Centro costos
   y Tipo de solicitud, conservando los registros anteriores.
-- Entradas y salidas: sus 16 campos, incluidos fechas, horas y datos de tarjeta;
-  se permite dejar cualquiera vacío y completar el registro después.
-- Entrada a habitaciones en el dashboard cuenta únicamente FECHA INGRESO.
-  Las salidas siguen guardadas en los registros, sin gráficos ni conteos de salida.
-- Habitaciones bloqueadas: sus 12 campos, las cinco fechas opcionales,
-  formulario, plantilla, importación, listado, exportación, edición y borrado.
-  Su tarjeta y gráfico cuentan registros por FECHA DE BLOQUEO.
-- Está corregido el error Not Found tras eliminar un registro.
+- Entradas y salidas: sus 16 campos, con fechas, horas y datos de tarjeta opcionales.
+- Entrada a habitaciones en el dashboard cuenta únicamente FECHA INGRESO;
+  los datos de salida siguen guardados en el registro.
+- Habitaciones bloqueadas: sus 12 campos, incluidas las cinco fechas opcionales.
+- Ordenamiento y Habitaciones liberadas: todas las columnas solicitadas, formulario,
+  plantilla, importación, listado, exportación, edición, borrado y dashboard.
+- Los cuatro registros más recientes admiten campos y fechas vacíos.
+- Se conserva la corrección del error Not Found después de eliminar un registro.
+El README detalla las columnas y el funcionamiento de cada módulo.
 
 ELIMINAR TODOS
 Se aplica al módulo actual y a los filtros seleccionados. Para eliminar todo
 su historial, abre el módulo sin filtros. Siempre hay una confirmación previa
 con la cantidad de registros; Cancelar vuelve sin borrar.
 La confirmación dura 15 minutos y detecta cambios en los registros seleccionados.
-Los registros creados después de abrirla se conservan. Si ocurre un error,
-se revierte todo el borrado y se vuelve al listado del módulo.
+Los registros creados después de abrirla se conservan. Un error revierte el borrado.
 
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza estos archivos, conservando sus carpetas:
@@ -120,6 +105,8 @@ Añade estos archivos nuevos:
 - gestion5s/editing.py
 - gestion5s/templates/bulk_delete_confirm.html
 - gestion5s/templates/edit.html
+- gestion5s/templates/record_fields.html
+- static/js/hotel_forms.js
 - static/js/registros.js
 - tests/test_blocked_rooms.py
 - tests/test_bulk_delete_records.py
@@ -128,6 +115,8 @@ Añade estos archivos nuevos:
 - tests/test_edit_records.py
 - tests/test_entry_exit_records.py
 - tests/test_extension_fields.py
+- tests/test_form_structure.py
+- tests/test_hotel_interface.cjs
 - tests/test_room_operations.py
 
 PUBLICAR LA ACTUALIZACIÓN
@@ -139,13 +128,14 @@ Estos cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
 
 COMPROBACIONES
-Pasaron las 50 pruebas funcionales con bases SQLite temporales. Incluyen los
-campos de ambos nuevos módulos en formulario, edición, plantilla, importación,
-listado y CSV; fechas de Excel y texto; fechas vacías; filas con un solo dato;
-ceros iniciales; validaciones sin escrituras parciales; filtros por fecha o semana.
-Las pruebas generales verificaron edición y eliminación de los 19 módulos.
-El JavaScript renderizado se ejecutó con simulaciones de DOM y Chart para
-verificar que inicializa los 20 gráficos, con series y destinos correctos.
-Los gráficos nuevos cuentan ejecución y devolución; los datos de salida y
-USO A PARTIR DE no añaden conteos ni días al eje.
-No se modificaron datos de producción.
+Pasaron las 57 pruebas funcionales con bases SQLite temporales. Se verificaron
+los 19 formularios con todos sus campos, etiquetas, nombres y límites;
+el guardado y la visualización completa de los datos, incluidos textos largos,
+ceros, fechas, horas y campos opcionales; errores sin pérdida de lo escrito;
+fallos de base de datos con reversión, y compatibilidad con formularios anteriores.
+También pasaron las pruebas anteriores de plantillas, importación, edición,
+eliminación individual y múltiple, migraciones y dashboard.
+El script de Node verificó selección múltiple, sincronización de barras en ambos
+sentidos, ajuste del ancho, total automático de censo y selección del nombre de PDF.
+Estas comprobaciones de JavaScript simulan los eventos; no sustituyen una revisión
+visual del navegador. No se modificaron datos de producción.

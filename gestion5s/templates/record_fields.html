@@ -1,0 +1,47 @@
+{% macro render_fields(fields, errors, prefix, entity, week_map={}) -%}
+<div class="row g-3">
+  {% for field in fields %}
+  {% set control_id = prefix ~ '-' ~ field.name %}
+  <div class="{{ 'col-12' if field.kind == 'textarea' else 'col-md-6 col-xl-4' }}">
+    <label for="{{ control_id }}" class="form-label{% if field.required %} required{% endif %}">{{ field.label }}</label>
+    {% if field.kind == 'textarea' %}
+    <textarea id="{{ control_id }}" name="{{ field.name }}" rows="3"
+              class="form-control{% if errors.get(field.name) %} is-invalid{% endif %}"
+              {% if field.required %}required{% endif %}
+              {% if errors.get(field.name) %}aria-invalid="true" aria-describedby="{{ control_id }}-error"{% endif %}>{{ field.value }}</textarea>
+    {% else %}
+    <input id="{{ control_id }}" name="{{ field.name }}" type="{{ 'text' if field.kind == 'duration' else field.kind }}"
+           value="{{ field.value }}" class="form-control{% if errors.get(field.name) %} is-invalid{% endif %}"
+           {% if field.required %}required{% endif %}
+           {% if field.maxlength %}maxlength="{{ field.maxlength }}"{% endif %}
+           {% if field.kind == 'number' %}step="{{ field.step }}" min="{{ field.minimum }}" {% if field.maximum is not none %}max="{{ field.maximum }}"{% endif %}{% endif %}
+           {% if field.kind in ['time', 'datetime-local'] %}step="any"{% endif %}
+           {% if field.kind == 'duration' %}pattern="[0-9]+:[0-5][0-9]" placeholder="03:54" title="Minutos:segundos; por ejemplo 03:54. Los segundos van de 00 a 59."{% endif %}
+           {% if field.name == 'semana' and week_map %}list="{{ control_id }}-options"{% endif %}
+           {% if field.name == 'estatus' %}list="{{ control_id }}-options"{% endif %}
+           {% if errors.get(field.name) %}aria-invalid="true" aria-describedby="{{ control_id }}-error"{% endif %}>
+    {% if field.name == 'semana' and week_map %}
+    <datalist id="{{ control_id }}-options">
+      {% for num, dates in week_map.items()|sort %}<option value="{{ num }}" label="{{ dates[0] }} → {{ dates[1] }}"></option>{% endfor %}
+    </datalist>
+    {% elif field.name == 'estatus' %}
+    <datalist id="{{ control_id }}-options"><option value="Abierto"></option><option value="Cerrado"></option><option value="En Proceso"></option></datalist>
+    {% endif %}
+    {% endif %}
+    {% if errors.get(field.name) %}
+    <div class="invalid-feedback" id="{{ control_id }}-error">{{ errors[field.name] }}</div>
+    {% if field.value and field.kind in ['number', 'date', 'time', 'datetime-local'] %}
+    <div class="small text-muted">Valor recibido: {{ field.value }}</div>
+    {% endif %}
+    {% endif %}
+    {% if entity == 'onboarding' and field.name == 'archivo_pdf' %}
+    <div class="mt-2">
+      <input type="file" id="{{ control_id }}-picker" class="form-control form-control-sm" accept=".pdf,application/pdf"
+             data-pdf-name-target="{{ control_id }}" aria-label="Seleccionar PDF para completar el nombre">
+      <p class="small text-muted mt-1 mb-0">Puedes escribir el nombre o seleccionarlo desde un PDF. Se registra únicamente el nombre del archivo.</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}

@@ -1,4 +1,4 @@
-"""Campos y validación para editar registros existentes de hotelería."""
+"""Campos compartidos por ingreso, edición y consulta de registros de hotelería."""
 
 import hashlib
 import json
@@ -136,6 +136,8 @@ FIELD_LABELS = {
     "cant_clientes": "Cantidad de clientes", "archivo_pdf": "Archivo PDF (nombre)",
     "n_contrato": "N.º de contrato", "correo_electronico": "Correo electrónico",
     "estado_chapa": "Estado de la chapa",
+    "acciones": "Acciones", "promedio": "Promedio",
+    "empresa_contratista": "Empresa contratista",
 }
 for question in range(1, 6):
     FIELD_LABELS[f"q{question}_respuesta"] = f"Pregunta {question}: respuesta"
@@ -197,6 +199,30 @@ def edit_fields(entity, record):
             "maximum": 5 if name.endswith("_puntaje") else (MAX_INTEGER if isinstance(column.type, Integer) else None),
         })
     return fields
+
+
+def list_fields(entity, record):
+    """Muestra todos los campos vigentes y los resultados calculados de la encuesta."""
+    fields = edit_fields(entity, record)
+    if entity == "encuestas":
+        fields[-1:-1] = [
+            {"name": "total", "label": "Total", "kind": "number"},
+            {"name": "promedio", "label": "Promedio", "kind": "number"},
+        ]
+    return fields
+
+
+def display_record_value(value, kind="text"):
+    if value is None or value == "":
+        return "-"
+    if kind == "duration":
+        minutes, seconds = divmod(value, 60)
+        return f"{minutes:02d}:{seconds:02d}"
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, (date, time)):
+        return value.isoformat()
+    return str(value)
 
 
 def parse_edit_values(entity, fields, form):

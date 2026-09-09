@@ -49,6 +49,38 @@ módulo con sus filtros y muestra la confirmación. Se conserva el prefijo
 `/gestion-5s` en la dirección de regreso, incluso si la eliminación se envía
 desde una página abierta antes de esta corrección.
 
+### Formularios y listados completos
+
+Los 19 formularios incluyen **Ver registros** junto a **Descargar Plantilla**
+e **Importar**. El enlace abre directamente el listado del módulo activo;
+la encuesta también funciona al acceder con `tab=encuesta` o `tab=encuestas`.
+
+El ingreso y la edición comparten los mismos campos, tipos, límites y reglas
+de validación. Se comprueban los datos obligatorios, las fechas y horas, los
+enteros, las duraciones `mm:ss`, los puntajes y los límites de texto antes de
+guardar. Las duraciones admiten más de 99 minutos y segundos de 00 a 59.
+Los errores aparecen junto al campo y conservan lo escrito para corregirlo.
+Un fallo de base de datos revierte el intento de guardado y conserva el formulario.
+Se mantienen los campos opcionales y la compatibilidad con formularios abiertos
+antes de esta actualización, incluidos los nombres anteriores de ID y tiempos.
+
+Cada listado muestra todos los campos vigentes del registro, los textos completos
+con sus saltos de línea y la fecha de creación. La encuesta incluye también todas
+las respuestas, sus puntajes, comentarios, total y promedio. Los valores de cero
+se muestran como cero; una duración de cero se muestra como `00:00`.
+El campo histórico Proyecto de Extensiones permanece guardado internamente,
+como se solicitó al sustituir las columnas de ese módulo.
+
+Cuando las columnas exceden el ancho de la pantalla, la tabla tiene desplazamiento
+horizontal. Una segunda barra sincronizada aparece encima para poder desplazarse
+sin recorrer todas las filas. La tabla también permite desplazamiento vertical,
+mantiene visibles los encabezados y admite navegación por teclado. **Limpiar filtros**
+conserva el módulo actual. Se mantienen el lápiz y todas las opciones de eliminación.
+
+En Onboarding, **Archivo PDF (nombre)** permite escribir el nombre o completarlo
+seleccionando un PDF. Se registra únicamente el nombre, que puede revisarse o
+corregirse antes de guardar; este campo no almacena el contenido del documento.
+
 ### Eliminar varios registros o todo el listado
 
 Los 19 tipos de registros de hotelería incluyen una casilla en cada fila y
@@ -279,6 +311,13 @@ destino ya contienen registros, para evitar duplicados.
 
 ```bash
 python -m unittest discover -v
+```
+
+Los eventos de selección, desplazamiento horizontal y ayuda de formularios
+tienen una comprobación adicional que puede ejecutarse con Node.js:
+
+```bash
+node tests/test_hotel_interface.cjs
 ```
 
 ## Render

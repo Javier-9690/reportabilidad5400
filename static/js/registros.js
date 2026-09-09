@@ -25,3 +25,32 @@
   window.addEventListener('pageshow', updateSelection);
   updateSelection();
 })();
+
+(() => {
+  document.querySelectorAll('[data-record-table]').forEach(container => {
+    const viewport = container.querySelector('[data-record-scroll]');
+    const top = container.querySelector('[data-record-scroll-top]');
+    const spacer = container.querySelector('[data-record-scroll-width]');
+    const table = viewport.querySelector('table');
+    function updateWidth() {
+      spacer.style.width = `${viewport.scrollWidth}px`;
+      top.style.width = `${viewport.clientWidth}px`;
+      top.hidden = viewport.scrollWidth <= viewport.clientWidth + 1;
+      top.scrollLeft = viewport.scrollLeft;
+    }
+    top.addEventListener('scroll', () => {
+      if (viewport.scrollLeft !== top.scrollLeft) viewport.scrollLeft = top.scrollLeft;
+    });
+    viewport.addEventListener('scroll', () => {
+      if (top.scrollLeft !== viewport.scrollLeft) top.scrollLeft = viewport.scrollLeft;
+    });
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateWidth);
+      observer.observe(viewport);
+      observer.observe(table);
+    }
+    window.addEventListener('resize', updateWidth);
+    window.addEventListener('pageshow', updateWidth);
+    updateWidth();
+  });
+})();
