@@ -31,7 +31,7 @@ El Dashboard general no figura en el menú; sigue disponible desde el encabezado
 El módulo antes llamado Gestión 5S se encuentra en estas rutas dentro de la aplicación principal:
 
 - `/gestion-5s/panel`: ingreso manual e importación Excel.
-- `/gestion-5s/registros`: consulta, eliminación y descarga CSV.
+- `/gestion-5s/registros`: consulta con buscador por categoría, eliminación y descarga CSV.
 - `/gestion-5s/edit/<entidad>/<id>`: edición del registro desde el icono de lápiz junto a la papelera.
 - `/gestion-5s/dashboard`: indicadores y gráficos.
 
@@ -81,6 +81,29 @@ En Onboarding, **Archivo PDF (nombre)** permite escribir el nombre o completarlo
 seleccionando un PDF. Se registra únicamente el nombre, que puede revisarse o
 corregirse antes de guardar; este campo no almacena el contenido del documento.
 
+### Buscar dentro de una categoría
+
+En **Consultar registros / Ver registros**, elige la **Categoría**, escribe una
+palabra o número en **Buscar dentro de esta categoría** y pulsa **Buscar** o
+Enter. Funciona en los 20 tipos de registros, incluido Samtech usuarios.
+Encuentra coincidencias parciales en cualquiera de los campos vigentes de esa
+categoría, incluidos observaciones, acciones, ID, RUT, habitación y ticket.
+No distingue mayúsculas ni tildes: `mantencion` encuentra `Mantención`.
+Los caracteres `%`, `_` y `/` se buscan literalmente.
+
+La búsqueda puede combinarse con fechas o semana. También admite fechas como
+`2026-09-09` o `09/09/2026`, horas y duraciones `mm:ss`. Los campos vacíos no
+impiden buscar por los demás datos; los registros sin fecha aparecen cuando no
+hay un filtro de fecha o semana. Se muestran la búsqueda activa y la cantidad
+de coincidencias. Si no hay coincidencias, el listado queda vacío.
+
+**Descargar CSV**, **Eliminar seleccionados** y **Eliminar todos** respetan la
+misma búsqueda. Al editar, cancelar o eliminar, se conserva la categoría y sus
+filtros. **Quitar búsqueda** conserva las fechas y semana; **Limpiar filtros**
+quita todos los filtros y mantiene la categoría. Dejar el buscador vacío equivale
+a no filtrar por texto. La búsqueda admite hasta 200 caracteres y se envía en
+el parámetro `q`. No requiere cambios en las tablas ni extensiones de base de datos.
+
 ### Eliminar varios registros o todo el listado
 
 Los 20 tipos de registros de hotelería incluyen una casilla en cada fila y
@@ -88,9 +111,9 @@ la opción **Seleccionar todos los registros del listado**. El contador muestra
 cuántos están marcados; **Eliminar seleccionados** actúa sobre esas filas.
 
 **Eliminar todos** abarca los registros del módulo actual que cumplen los
-filtros de fechas o semana. Para eliminar todo el historial de un módulo,
+filtros de fechas, semana y búsqueda. Para eliminar todo el historial de un módulo,
 abre ese módulo sin filtros. Ambas opciones muestran una pantalla para
-confirmar la cantidad y el rango de fechas antes de ejecutar el borrado.
+confirmar la cantidad, el rango de fechas y la búsqueda antes de ejecutar el borrado.
 **Cancelar** regresa sin eliminar registros.
 
 La confirmación guarda la selección exacta durante 15 minutos. Si alguno de
@@ -355,6 +378,11 @@ destino ya contienen registros, para evitar duplicados.
 ```bash
 python -m unittest discover -v
 ```
+
+Las pruebas de búsqueda verifican las 20 categorías, coincidencias parciales,
+tildes, números, campos opcionales, exportación, filtros combinados y alcance del
+borrado confirmado. Se ejecutan con SQLite temporal; la consulta de PostgreSQL
+también se comprueba mediante compilación SQL.
 
 Los eventos de selección, desplazamiento horizontal y ayuda de formularios
 tienen una comprobación adicional que puede ejecutarse con Node.js:

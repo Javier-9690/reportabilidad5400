@@ -19,6 +19,7 @@ from gestion5s.editing import (
     ORDERING_FIELDS, RELEASED_ROOM_FIELDS, SAMTECH_USER_FIELDS, OPTIONAL_RECORD_FIELDS,
     edit_fields, list_fields, display_record_value, parse_edit_values, record_version,
 )
+from gestion5s.searching import clean_search_term, record_search_condition
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
@@ -928,6 +929,7 @@ def panel():
 @app.get("/registros")
 def registros():
     d_from, d_to, semana_sel = resolve_filters(request.args)
+    search = read_record_search(request.args)
     vista = request.args.get("vista", "censo")
     if vista not in ENTITY_MODEL:
         abort(404)
@@ -936,12 +938,17 @@ def registros():
         Model = ENTITY_MODEL[vista]
         date_column = getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
         date_order = date_column.desc().nullslast()
-        rows = hotel_records_query(db, vista, d_from, d_to).order_by(date_order, Model.id.desc()).all()
+        rows = hotel_records_query(db, vista, d_from, d_to, search).order_by(date_order, Model.id.desc()).all()
         listing = {key: [] for key in ENTITY_LIST_KEY.values()}
         listing[ENTITY_LIST_KEY[vista]] = rows
         return render_template(
             "list.html",
             semana_sel=semana_sel, d_from=d_from, d_to=d_to, week_map=WEEK_MAP,
+            search=search,
+            clear_search_url=url_for("registros", vista=vista, **{
+                name: value for name, value in {"from": d_from, "to": d_to, "semana": semana_sel}.items()
+                if value is not None
+            }),
             vista=vista, current_tab=None, **listing,
             record_count=len(rows), entity_title=EDIT_CONFIG[vista][0],
             record_columns=list_fields(vista, Model()), current_records=rows,
@@ -957,15 +964,18 @@ def registros():
 def download_entity(entity):
     d_from, d_to, semana_sel = resolve_filters(request.args)
     if semana_sel: d_from, d_to = week_range(semana_sel)
+    if entity not in ENTITY_MODEL:
+        flash("Entidad no válida.")
+        return redirect(url_for("registros"))
+    search = read_record_search(request.args)
     db = SessionLocal()
     try:
         buf = io.StringIO()
         w = None
+        query = hotel_records_query(db, entity, d_from, d_to, search)
 
         if entity == "censo":
-            q = db.query(CensusEntry)
-            if d_from: q = q.filter(CensusEntry.fecha >= d_from)
-            if d_to:   q = q.filter(CensusEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(CensusEntry.fecha).all()
             w = csv.DictWriter(buf, fieldnames=["fecha", "censo_dia", "censo_noche", "total"])
             w.writeheader()
@@ -973,9 +983,7 @@ def download_entity(entity):
                 w.writerow({"fecha": r.fecha.isoformat(), "censo_dia": r.censo_dia, "censo_noche": r.censo_noche, "total": r.total})
 
         elif entity == "eventos":
-            q = db.query(EventSeguridad)
-            if d_from: q = q.filter(EventSeguridad.fecha >= d_from)
-            if d_to:   q = q.filter(EventSeguridad.fecha <= d_to)
+            q = query
             rows = q.order_by(EventSeguridad.fecha).all()
             w = csv.DictWriter(buf, fieldnames=["fecha","horario","que_ocurrio","nombre_afectado","accion"])
             w.writeheader()
@@ -984,9 +992,7 @@ def download_entity(entity):
                             "nombre_afectado": r.nombre_afectado or "", "accion": r.accion or ""})
 
         elif entity == "duplicidades":
-            q = db.query(DuplicidadEntry)
-            if d_from: q = q.filter(DuplicidadEntry.fecha >= d_from)
-            if d_to:   q = q.filter(DuplicidadEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(DuplicidadEntry.fecha).all()
             headers = ["semana","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
                        "pabellon","habitacion","ingresar_contacto","nombre_usuario","responsable","estatus",
@@ -1005,9 +1011,7 @@ def download_entity(entity):
                 })
 
         elif entity == "encuestas":
-            q = db.query(EncuestaEntry)
-            if d_from: q = q.filter(EncuestaEntry.fecha_hora >= datetime.combine(d_from, time.min))
-            if d_to:   q = q.filter(EncuestaEntry.fecha_hora <= datetime.combine(d_to, time.max))
+            q = query
             rows = q.order_by(EncuestaEntry.fecha_hora).all()
             headers = ["fecha_hora","q1_respuesta","q1_puntaje","q2_respuesta","q2_puntaje",
                        "q3_respuesta","q3_puntaje","q4_respuesta","q4_puntaje","q5_respuesta","q5_puntaje",
@@ -1028,9 +1032,7 @@ def download_entity(entity):
                 })
 
         elif entity == "atencion":
-            q = db.query(AtencionEntry)
-            if d_from: q = q.filter(AtencionEntry.fecha >= d_from)
-            if d_to:   q = q.filter(AtencionEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(AtencionEntry.fecha).all()
             w = csv.DictWriter(buf, fieldnames=["fecha","tiempo_promedio_mmss","cantidad"])
             w.writeheader()
@@ -1040,9 +1042,7 @@ def download_entity(entity):
 
         # ---------------- CSV de módulos previos ----------------
         elif entity == "robos":
-            q = db.query(RoboHurtoEntry)
-            if d_from: q = q.filter(RoboHurtoEntry.fecha >= d_from)
-            if d_to:   q = q.filter(RoboHurtoEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(RoboHurtoEntry.fecha).all()
             headers = ["fecha","hora","modulo","habitacion","empresa","nombre_cliente","rut",
                        "medio_reclamo","especies","observaciones","recepciona"]
@@ -1063,9 +1063,7 @@ def download_entity(entity):
                 })
 
         elif entity == "miscelaneo":
-            q = db.query(MiscelaneoEntry)
-            if d_from: q = q.filter(MiscelaneoEntry.fecha_creacion >= d_from)
-            if d_to:   q = q.filter(MiscelaneoEntry.fecha_creacion <= d_to)
+            q = query
             rows = q.order_by(MiscelaneoEntry.fecha_creacion, MiscelaneoEntry.id).all()
             headers = ["ot","division","area","lugar","ubicacion","disciplina","especialidad","falla",
                        "empresa","fecha_creacion","fecha_inicio","fecha_termino","fecha_aprobacion","estado","comentario"]
@@ -1083,9 +1081,7 @@ def download_entity(entity):
                 })
 
         elif entity == "desviaciones":
-            q = db.query(DesviacionEntry)
-            if d_from: q = q.filter(DesviacionEntry.fecha >= d_from)
-            if d_to:   q = q.filter(DesviacionEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(DesviacionEntry.fecha).all()
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
                        "tipo_solicitud","pabellon","habitacion","via_solicitud","quien_informa","riesgo_material","correo_destino","acciones"]
@@ -1103,9 +1099,7 @@ def download_entity(entity):
                 })
 
         elif entity == "solicitud_ot":
-            q = db.query(SolicitudOTEntry)
-            if d_from: q = q.filter(SolicitudOTEntry.fecha_inicio >= d_from)
-            if d_to:   q = q.filter(SolicitudOTEntry.fecha_inicio <= d_to)
+            q = query
             rows = q.order_by(SolicitudOTEntry.fecha_inicio, SolicitudOTEntry.id).all()
             headers = ["n_solicitud","descripcion_problema","tipo_solicitud","modulo","habitacion","tipo_turno",
                        "jornada","via_solicitud","correo_usuario","tipo_tarea","ot","fecha_inicio","estado",
@@ -1126,9 +1120,7 @@ def download_entity(entity):
                 })
 
         elif entity == "reclamos":
-            q = db.query(ReclamoUsuarioEntry)
-            if d_from: q = q.filter(ReclamoUsuarioEntry.fecha >= d_from)
-            if d_to:   q = q.filter(ReclamoUsuarioEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(ReclamoUsuarioEntry.fecha).all()
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_solicitud",
                        "pabellon","habitacion","via_solicitud","ingresar_contacto","nombre_usuario","responsable",
@@ -1148,9 +1140,7 @@ def download_entity(entity):
 
         # --------- CSV NUEVOS 5 ----------
         elif entity == "alarmas":
-            q = db.query(ActivacionAlarmaEntry)
-            if d_from: q = q.filter(ActivacionAlarmaEntry.fecha >= d_from)
-            if d_to:   q = q.filter(ActivacionAlarmaEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(ActivacionAlarmaEntry.fecha).all()
             headers = ["MODULO","N_HABITACION","NOMBRE_RECEPCIONISTA","FECHA","EMPRESA","ID","CO",
                        "AVISO_MANTENCION_H","LLEGADA_MANTENCION_H","AVISO_LIDER_H","LLEGADA_LIDER_H",
@@ -1175,9 +1165,7 @@ def download_entity(entity):
                 })
 
         elif entity == "extensiones":
-            q = db.query(ExtensionExcepcionEntry)
-            if d_from: q = q.filter(ExtensionExcepcionEntry.fecha_solicitud >= d_from)
-            if d_to:   q = q.filter(ExtensionExcepcionEntry.fecha_solicitud <= d_to)
+            q = query
             rows = q.order_by(ExtensionExcepcionEntry.fecha_solicitud).all()
             headers = [label for _, label in EXTENSION_FIELDS]
             w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
@@ -1188,9 +1176,7 @@ def download_entity(entity):
                 })
 
         elif entity == "onboarding":
-            q = db.query(OnboardingEntry)
-            if d_from: q = q.filter(OnboardingEntry.fecha_hora >= datetime.combine(d_from, time.min))
-            if d_to:   q = q.filter(OnboardingEntry.fecha_hora <= datetime.combine(d_to, time.max))
+            q = query
             rows = q.order_by(OnboardingEntry.fecha_hora).all()
             headers = ["FECHA_HORA","NOMBRE","RUT","EMPRESA","ID","ARCHIVO_PDF"]
             w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
@@ -1202,9 +1188,7 @@ def download_entity(entity):
                 })
 
         elif entity == "apertura":
-            q = db.query(AperturaHabitacionEntry)
-            if d_from: q = q.filter(AperturaHabitacionEntry.fecha >= d_from)
-            if d_to:   q = q.filter(AperturaHabitacionEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(AperturaHabitacionEntry.fecha).all()
             headers = ["FECHA","HABITACION","HORA","RESPONSABLE","ESTADO_CHAPA"]
             w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
@@ -1218,9 +1202,7 @@ def download_entity(entity):
                 })
 
         elif entity == "cumplimiento":
-            q = db.query(CumplimientoEECCEntry)
-            if d_from: q = q.filter(CumplimientoEECCEntry.fecha >= d_from)
-            if d_to:   q = q.filter(CumplimientoEECCEntry.fecha <= d_to)
+            q = query
             rows = q.order_by(CumplimientoEECCEntry.fecha, CumplimientoEECCEntry.id).all()
             headers = ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"]
             w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
@@ -1238,7 +1220,7 @@ def download_entity(entity):
         elif entity in OPTIONAL_RECORD_FIELDS:
             Model = ENTITY_MODEL[entity]
             columns = OPTIONAL_RECORD_FIELDS[entity]
-            rows = hotel_records_query(db, entity, d_from, d_to).order_by(
+            rows = query.order_by(
                 getattr(Model, ENTITY_DATE_FIELD[entity]), Model.id
             ).all()
             w = csv.DictWriter(buf, fieldnames=[label for _, label in columns])
@@ -1308,8 +1290,15 @@ ENTITY_DATE_FIELD = {
 }
 
 
-def hotel_records_query(db, entity, d_from=None, d_to=None):
-    """Una sola regla de fechas para mostrar y eliminar registros."""
+def read_record_search(source):
+    try:
+        return clean_search_term(source.get("q", ""))
+    except ValueError as exc:
+        abort(400, description=str(exc))
+
+
+def hotel_records_query(db, entity, d_from=None, d_to=None, search=""):
+    """Una sola regla de fechas y búsqueda para consultar, exportar y eliminar."""
     Model = ENTITY_MODEL[entity]
     column = getattr(Model, ENTITY_DATE_FIELD.get(entity, "fecha"))
     query = db.query(Model)
@@ -1323,6 +1312,8 @@ def hotel_records_query(db, entity, d_from=None, d_to=None):
             query = query.filter(column >= d_from)
         if d_to:
             query = query.filter(column <= d_to)
+    if search:
+        query = query.filter(record_search_condition(entity, Model, search, db.get_bind().dialect.name))
     return query
 
 
@@ -1346,6 +1337,10 @@ def records_return_url(entity, target):
                 week = int(query["semana"][0])
                 if week in WEEK_MAP:
                     filters["semana"] = week
+            if query.get("q"):
+                search = clean_search_term(query["q"][0])
+                if search:
+                    filters["q"] = search
     except ValueError:
         pass
     return url_for("registros", vista=entity, **filters)
@@ -1362,6 +1357,9 @@ def verify_bulk_csrf():
 def bulk_delete_filters(form):
     """No transforma filtros inválidos en una eliminación sin restricciones."""
     filters = {}
+    search = read_record_search(form)
+    if search:
+        filters["q"] = search
     try:
         for name in ("from", "to"):
             raw = form.get(name, "").strip()
@@ -1417,7 +1415,7 @@ def confirm_bulk_delete(entity):
 
     db = SessionLocal()
     try:
-        query = hotel_records_query(db, entity, d_from, d_to)
+        query = hotel_records_query(db, entity, d_from, d_to, filters.get("q", ""))
         if mode == "selected":
             raw_ids = request.form.getlist("ids")
             if not raw_ids:
@@ -1444,6 +1442,7 @@ def confirm_bulk_delete(entity):
         return render_template(
             "bulk_delete_confirm.html", entity=entity, entity_title=EDIT_CONFIG[entity][0],
             count=len(ids), mode=mode, d_from=d_from, d_to=d_to,
+            search=filters.get("q", ""),
             return_url=return_url, confirmation_token=token,
             bulk_csrf=session["hotel_bulk_csrf"],
         )
@@ -1461,7 +1460,7 @@ def delete_records_bulk(entity):
         payload = bulk_delete_serializer().loads(request.form.get("confirmation_token", ""), max_age=900)
     except BadData:
         flash("La confirmación venció o no es válida. Revisa el listado y vuelve a confirmar.", "warning")
-        return redirect(url_for("registros", vista=entity))
+        return redirect(records_return_url(entity, request.form.get("next")))
     if payload.get("entity") != entity or payload.get("csrf") != session["hotel_bulk_csrf"]:
         abort(400, description="La confirmación no corresponde a esta selección.")
 
@@ -1470,7 +1469,9 @@ def delete_records_bulk(entity):
     return_url = url_for("registros", vista=entity, **filters)
     db = SessionLocal()
     try:
-        records = records_in_batches(hotel_records_query(db, entity, d_from, d_to), Model, ids, lock=True)
+        records = records_in_batches(
+            hotel_records_query(db, entity, d_from, d_to, filters.get("q", "")), Model, ids, lock=True,
+        )
         if len(records) != len(ids) or bulk_records_digest(records) != payload["digest"]:
             flash("Los registros cambiaron desde la confirmación. No se eliminó ninguno; revisa el listado.", "warning")
             return redirect(return_url)

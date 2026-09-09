@@ -29,7 +29,7 @@
         </div>
 
         <div class="col-md-3">
-          <label class="form-label">Módulo</label>
+          <label class="form-label" for="recordCategory">Categoría</label>
           {% set opciones = [
             ('censo','Censo'),
             ('eventos','Eventos de seguridad'),
@@ -52,7 +52,7 @@
             ('habitaciones_liberadas', 'Habitaciones liberadas'),
             ('samtech_usuarios', 'Samtech usuarios')
           ] %}
-          <select name="vista" class="form-select" onchange="this.form.submit()">
+          <select id="recordCategory" name="vista" class="form-select" onchange="this.form.submit()">
             {% for v, label in opciones %}
               <option value="{{ v }}" {{ 'selected' if vista==v }}>{{ label }}</option>
             {% endfor %}
@@ -60,9 +60,20 @@
         </div>
 
         <div class="col-12">
+          <label class="form-label" for="recordSearch">Buscar dentro de esta categoría</label>
+          <input type="search" id="recordSearch" name="q" class="form-control" value="{{ search }}"
+                 maxlength="200" placeholder="Escribe una palabra o número: nombre, empresa, RUT, habitación, ticket…"
+                 aria-describedby="record-search-help">
+          <div id="record-search-help" class="form-text">Busca coincidencias parciales en todos los campos de la categoría seleccionada, sin distinguir mayúsculas ni tildes. Puedes combinar la búsqueda con fechas o semanas.</div>
+        </div>
+
+        <div class="col-12 d-flex flex-wrap gap-2">
           <button class="btn btn-primary-custom" type="submit">
-            <i class="fas fa-search me-1"></i> Aplicar Filtros
+            <i class="fas fa-search me-1"></i> Buscar
           </button>
+          {% if search %}
+          <a href="{{ clear_search_url }}" class="btn btn-outline-secondary">Quitar búsqueda</a>
+          {% endif %}
           <a href="{{ url_for('registros', vista=vista) }}" class="btn btn-outline-secondary">
             <i class="fas fa-undo me-1"></i> Limpiar Filtros
           </a>
@@ -76,6 +87,7 @@
     <input type="hidden" name="from" value="{{ d_from or '' }}">
     <input type="hidden" name="to" value="{{ d_to or '' }}">
     <input type="hidden" name="semana" value="{{ semana_sel or '' }}">
+    <input type="hidden" name="q" value="{{ search }}">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
       <div>
         <div class="form-check mb-1">
@@ -93,7 +105,7 @@
         </button>
       </div>
     </div>
-    <p class="small text-muted mb-0 mt-2">“Eliminar todos” se aplica a este módulo{% if d_from or d_to or semana_sel %} y a los filtros seleccionados{% endif %}. Antes de borrar podrás confirmar la cantidad o cancelar.</p>
+    <p class="small text-muted mb-0 mt-2">“Eliminar todos” se aplica a esta categoría{% if d_from or d_to or semana_sel or search %} y a los filtros seleccionados{% endif %}. Antes de borrar podrás confirmar la cantidad o cancelar.</p>
   </form>
 
   {# Acciones disponibles para cada registro #}
@@ -124,7 +136,10 @@
         <i class="fas fa-download me-1"></i> Descargar CSV
       </a>
     </div>
-    <p class="small text-muted">Los filtros de este listado y su exportación se aplican a {{ record_date_label }}. Para ver también los registros sin esa fecha, abre el módulo sin filtros.</p>
+    {% if search %}
+    <p role="status"><strong>{{ record_count }} {{ 'coincidencia' if record_count == 1 else 'coincidencias' }}</strong> para “{{ search }}” en {{ entity_title }} con los filtros actuales.</p>
+    {% endif %}
+    <p class="small text-muted">Los filtros de fecha de este listado y su exportación se aplican a {{ record_date_label }}. Para incluir también los registros sin esa fecha, deja las fechas y la semana sin seleccionar.</p>
     {% if current_records %}
     <p id="records-scroll-help" class="small text-muted mb-2"><i class="fas fa-arrows-alt-h me-1" aria-hidden="true"></i>Se muestran todos los campos. Usa la barra horizontal para recorrer las columnas y la vertical para recorrer las filas.</p>
     <div class="records-table-container" data-record-table>
@@ -157,7 +172,8 @@
     {% else %}
     <div class="alert alert-info text-center py-4">
       <i class="fas fa-list fa-2x mb-3"></i>
-      <h5>No se encontraron registros</h5>
+      <h5>{{ 'No se encontraron coincidencias' if search else 'No se encontraron registros' }}</h5>
+      {% if search %}<p>Prueba con otra palabra o número, o ajusta los filtros.</p>{% endif %}
       <a href="{{ url_for('panel', tab='encuesta' if vista == 'encuestas' else vista) }}" class="btn btn-outline-primary mt-2">Ingresar nuevo registro</a>
     </div>
     {% endif %}
