@@ -1,0 +1,39 @@
+.user-report-page { max-width: 1800px; margin: 0 auto; }
+.user-report-page .report-hero h1 { color: var(--report-red-dark, #8f1510); font-weight: 800; }
+.user-report-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.user-kpi { border-top: 4px solid #b42318; }
+.user-kpi-open { border-top-color: #b86a00; }
+.user-kpi-closed { border-top-color: #198754; }
+.user-kpi-unclassified { border-top-color: #6c757d; }
+.user-kpi-rate { border-top-color: #1667a5; }
+.user-kpi-label { font-size: .9rem; color: #50545b; font-weight: 600; }
+.user-kpi-value { font-size: 2rem; font-weight: 750; color: #242424; }
+.user-report-conclusions li { margin-bottom: .5rem; }
+.user-report-conclusions li:last-child { margin-bottom: 0; }
+.user-report-chart { position: relative; height: 315px; }
+.user-summary-table th, .user-summary-table td { padding: 10px 12px; vertical-align: middle; }
+.user-summary-table td { text-align: right; white-space: nowrap; }
+.user-summary-table thead th { color: #fff; background: #b42318; white-space: nowrap; }
+.user-report-scroll { overflow: auto; max-height: 75vh; border-radius: 0 0 5px 5px; }
+.user-report-scroll-top { overflow-x: auto; overflow-y: hidden; height: 20px; }
+.user-report-scroll-top > div { height: 1px; }
+.user-daily-table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 12px; }
+.user-daily-table th, .user-daily-table td { border-right: 1px solid #5f5f5f; border-bottom: 1px solid #5f5f5f; padding: 5px 9px; min-width: 78px; white-space: nowrap; }
+.user-daily-table td { text-align: right; background: white; }
+.user-daily-table tr > th:first-child { position: sticky; left: 0; z-index: 2; min-width: 335px; background: white; }
+.user-daily-table tr.user-date-header > th { background: #f00000; color: white; font-weight: 700; text-align: right; }
+.user-daily-table tr.user-date-header > th:first-child { background: #f00000; text-align: left; }
+.user-daily-table tr.user-section-title > th { position: static; padding-top: 20px; border-right: 0; white-space: normal; color: #203b36; font-size: 13px; text-transform: uppercase; }
+.user-daily-table tbody:first-child tr.user-section-title > th { padding-top: 9px; }
+.user-daily-table tr.user-row-total > th { background: #f00000; color: #fff; }
+.user-daily-table tr.user-row-total > td { background: #ffff00; font-weight: 700; }
+.user-daily-table .user-period-total { background: #fff3c2; border-left: 2px solid #5f5f5f; font-weight: 700; }
+.user-daily-table tr.user-row-percent > td { font-weight: 700; }
+.user-report-method summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 992px) { .user-report-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 576px) {
+  .user-report-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .user-kpi-value { font-size: 1.7rem; }
+  .user-daily-table tr > th:first-child { min-width: 210px; max-width: 230px; white-space: normal; }
+  .user-report-chart { height: 290px; }
+}

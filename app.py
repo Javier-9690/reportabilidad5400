@@ -170,6 +170,8 @@ def create_app():
     with app.app_context():
         db.create_all()
     register_routes(app)
+    from gestion5s.user_report_routes import bp as user_reports_bp
+    app.register_blueprint(user_reports_bp)
     return app
 
 

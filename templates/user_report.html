@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Gestión de usuarios | Reportabilidad 5400{% endblock %}
+{% block head %}
+<link href="{{ url_for('static', filename='css/user_report.css') }}" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<div class="report-page user-report-page">
+  <div class="report-hero d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+    <div>
+      <div class="report-eyebrow">Reportes de hotelería</div>
+      <h1 class="h3 mb-1">Gestión de usuarios</h1>
+      <p class="mb-0">Reclamos usuarios, Solicitudes de usuarios y Samtech usuarios.</p>
+    </div>
+    {% if report %}
+    <a class="btn btn-success report-export-btn" id="exportUserReport"
+       href="{{ url_for('user_reports.export_excel', start_date=report.start.isoformat(), end_date=report.end.isoformat()) }}">
+      <i class="bi bi-file-earmark-excel me-1" aria-hidden="true"></i>Exportar Excel
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="card shadow-sm mb-3 report-filter-card">
+    <div class="card-body">
+      <form id="userReportFilters" action="{{ url_for('user_reports.report_page') }}" method="get" class="row g-3 align-items-end">
+        <div class="col-6 col-lg-3">
+          <label class="form-label" for="reportStart">Desde</label>
+          <input class="form-control" id="reportStart" name="start_date" type="date" min="1900-01-01" required value="{{ start_value }}">
+        </div>
+        <div class="col-6 col-lg-3">
+          <label class="form-label" for="reportEnd">Hasta</label>
+          <input class="form-control" id="reportEnd" name="end_date" type="date" min="1900-01-01" required value="{{ end_value }}">
+        </div>
+        <div class="col-12 col-lg-3"><button class="btn btn-danger w-100" type="submit"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Generar reporte</button></div>
+        <div class="col-12 col-lg-3"><a class="btn btn-outline-secondary w-100" href="{{ url_for('user_reports.report_page') }}">Limpiar fechas</a></div>
+      </form>
+      <p id="reportFiltersChanged" class="text-danger small mt-3 mb-0" hidden>Las fechas cambiaron. Pulsa Generar reporte para actualizar los resultados y la descarga.</p>
+    </div>
+  </div>
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  {% if not report %}
+    <div class="card shadow-sm"><div class="card-body py-4">
+      <h2 class="h5">Selecciona el rango de fechas</h2>
+      <p class="mb-0">El informe mostrará los registros por día, abiertos, cerrados, porcentaje de cierre y conclusiones. La descarga Excel usará el mismo rango.</p>
+    </div></div>
+  {% else %}
+    <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+      <h2 class="h5 mb-0">Dashboard de conclusiones</h2>
+      <span class="text-muted">{{ report.start.strftime('%d/%m/%Y') }} al {{ report.end.strftime('%d/%m/%Y') }} · {{ report.days|length }} días</span>
+    </div>
+    <p class="small text-muted">{{ report.method_note }}</p>
+    <div class="user-report-kpis mb-3">
+      {% for key, label in [('records', 'Total registros'), ('open', 'Casos abiertos'), ('closed', 'Casos cerrados'), ('unclassified', 'Sin clasificar')] %}
+      <div class="card shadow-sm user-kpi user-kpi-{{ key }}"><div class="card-body">
+        <div class="user-kpi-label">{{ label }}</div><div class="user-kpi-value" data-kpi="{{ key }}">{{ report.totals[key] }}</div>
+      </div></div>
+      {% endfor %}
+      <div class="card shadow-sm user-kpi user-kpi-rate"><div class="card-body">
+        <div class="user-kpi-label">% cerrado</div><div class="user-kpi-value" data-kpi="rate">{{ ('%.1f'|format(report.totals.rate * 100))|replace('.', ',') }}%</div>
+        <div class="small text-muted">{{ report.totals.classified }} casos clasificables</div>
+      </div></div>
+    </div>
+
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <h3 class="h5">Conclusiones del período</h3>
+      <ul class="user-report-conclusions mb-0">{% for conclusion in report.conclusions %}<li>{{ conclusion }}</li>{% endfor %}</ul>
+    </div></div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-lg-6"><div class="card shadow-sm h-100">
+        <div class="card-header fw-semibold">Registros por día</div>
+        <div class="card-body"><div class="user-report-chart"><canvas id="userDailyChart" role="img" aria-label="Registros diarios de las tres categorías. Datos disponibles en el reporte diario."></canvas></div></div>
+      </div></div>
+      <div class="col-lg-6"><div class="card shadow-sm h-100">
+        <div class="card-header fw-semibold">Estado actual por categoría</div>
+        <div class="card-body"><div class="user-report-chart"><canvas id="userStatusChart" role="img" aria-label="Casos abiertos, cerrados y sin clasificar por categoría. Datos disponibles en el resumen."></canvas></div></div>
+      </div></div>
+    </div>
+    <p id="userChartsUnavailable" class="small text-muted" hidden>No se pudieron cargar los gráficos. Los conteos y conclusiones están disponibles en las tablas y en el Excel.</p>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-header fw-semibold">Resumen por categoría</div>
+      <div class="table-responsive"><table class="table table-sm table-bordered user-summary-table mb-0">
+        <thead><tr><th scope="col">Categoría</th><th scope="col">Registros</th><th scope="col">Abiertos</th><th scope="col">Cerrados</th><th scope="col">Sin clasificar</th><th scope="col">% cerrado</th><th scope="col">Detalle</th></tr></thead>
+        <tbody>{% for category in report.categories %}<tr>
+          <th scope="row">{{ category.label }}</th>
+          {% for key in ['records', 'open', 'closed', 'unclassified'] %}<td>{{ category.totals[key] }}</td>{% endfor %}
+          <td>{{ ('%.1f'|format(category.totals.rate * 100))|replace('.', ',') }}%</td>
+          <td><a href="/gestion-5s/registros?vista={{ category.entity }}&amp;from={{ report.start.isoformat() }}&amp;to={{ report.end.isoformat() }}">Ver registros</a></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    <h2 class="h5">Reporte diario</h2>
+    <p class="small text-muted">{{ report.rate_note }} Usa la barra horizontal para recorrer todas las fechas.</p>
+    <div class="card shadow-sm mb-3" data-record-table>
+      <div class="user-report-scroll-top" data-record-scroll-top hidden tabindex="0" role="region" aria-label="Barra horizontal del reporte"><div data-record-scroll-width></div></div>
+      <div class="user-report-scroll" data-record-scroll tabindex="0" role="region" aria-label="Reporte diario de gestión de usuarios">
+        <table class="user-daily-table" id="userDailyTable">
+          {% for section in report.sections %}
+          <tbody data-section="{{ section.key }}">
+            <tr class="user-section-title"><th colspan="{{ report.days|length + 2 }}">{{ section.title }}</th></tr>
+            <tr class="user-date-header"><th scope="col">ÍTEM</th>
+              {% for day in report.days %}<th scope="col" title="{{ day.strftime('%d/%m/%Y') }}">{{ report.day_labels[loop.index0] }}</th>{% endfor %}
+              <th scope="col">Total período</th>
+            </tr>
+            {% for row in section.rows %}
+            <tr class="user-row-{{ row.kind }}" data-report-row="{{ row.key }}">
+              <th scope="row">{{ row.label }}</th>
+              {% for value in row['values'] %}<td data-day="{{ report.days[loop.index0].isoformat() }}">{{ ('%.0f%%'|format(value * 100)) if row.kind == 'percent' else value }}</td>{% endfor %}
+              <td class="user-period-total">{{ ('%.0f%%'|format(row.total * 100)) if row.kind == 'percent' else row.total }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    <details class="card shadow-sm mb-3 user-report-method">
+      <summary class="card-header">Fechas, estados y datos pendientes de completar</summary>
+      <div class="card-body">
+        <p>Los límites Desde y Hasta se incluyen. Cada fila guardada cuenta como un registro; los tickets repetidos cuentan por separado.</p>
+        <ul>{% for category in report.categories %}<li><strong>{{ category.label }}:</strong> se agrupa por {{ category.date_label }}.
+          {% if category.undated %} {{ category.undated }} registros del histórico sin esta fecha quedaron fuera del informe.{% endif %}
+        </li>{% endfor %}</ul>
+        <p>Se reconocen los siguientes estados sin distinguir mayúsculas, tildes ni espacios repetidos:</p>
+        <dl>{% for key, aliases in status_aliases.items() %}<dt>{{ status_labels[key] }}</dt><dd>{{ aliases|join(', ') }}</dd>{% endfor %}</dl>
+        <p>Los estados vacíos u otros valores, incluidos cancelado y rechazado, se muestran como Sin clasificar.</p>
+        {% if report.totals.unclassified %}
+        <h3 class="h6">Estados sin clasificar dentro del rango</h3>
+        <ul>{% for category in report.categories %}{% for item in category.unknown_states %}<li>{{ category.label }}: {{ item.state }} — {{ item.count }} registros.</li>{% endfor %}{% endfor %}</ul>
+        {% endif %}
+        <p class="small text-muted mb-0">Actualizado al consultar: {{ report.generated_at.strftime('%d/%m/%Y %H:%M') }} UTC. El Excel consulta nuevamente los datos y registra su momento de exportación.</p>
+      </div>
+    </details>
+    <script id="userReportChartData" type="application/json">{{ {
+      'labels': report.day_labels,
+      'dates': report.days|map('string')|list,
+      'categories': report.categories|map(attribute='label')|list,
+      'daily': report.categories|map(attribute='counts.records')|list,
+      'open': report.categories|map(attribute='totals.open')|list,
+      'closed': report.categories|map(attribute='totals.closed')|list,
+      'unclassified': report.categories|map(attribute='totals.unclassified')|list
+    }|tojson }}</script>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if report %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/user_report.js') }}"></script>
+<script src="{{ url_for('static', filename='js/registros.js') }}"></script>
+{% endblock %}

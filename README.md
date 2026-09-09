@@ -21,10 +21,95 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 
 Importar · Censos · Sin Match · Curva · Nuevo ID · Reportes · Registros hotelería.
 
-- **Reportes**: Dotación, Ocupabilidad, EGP y F&A.
+- **Reportes**: Dotación, Ocupabilidad, EGP, F&A y Gestión de usuarios.
 - **Registros hotelería**: Ingresar registros, Consultar registros y Dashboard KPI.
 
 El Dashboard general no figura en el menú; sigue disponible desde el encabezado.
+
+## Reporte Gestión de usuarios
+
+Abre **Reportes > Gestión de usuarios**, completa **Desde** y **Hasta** y pulsa
+**Generar reporte**. La ruta es `/reports/usuarios`. El período incluye ambos
+extremos y todos los días intermedios, aunque no tengan registros.
+
+| Fila del reporte | Registro de origen | Fecha utilizada | Campo de estado |
+| --- | --- | --- | --- |
+| Reclamos usuarios | Reclamos de usuarios | Fecha | Estatus |
+| Solicitudes de usuarios | Solicitud y OT de usuario | Fecha inicio | Estado |
+| Samtech usuarios | Samtech usuarios | Fecha creación | Estado |
+
+El reporte diario reproduce las secciones de la referencia: registros, casos
+abiertos, casos cerrados y comparación con porcentaje de cierre. Tiene encabezados
+rojos, totales amarillos, una columna **Total período**, etiquetas fijas y barras
+horizontales sincronizadas. Los casos abiertos se desglosan por categoría y estado;
+se añaden filas cuando aparecen otros estados abiertos reconocidos. Cada fila
+guardada cuenta una vez; los números de ticket repetidos cuentan por separado.
+
+El **Dashboard de conclusiones** incluye conteos, porcentaje de cierre, resumen por
+categoría y dos gráficos: registros diarios y estado actual por categoría. Sus
+conclusiones se calculan con los datos del rango: volumen, categoría con mayor
+carga, abiertos para seguimiento, días de mayor ingreso y datos por completar.
+Los enlaces **Ver registros** abren cada listado con el mismo período.
+
+### Criterios de estado y fechas
+
+Los conteos muestran el **estado actual de los registros fechados en el período**.
+Un caso que después se cierra permanece en su fecha de origen. El informe no
+reconstruye estados históricos ni cuenta los cierres por el día en que ocurrieron,
+porque estos tres registros no comparten un historial de cambios de estado.
+Las fechas de término y aprobación de Samtech no reemplazan su Fecha creación.
+
+Se ignoran mayúsculas, tildes, espacios repetidos, guiones y guiones bajos en los
+estados. Se aplican estas equivalencias:
+
+| Grupo | Estados reconocidos |
+| --- | --- |
+| Abierto | Abierto, Abierta |
+| No iniciada | No iniciada, No iniciado |
+| En progreso | En progreso, En proceso, En curso, En ejecución, Iniciado, Iniciada |
+| Pendiente | Pendiente, En espera |
+| Cerrado | Cerrado, Cerrada, Resuelto, Resuelta, Finalizado, Finalizada, Completado, Completada, Terminado, Terminada |
+
+Los primeros cuatro grupos cuentan como abiertos. Los estados vacíos u otros
+valores, incluidos Cancelado y Rechazado, quedan **Sin clasificar**. Cuando existen,
+se muestran en una sección adicional y en las conclusiones. Así, el total de
+registros siempre coincide con abiertos + cerrados + sin clasificar.
+
+**% cerrado = cerrados / (abiertos + cerrados)**. El total del período se calcula
+con los conteos acumulados, sin promediar los porcentajes diarios. Sin casos
+clasificables se muestra 0% y se explica esa ausencia. Los casos sin clasificar
+no se incluyen en el denominador.
+
+Los registros sin la fecha de referencia quedan fuera del período. Se informa
+cuántos existen en el histórico de las tres categorías, para completar sus fechas;
+ese conteo no se atribuye al rango solicitado. Los criterios y estados pendientes
+pueden consultarse al pie del reporte.
+
+### Exportación para envío
+
+**Exportar Excel** descarga `/reports/usuarios.xlsx` con el rango aplicado.
+Si cambias las fechas del formulario, debes generar el reporte antes de exportar.
+El archivo se llama `reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx` e incluye:
+
+- **Reporte diario**: estructura de la referencia, fechas reales, conteos, totales
+  y porcentajes mediante fórmulas. Las fechas y la columna de ítems quedan fijas.
+- **Conclusiones**: indicadores, resumen por categoría, conclusiones, dos gráficos
+  de Excel y criterios del informe.
+- **Reclamos usuarios**, **Solicitudes OT** y **Samtech usuarios**: todos los campos
+  vigentes de cada registro del rango, encabezados fijos, autofiltro y Estado
+  agrupado. Los textos e identificadores conservan su valor, incluidos ceros iniciales.
+
+Los conteos diarios usan `COUNTIFS` sobre las hojas de detalle. Los totales y
+porcentajes usan fórmulas con resultados guardados para que puedan verse también
+en visores. Los gráficos se enlazan a esos datos. El Excel consulta nuevamente los
+registros al exportar e identifica ese momento en UTC; las conclusiones corresponden
+a esa exportación. Tras modificar registros en el programa, genera un archivo nuevo.
+
+Las fechas inválidas, incompletas o invertidas muestran un error sin ampliar el
+período. Se respetan los límites propios de Excel: 16.382 días más las columnas
+Ítem y Total, 1.048.576 filas por hoja y 32.767 caracteres por celda. Un texto que
+excede ese límite se informa sin truncarlo silenciosamente. La exportación usa
+las dependencias existentes del programa y no requiere migraciones ni nuevas tablas.
 
 ## Registros hotelería
 
@@ -389,7 +474,13 @@ tienen una comprobación adicional que puede ejecutarse con Node.js:
 
 ```bash
 node tests/test_hotel_interface.cjs
+node tests/test_user_report_interface.cjs
 ```
+
+El reporte de usuarios tiene pruebas para los conteos y estados de sus tres fuentes,
+rangos inclusivos, días vacíos, porcentaje ponderado, fechas faltantes, filtros,
+exportación, datos completos, fórmulas, gráficos y navegación. La interfaz comprueba
+que cambiar las fechas pida generar el reporte de nuevo antes de descargarlo.
 
 ## Render
 

@@ -1,80 +1,119 @@
-REPORTABILIDAD 5400 — BUSCADOR POR CATEGORÍA
+REPORTABILIDAD 5400 — REPORTE GESTIÓN DE USUARIOS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-CÓMO BUSCAR
-1. Abre Registros hotelería > Consultar registros, o Ver registros desde un formulario.
-2. Elige la Categoría.
-3. Escribe una palabra o número en Buscar dentro de esta categoría.
-4. Pulsa Buscar o Enter.
+NUEVO REPORTE
+Abre Reportes > Gestión de usuarios, completa Desde y Hasta y pulsa Generar reporte.
+La ruta es /reports/usuarios. Se incluyen ambos extremos y todos los días del rango.
 
-FUNCIONAMIENTO
-- Disponible en los 20 tipos de registros, incluido Samtech usuarios.
-- Encuentra coincidencias parciales en cualquiera de los campos vigentes.
-- Permite buscar nombre, empresa, RUT, ID, habitación, ticket, observaciones,
-  acciones, fechas, horas, cantidades y los otros campos de cada categoría.
-- No distingue mayúsculas ni tildes: mantencion encuentra Mantención.
-- Los caracteres %, _ y / se buscan literalmente, sin ampliar las coincidencias.
-- Las fechas pueden buscarse como 2026-09-09 o 09/09/2026; los tiempos como mm:ss.
-- Los campos vacíos no impiden encontrar coincidencias en los demás datos.
-- Para incluir registros sin fecha, deja las fechas y semana sin seleccionar.
-- La búsqueda se combina con los filtros de fechas y semana.
-- Se muestran el texto buscado y el número de coincidencias.
-- Sin coincidencias, el listado queda vacío y Eliminar todos está deshabilitado.
-- Quitar búsqueda conserva la categoría, fechas y semana.
-- Limpiar filtros quita búsqueda, fechas y semana y conserva la categoría.
-- El buscador vacío muestra todos los registros que cumplan los demás filtros.
-- Admite hasta 200 caracteres. No requiere cambios de tablas ni extensiones de BD.
+ORIGEN DE LOS DATOS
+- Reclamos usuarios: registro Reclamos de usuarios, columna Fecha y campo Estatus.
+- Solicitudes de usuarios: Solicitud y OT de usuario, Fecha inicio y campo Estado.
+- Samtech usuarios: Samtech usuarios, Fecha creación y campo Estado.
+Cada fila cuenta un registro; los tickets repetidos cuentan por separado.
+Las fechas de término y aprobación de Samtech no reemplazan Fecha creación.
 
-EXPORTAR, EDITAR Y ELIMINAR
-Descargar CSV utiliza exactamente los mismos filtros del listado.
-La búsqueda se conserva al guardar o cancelar una edición y después de eliminar.
-Eliminar seleccionados y Eliminar todos respetan la categoría, fechas, semana
-Y búsqueda. La pantalla de confirmación muestra el término buscado y la cantidad.
-La confirmación conserva la selección exacta durante 15 minutos; los cambios en
-los datos la invalidan y los registros nuevos posteriores no se eliminan.
-Una búsqueda sin coincidencias nunca se convierte en una eliminación completa.
+REPORTE DIARIO
+- Registros de las tres categorías, por día y total del período.
+- Casos abiertos, desglosados por categoría y estado.
+- Casos cerrados.
+- Estados vacíos o sin clasificar, cuando existen.
+- Comparación de abiertos y cerrados con porcentaje de cierre.
+Se mantienen la estructura de la imagen, encabezados rojos y totales amarillos.
+La tabla tiene barras horizontales sincronizadas y una columna de etiquetas fija.
+Los días sin registros muestran cero.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON SAMTECH USUARIOS
+DASHBOARD DE CONCLUSIONES
+Incluye indicadores de registros, abiertos, cerrados, sin clasificar y porcentaje
+cerrado; resumen por categoría; gráficos de registros diarios y estado actual;
+y conclusiones calculadas sobre volumen, pendientes para seguimiento, día de
+mayor ingreso y datos por completar. Ver registros abre cada categoría con el
+mismo rango de fechas.
+
+CRITERIOS
+El informe muestra el estado ACTUAL de los casos fechados en el período. Cuando
+un caso se cierra, se mantiene en su fecha de origen. No se reconstruye un estado
+histórico ni se atribuye el cierre al día en que ocurrió.
+Se reconocen mayúsculas/minúsculas, tildes y variaciones de espacios, guiones
+y guiones bajos. Abierto/Abierta, No iniciada/No iniciado, En progreso/En proceso/
+En curso/En ejecución/Iniciado/Iniciada y Pendiente/En espera cuentan como abiertos.
+Cerrado/Cerrada, Resuelto/Resuelta, Finalizado/Finalizada, Completado/Completada y
+Terminado/Terminada cuentan como cerrados. Otros valores, incluidos Cancelado,
+Rechazado y los vacíos, se muestran como Sin clasificar.
+
+Porcentaje cerrado = Cerrados / (Abiertos + Cerrados).
+El total del período usa los conteos acumulados, sin promediar porcentajes diarios.
+Sin casos clasificables se muestra 0% y se informa esa ausencia.
+Los estados sin clasificar quedan fuera del denominador, visibles en el informe.
+El total de registros siempre cuadra con abiertos + cerrados + sin clasificar.
+
+Los registros sin la fecha utilizada por su categoría quedan fuera del rango.
+Se informa cuántos existen en el histórico para completar esas fechas, sin
+atribuirlos al período seleccionado. Los estados originales no se modifican.
+
+EXCEL PARA ENVÍO
+Exportar Excel descarga reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx con cinco hojas:
+1. Reporte diario: fechas reales, conteos, totales y porcentajes con fórmulas.
+2. Conclusiones: indicadores, resumen, conclusiones, dos gráficos y criterios.
+3. Reclamos usuarios: todos los campos de los registros del rango.
+4. Solicitudes OT: todos los campos de los registros del rango.
+5. Samtech usuarios: todos los campos de los registros del rango.
+Las tres hojas de detalle incluyen Estado agrupado, encabezados fijos y autofiltro.
+Los IDs y tickets mantienen sus ceros iniciales. Los campos vacíos siguen vacíos.
+Los conteos usan COUNTIFS sobre las hojas de detalle. Se guardan resultados de las
+fórmulas para visores y los gráficos de Excel se enlazan a los datos.
+
+La descarga consulta nuevamente la información y registra la hora de exportación
+UTC. Las conclusiones corresponden a esa exportación. Tras editar registros en el
+programa, genera un archivo nuevo. Si cambias Desde o Hasta, pulsa Generar reporte
+antes de exportar; el botón evita descargar con fechas editadas sin aplicar.
+El archivo Excel se descarga para enviarlo; el programa no lo envía por correo.
+
+SI YA INSTALASTE LA VERSIÓN ANTERIOR CON BUSCADOR
 Reemplaza estos archivos, conservando sus carpetas:
 - README.md
-- gestion5s/templates/bulk_delete_confirm.html
-- gestion5s/templates/list.html
-- gestion5s/web.py
+- app.py
+- gestion5s/templates/base.html
+- templates/base.html
 
 Añade estos archivos nuevos:
-- gestion5s/searching.py
-- tests/test_record_search.py
+- gestion5s/user_report_excel.py
+- gestion5s/user_report_routes.py
+- gestion5s/user_reports.py
+- static/css/user_report.css
+- static/js/user_report.js
+- templates/user_report.html
+- tests/test_user_report_interface.cjs
+- tests/test_user_reports.py
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
-- Reportes agrupa Dotación, Ocupabilidad, EGP y F&A.
-- Los 20 módulos tienen Ver registros, listados con todos sus campos y textos
-  completos, barras horizontales sincronizadas y desplazamiento vertical.
-- Formularios de ingreso y edición con validaciones compartidas y conservación
-  de los datos ingresados cuando hay un error.
-- Plantillas Excel, importación, exportación CSV, lápiz de edición, papelera,
-  selección múltiple y Eliminar todos con confirmación.
+- Reportes conserva Dotación, Ocupabilidad, EGP y F&A y añade Gestión de usuarios.
+- Los 20 módulos tienen Ver registros, todos sus campos y textos completos,
+  barras horizontales sincronizadas y desplazamiento vertical.
+- Ingreso, plantillas Excel, importación, exportación CSV, edición con lápiz,
+  eliminación individual, selección múltiple y Eliminar todos con confirmación.
+- Buscador por palabra o número en las 20 categorías, con coincidencias parciales,
+  sin distinguir mayúsculas ni tildes; respeta la categoría, fechas y semana.
+- El buscador se conserva al editar, eliminar y exportar; el borrado múltiple
+  utiliza exactamente la selección confirmada y detecta cambios concurrentes.
 - Corrección del error Not Found después de eliminar un registro.
 - Acciones en desviaciones en formulario, plantilla, listado, edición y CSV.
 - Extensiones y excepciones con sus 12 campos actualizados.
-- Entradas y salidas con sus 16 campos opcionales. El dashboard se llama
-  Entrada a habitaciones y cuenta únicamente FECHA INGRESO.
-- Habitaciones bloqueadas con sus 12 campos, incluidas las cinco fechas opcionales.
-- Ordenamiento y Habitaciones liberadas con todos los campos y funciones solicitados.
-- Samtech usuarios con sus 15 campos: Ticket, División, Área, Lugar, Ubicación,
-  Disciplina, Especialidad, Falla, Empresa, Fecha creación, Fecha inicio,
-  Fecha término, Fecha aprobación, Estado y Comentario.
-- Tarjeta y gráfico Samtech usuarios por Fecha creación, separados de Misceláneo.
-- Campos y fechas vacíos admitidos en los cinco registros añadidos durante esta
-  conversación. Las filas totalmente vacías se omiten durante la importación.
-El README detalla las columnas y el funcionamiento de cada registro.
+- Entradas y salidas con 16 campos opcionales. Entrada a habitaciones en el
+  dashboard cuenta únicamente FECHA INGRESO.
+- Habitaciones bloqueadas, Ordenamiento y Habitaciones liberadas completos.
+- Samtech usuarios con sus 15 campos, formulario, plantilla, importación,
+  listado, edición, exportación, eliminación y gráfico por Fecha creación.
+- Campos y fechas vacíos admitidos en los cinco registros nuevos de la conversación.
+El README detalla las columnas y el funcionamiento de cada módulo.
 
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza estos archivos, conservando sus carpetas:
 - README.md
+- app.py
 - gestion5s/templates/base.html
 - gestion5s/templates/dashboard.html
 - gestion5s/templates/list.html
@@ -91,8 +130,14 @@ Añade estos archivos nuevos:
 - gestion5s/templates/bulk_delete_confirm.html
 - gestion5s/templates/edit.html
 - gestion5s/templates/record_fields.html
+- gestion5s/user_report_excel.py
+- gestion5s/user_report_routes.py
+- gestion5s/user_reports.py
+- static/css/user_report.css
 - static/js/hotel_forms.js
 - static/js/registros.js
+- static/js/user_report.js
+- templates/user_report.html
 - tests/test_blocked_rooms.py
 - tests/test_bulk_delete_records.py
 - tests/test_delete_records.py
@@ -105,27 +150,29 @@ Añade estos archivos nuevos:
 - tests/test_record_search.py
 - tests/test_room_operations.py
 - tests/test_samtech_users.py
+- tests/test_user_report_interface.cjs
+- tests/test_user_reports.py
 
 PUBLICAR LA ACTUALIZACIÓN
 1. Descomprime el ZIP y copia los archivos indicados a sus carpetas.
 2. Guarda los cambios en la rama de GitHub que utiliza tu servicio de Render.
 3. Espera al despliegue automático o despliega el último commit desde Render.
 No subas el ZIP como sustituto de los archivos del programa.
-Estos cambios aún no están publicados en GitHub ni desplegados en Render,
+Los cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
-La búsqueda no requiere una migración. Las tablas de los nuevos módulos se crean
-al iniciar la aplicación si aún no existen, conservando los registros anteriores.
+Este reporte utiliza las dependencias existentes y no requiere migraciones
+ni nuevas tablas. Las mejoras anteriores conservan sus migraciones automáticas.
 
 COMPROBACIONES
-Pasaron las 74 pruebas funcionales con bases SQLite temporales, incluidas 13
-pruebas nuevas de búsqueda. Cubren las 20 categorías, coincidencias parciales,
-tildes y mayúsculas, caracteres literales, todos los campos de Samtech usuarios,
-Acciones en desviaciones, fechas vacías, fechas/horas, duraciones, ceros y números
-calculados, exportación, filtros combinados, edición y el alcance de la eliminación.
-También verifican confirmaciones vencidas, cambios concurrentes, registros nuevos
-y que las búsquedas inválidas no amplíen una eliminación.
-Las pruebas anteriores de formularios, plantillas, importación, edición,
-eliminación, migraciones y gráficos siguen pasando.
-La consulta PostgreSQL se comprobó mediante compilación SQL con funciones
-incorporadas; no se ejecutó contra una base PostgreSQL real.
-No se modificaron datos de producción.
+Pasaron las 87 pruebas funcionales con bases SQLite temporales, incluidas 13
+pruebas nuevas del reporte. Cubren las tres fuentes, fechas, estados, conteos,
+días vacíos, porcentajes ponderados, datos sin fecha, exportación, valores y
+fórmulas, gráficos, textos literales, errores y conservación de datos.
+Las pruebas JavaScript verificaron gráficos, cambios de fechas, regreso del
+navegador y disponibilidad del Excel si no carga la biblioteca de gráficos.
+Se verificaron 380 fórmulas con recálculo en LibreOffice Calc entre una muestra
+de 13 días y otra de un día. Se revisaron las cinco hojas y la presentación de
+las tablas, gráficos y áreas de impresión. Los archivos de prueba usaron datos
+sintéticos y no se incluyen como información real en este paquete.
+No se modificaron datos de producción. No se ejecutó una prueba contra
+PostgreSQL real ni una revisión visual de la página en un navegador.
