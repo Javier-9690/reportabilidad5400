@@ -19,6 +19,7 @@ TABS = [
     "robos", "miscelaneo", "desviaciones", "solicitud_ot", "reclamos",
     "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento", "entradas_salidas", "habitaciones_bloqueadas",
     "ordenamiento", "habitaciones_liberadas",
+    "samtech_usuarios",
 ]
 
 VIEWS = ["encuestas" if tab == "encuesta" else tab for tab in TABS]
@@ -43,6 +44,7 @@ FORM_DATA = {
     "habitaciones_bloqueadas": {"fecha_bloqueo": "2026-09-01", "habitacion": "001", "motivo": "Reparación"},
     "ordenamiento": {"fecha_ejecucion": "2026-09-01", "habitacion": "001", "motivo_cambio": "Cambio de turno"},
     "habitaciones_liberadas": {"fecha_devolucion": "2026-09-01", "habitacion": "001", "observacion": "Revisada"},
+    "samtech_usuarios": {"fecha_creacion": "2026-09-01", "ticket": "000123", "comentario": "Solicitud de usuario"},
 }
 
 IMPORT_ROWS = {
@@ -65,6 +67,7 @@ IMPORT_ROWS = {
     "habitaciones_bloqueadas": ["2026-09-02", "001", "000123", "Empresa", "00042", "Mantención", "Recepción informada", "2026-09-03", "", "", "", "Seguimiento"],
     "ordenamiento": ["2026-09-02", "Empresa", "001", "Persona", "00123456-7", "Noche", "002", "Cambio de turno", "Sí", "Revisión"],
     "habitaciones_liberadas": ["001", "Empresa", "Devolución", "2026-09-02", "Llaves recibidas", "2026-09-03", "Revisada"],
+    "samtech_usuarios": ["000123", "División", "Área", "Lugar", "Ubicación", "Disciplina", "Especialidad", "Falla", "Empresa", "2026-09-02", "", "", "", "Pendiente", "Seguimiento"],
 }
 
 

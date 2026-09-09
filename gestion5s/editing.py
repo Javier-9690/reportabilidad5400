@@ -81,11 +81,30 @@ RELEASED_ROOM_FIELDS = (
     ("observacion", "Observación"),
 )
 
+SAMTECH_USER_FIELDS = (
+    ("ticket", "Ticket"),
+    ("division", "División"),
+    ("area", "Área"),
+    ("lugar", "Lugar"),
+    ("ubicacion", "Ubicación"),
+    ("disciplina", "Disciplina"),
+    ("especialidad", "Especialidad"),
+    ("falla", "Falla"),
+    ("empresa", "Empresa"),
+    ("fecha_creacion", "Fecha creación"),
+    ("fecha_inicio", "Fecha inicio"),
+    ("fecha_termino", "Fecha término"),
+    ("fecha_aprobacion", "Fecha aprobación"),
+    ("estado", "Estado"),
+    ("comentario", "Comentario"),
+)
+
 OPTIONAL_RECORD_FIELDS = {
     "entradas_salidas": ENTRY_EXIT_FIELDS,
     "habitaciones_bloqueadas": BLOCKED_ROOM_FIELDS,
     "ordenamiento": ORDERING_FIELDS,
     "habitaciones_liberadas": RELEASED_ROOM_FIELDS,
+    "samtech_usuarios": SAMTECH_USER_FIELDS,
 }
 
 
@@ -110,6 +129,7 @@ EDIT_CONFIG = {
     "habitaciones_bloqueadas": ("Habitaciones bloqueadas", " ".join(name for name, _ in BLOCKED_ROOM_FIELDS)),
     "ordenamiento": ("Ordenamiento", " ".join(name for name, _ in ORDERING_FIELDS)),
     "habitaciones_liberadas": ("Habitaciones liberadas", " ".join(name for name, _ in RELEASED_ROOM_FIELDS)),
+    "samtech_usuarios": ("Samtech usuarios", " ".join(name for name, _ in SAMTECH_USER_FIELDS)),
 }
 
 FIELD_LABELS = {
@@ -161,6 +181,7 @@ def edit_fields(entity, record):
         "habitaciones_bloqueadas": dict(BLOCKED_ROOM_FIELDS),
         "ordenamiento": dict(ORDERING_FIELDS),
         "habitaciones_liberadas": dict(RELEASED_ROOM_FIELDS),
+        "samtech_usuarios": dict(SAMTECH_USER_FIELDS),
     }.get(entity, FIELD_LABELS)
     for name in EDIT_CONFIG[entity][1].split():
         column = record.__table__.columns[name]
@@ -307,6 +328,6 @@ def parse_edit_values(entity, fields, form):
                              "fecha_liberada_mantencion", "fecha_liberada_investigacion"):
                     if values[name] is not None and values[name] < values["fecha_bloqueo"]:
                         errors[name] = "La fecha de liberación no puede ser anterior a la fecha de bloqueo."
-        elif entity in ("ordenamiento", "habitaciones_liberadas") and all(value is None for value in values.values()):
+        elif entity in ("ordenamiento", "habitaciones_liberadas", "samtech_usuarios") and all(value is None for value in values.values()):
             errors["_form"] = "Ingresa al menos un dato para guardar el registro."
     return values, errors

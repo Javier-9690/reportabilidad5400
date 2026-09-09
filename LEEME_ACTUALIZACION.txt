@@ -1,85 +1,94 @@
-REPORTABILIDAD 5400 — FORMULARIOS REVISADOS Y LISTADOS COMPLETOS
+REPORTABILIDAD 5400 — SAMTECH USUARIOS
 
 Programa completo con todas las mejoras de esta conversación.
 Base: https://github.com/Javier-9690/reportabilidad5400
 Commit de origen: f67683f33208d1917fd766649ef897df63ced824
 
-FORMULARIOS DE LOS 19 MÓDULOS
-Se revisaron los campos de ingreso y edición contra la estructura de la base
-de datos. Ambos formularios utilizan ahora los mismos controles y validaciones.
-- Campos con etiquetas asociadas y sin nombres ni identificadores duplicados.
-- Fechas y horas válidas; números enteros o decimales según corresponda.
-- Duraciones mm:ss, con minutos de cualquier longitud y segundos de 00 a 59.
-- Puntajes de encuesta de 1 a 5 o vacíos, y total y promedio automáticos.
-- Límites de texto compatibles con las columnas existentes.
-- Campos obligatorios señalados; se mantienen los campos opcionales.
-- Los errores aparecen junto a los campos y conservan lo escrito.
-- Si falla el guardado, se revierte la operación y el formulario conserva los datos.
-Se corrigieron casos que antes producían un error 500 o guardaban silenciosamente
-vacío un valor numérico inválido. No se modifican tablas ni registros existentes.
-Los formularios anteriores de ID y tiempos siguen siendo compatibles.
+NUEVO REGISTRO: SAMTECH USUARIOS
+Abre Registros hotelería > Ingresar registros > Samtech usuarios.
+El formulario, la edición, la plantilla Excel, el listado y la exportación
+contienen estos 15 campos en el orden solicitado:
+1. Ticket
+2. División
+3. Área
+4. Lugar
+5. Ubicación
+6. Disciplina
+7. Especialidad
+8. Falla
+9. Empresa
+10. Fecha creación
+11. Fecha inicio
+12. Fecha término
+13. Fecha aprobación
+14. Estado
+15. Comentario
 
-VER REGISTROS EN TODOS
-Los 19 módulos muestran Ver registros junto a Descargar Plantilla e Importar.
-El botón abre directamente el listado correspondiente. La encuesta funciona
-con las dos variantes anteriores de su enlace. Limpiar filtros mantiene el
-módulo actual para que no tengas que seleccionarlo otra vez.
+FUNCIONES
+- Formulario manual con validación y conservación de lo escrito ante errores.
+- Descargar Plantilla: XLSX con encabezados, fechas y formato de texto para Ticket.
+- Importar: admite fechas de Excel y texto DD/MM/AAAA o AAAA-MM-DD.
+- Ver registros: abre directamente el listado de Samtech usuarios.
+- Todos los campos y textos completos, con barras horizontales sincronizadas,
+  desplazamiento vertical y encabezados visibles.
+- Exportación CSV y filtros por período o semana.
+- Lápiz para editar el mismo registro, conservando su ID y fecha de creación interna.
+- Papelera, selección múltiple y Eliminar todos con confirmación.
+- Tarjeta y gráfico Samtech usuarios en el dashboard KPI.
 
-TODOS LOS DATOS VISIBLES
-Cada listado muestra todos los campos vigentes del registro y su fecha de creación.
-Se agregaron las columnas que no aparecían en los listados de eventos, duplicidades,
-encuestas, robos y hurtos, misceláneo, desviaciones, solicitudes OT, reclamos y alarmas.
-Los textos aparecen completos, con sus saltos de línea y sin recortes ni puntos
-suspensivos. La encuesta muestra respuestas, puntajes, comentarios, total y promedio.
-Los ceros se muestran como cero y la duración cero como 00:00.
-El campo histórico Proyecto de Extensiones sigue guardado internamente, tal como
-se solicitó cuando se sustituyeron las columnas de ese registro.
+CAMPOS Y FECHAS VACÍOS
+Los 15 campos son opcionales, incluidas las cuatro fechas. Basta con un dato
+para guardar o importar una fila; las filas totalmente vacías se omiten.
+Los vacíos se conservan y se pueden completar desde Editar.
+Ticket se guarda como texto y conserva ceros iniciales. Falla y Comentario
+admiten varias líneas. Estado es texto libre.
+Los datos informados se validan; una fila inválida cancela toda la importación
+indicando su número, sin guardar parcialmente el archivo.
 
-BARRAS DE DESPLAZAMIENTO
-Si las columnas no caben en la pantalla, aparece desplazamiento horizontal.
-La tabla tiene una segunda barra sincronizada encima, para recorrer las columnas
-sin bajar hasta la última fila. También permite desplazamiento vertical y mantiene
-visibles los encabezados. Se puede enfocar con el teclado para desplazarse.
-El lápiz, la papelera y las opciones de selección y eliminación se conservan.
+GRÁFICO Y FILTROS
+Samtech usuarios se cuenta y filtra por Fecha creación, respetando el período
+o semana seleccionados. Fecha inicio, Fecha término y Fecha aprobación se
+conservan por separado y no añaden conteos ni días al gráfico.
+Los registros sin fecha de creación pueden verse y exportarse sin filtros.
+El gráfico cuenta registros, no tickets únicos. Los datos se mantienen separados
+del módulo Misceláneo.
 
-ONBOARDING
-Archivo PDF (nombre) permite escribir el nombre o completarlo al seleccionar
-un PDF. Se registra únicamente el nombre del archivo, como en la base anterior;
-no se almacena el contenido del PDF. El nombre puede corregirse antes de guardar.
+BASE DE DATOS
+La tabla samtech_usuarios se crea automáticamente al iniciar si no existe.
+No es necesario borrar tablas ni ejecutar una migración manual para añadirla.
+Se conservan los registros existentes de todos los módulos.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR CON ORDENAMIENTO Y HABITACIONES LIBERADAS
+SI YA INSTALASTE LA VERSIÓN ANTERIOR CON FORMULARIOS REVISADOS
 Reemplaza estos archivos, conservando sus carpetas:
 - README.md
 - gestion5s/editing.py
+- gestion5s/templates/dashboard.html
 - gestion5s/templates/edit.html
 - gestion5s/templates/list.html
 - gestion5s/templates/panel.html
 - gestion5s/web.py
-- static/css/gestion5s.css
-- static/js/registros.js
+- tests/test_edit_records.py
+- tests/test_integration.py
 
 Añade estos archivos nuevos:
-- gestion5s/templates/record_fields.html
-- static/js/hotel_forms.js
-- tests/test_form_structure.py
-- tests/test_hotel_interface.cjs
+- tests/test_samtech_users.py
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
 - Reportes agrupa Dotación, Ocupabilidad, EGP y F&A.
-- Lápiz de edición y eliminación individual o múltiple para los 19 tipos de registros.
-- Acciones en desviaciones: formulario, edición, plantilla, importación, listado y CSV.
-- Extensiones y excepciones: sus 12 campos actualizados, con Centro costos
-  y Tipo de solicitud, conservando los registros anteriores.
-- Entradas y salidas: sus 16 campos, con fechas, horas y datos de tarjeta opcionales.
-- Entrada a habitaciones en el dashboard cuenta únicamente FECHA INGRESO;
-  los datos de salida siguen guardados en el registro.
-- Habitaciones bloqueadas: sus 12 campos, incluidas las cinco fechas opcionales.
-- Ordenamiento y Habitaciones liberadas: todas las columnas solicitadas, formulario,
-  plantilla, importación, listado, exportación, edición, borrado y dashboard.
-- Los cuatro registros más recientes admiten campos y fechas vacíos.
+- Los 20 módulos tienen Ver registros, listados completos, exportación, lápiz,
+  eliminación individual, selección múltiple y Eliminar todos.
+- Validación compartida de ingreso y edición; errores junto a cada campo y
+  conservación de los datos ingresados para corregirlos.
 - Se conserva la corrección del error Not Found después de eliminar un registro.
-El README detalla las columnas y el funcionamiento de cada módulo.
+- Acciones en desviaciones en formulario, plantilla, listado, edición y CSV.
+- Extensiones y excepciones con sus 12 campos actualizados.
+- Entradas y salidas con sus 16 campos opcionales. El dashboard se llama
+  Entrada a habitaciones y cuenta únicamente FECHA INGRESO.
+- Habitaciones bloqueadas con sus 12 campos, incluidas las cinco fechas opcionales.
+- Ordenamiento y Habitaciones liberadas con todos los campos y funciones solicitados.
+- Campos y fechas vacíos admitidos en los cinco registros añadidos durante esta conversación.
+El README detalla las columnas y el funcionamiento de cada registro.
 
 ELIMINAR TODOS
 Se aplica al módulo actual y a los filtros seleccionados. Para eliminar todo
@@ -118,6 +127,7 @@ Añade estos archivos nuevos:
 - tests/test_form_structure.py
 - tests/test_hotel_interface.cjs
 - tests/test_room_operations.py
+- tests/test_samtech_users.py
 
 PUBLICAR LA ACTUALIZACIÓN
 1. Descomprime el ZIP y copia los archivos indicados a sus carpetas.
@@ -128,14 +138,14 @@ Estos cambios aún no están publicados en GitHub ni desplegados en Render,
 porque la conexión disponible al repositorio tiene permiso de lectura.
 
 COMPROBACIONES
-Pasaron las 57 pruebas funcionales con bases SQLite temporales. Se verificaron
-los 19 formularios con todos sus campos, etiquetas, nombres y límites;
-el guardado y la visualización completa de los datos, incluidos textos largos,
-ceros, fechas, horas y campos opcionales; errores sin pérdida de lo escrito;
-fallos de base de datos con reversión, y compatibilidad con formularios anteriores.
-También pasaron las pruebas anteriores de plantillas, importación, edición,
-eliminación individual y múltiple, migraciones y dashboard.
-El script de Node verificó selección múltiple, sincronización de barras en ambos
-sentidos, ajuste del ancho, total automático de censo y selección del nombre de PDF.
-Estas comprobaciones de JavaScript simulan los eventos; no sustituyen una revisión
-visual del navegador. No se modificaron datos de producción.
+Pasaron las 61 pruebas funcionales con bases SQLite temporales. Incluyen los
+15 campos de Samtech usuarios en su orden exacto; formulario, edición, plantilla,
+importación y CSV; sus cuatro fechas en formatos Excel y texto; filas con un
+solo dato, fechas vacías, ceros iniciales y textos completos; validaciones sin
+escrituras parciales; filtros y separación de datos respecto de Misceláneo.
+Las pruebas generales cubrieron campos, formularios, listados, edición y
+eliminación en los 20 módulos, además de las migraciones y gráficos anteriores.
+El JavaScript renderizado inicializa los 21 gráficos; Samtech usuarios recibe
+sus conteos correctos por Fecha creación. Esta comprobación utiliza simulaciones
+de DOM y Chart y no sustituye una revisión visual del navegador.
+No se modificaron datos de producción.

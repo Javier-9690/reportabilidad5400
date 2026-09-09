@@ -16,7 +16,7 @@ from flask import (
 
 from gestion5s.editing import (
     EDIT_CONFIG, EXTENSION_FIELDS, ENTRY_EXIT_FIELDS, BLOCKED_ROOM_FIELDS,
-    ORDERING_FIELDS, RELEASED_ROOM_FIELDS, OPTIONAL_RECORD_FIELDS,
+    ORDERING_FIELDS, RELEASED_ROOM_FIELDS, SAMTECH_USER_FIELDS, OPTIONAL_RECORD_FIELDS,
     edit_fields, list_fields, display_record_value, parse_edit_values, record_version,
 )
 from itsdangerous import BadData, URLSafeTimedSerializer
@@ -743,6 +743,27 @@ class HabitacionLiberadaEntry(Base):
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
+class SamtechUsuarioEntry(Base):
+    __tablename__ = "samtech_usuarios"
+    id = Column(Integer, primary_key=True)
+    ticket = Column(String(100), nullable=True)
+    division = Column(String(200), nullable=True)
+    area = Column(String(200), nullable=True)
+    lugar = Column(String(200), nullable=True)
+    ubicacion = Column(String(200), nullable=True)
+    disciplina = Column(String(200), nullable=True)
+    especialidad = Column(String(200), nullable=True)
+    falla = Column(Text, nullable=True)
+    empresa = Column(String(200), nullable=True)
+    fecha_creacion = Column(Date, nullable=True, index=True)
+    fecha_inicio = Column(Date, nullable=True)
+    fecha_termino = Column(Date, nullable=True)
+    fecha_aprobacion = Column(Date, nullable=True)
+    estado = Column(String(100), nullable=True)
+    comentario = Column(Text, nullable=True)
+    creado = Column(DateTime, nullable=False, default=now_utc)
+
+
 def ensure_deviation_actions_column(engine):
     """Añade el campo opcional a instalaciones existentes sin alterar sus registros."""
     with engine.begin() as conn:
@@ -1261,6 +1282,7 @@ ENTITY_MODEL = {
     "habitaciones_bloqueadas": HabitacionBloqueadaEntry,
     "ordenamiento": OrdenamientoEntry,
     "habitaciones_liberadas": HabitacionLiberadaEntry,
+    "samtech_usuarios": SamtechUsuarioEntry,
 }
 
 ENTITY_LIST_KEY = {
@@ -1272,6 +1294,7 @@ ENTITY_LIST_KEY = {
     "cumplimiento": "cumplimiento", "entradas_salidas": "entradas_salidas",
     "habitaciones_bloqueadas": "habitaciones_bloqueadas",
     "ordenamiento": "ordenamiento", "habitaciones_liberadas": "habitaciones_liberadas",
+    "samtech_usuarios": "samtech_usuarios",
 }
 ENTITY_DATE_FIELD = {
     "encuestas": "fecha_hora", "onboarding": "fecha_hora",
@@ -1281,6 +1304,7 @@ ENTITY_DATE_FIELD = {
     "habitaciones_bloqueadas": "fecha_bloqueo",
     "ordenamiento": "fecha_ejecucion",
     "habitaciones_liberadas": "fecha_devolucion",
+    "samtech_usuarios": "fecha_creacion",
 }
 
 
@@ -1616,6 +1640,7 @@ TEMPLATES = {
     "habitaciones_bloqueadas": [label for _, label in BLOCKED_ROOM_FIELDS],
     "ordenamiento": [label for _, label in ORDERING_FIELDS],
     "habitaciones_liberadas": [label for _, label in RELEASED_ROOM_FIELDS],
+    "samtech_usuarios": [label for _, label in SAMTECH_USER_FIELDS],
 }
 
 @app.get("/template/<string:entity>.xlsx")
@@ -1652,6 +1677,7 @@ def template_xlsx(entity):
                                        8: "DD/MM/YYYY", 9: "DD/MM/YYYY", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY"},
             "ordenamiento": {1: "DD/MM/YYYY", 3: "@", 5: "@", 7: "@"},
             "habitaciones_liberadas": {1: "@", 4: "DD/MM/YYYY", 6: "DD/MM/YYYY"},
+            "samtech_usuarios": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
         }[entity]
         for row in range(2, 202):
             for column, number_format in formats.items():
@@ -2045,6 +2071,7 @@ def dashboard():
                 "habitaciones_bloqueadas": 0,
                 "ordenamiento": 0,
                 "habitaciones_liberadas": 0,
+                "samtech_usuarios": 0,
             })
 
         # Censo
@@ -2168,6 +2195,7 @@ def dashboard():
             (HabitacionBloqueadaEntry, HabitacionBloqueadaEntry.fecha_bloqueo, "habitaciones_bloqueadas"),
             (OrdenamientoEntry, OrdenamientoEntry.fecha_ejecucion, "ordenamiento"),
             (HabitacionLiberadaEntry, HabitacionLiberadaEntry.fecha_devolucion, "habitaciones_liberadas"),
+            (SamtechUsuarioEntry, SamtechUsuarioEntry.fecha_creacion, "samtech_usuarios"),
         ):
             q = db.query(column, func.count(Model.id)).filter(column.isnot(None))
             if d_from: q = q.filter(column >= d_from)
@@ -2201,6 +2229,7 @@ def dashboard():
             "habitaciones_bloqueadas": [],
             "ordenamiento": [],
             "habitaciones_liberadas": [],
+            "samtech_usuarios": [],
         }
 
         for k in ordered_days:
@@ -2224,6 +2253,7 @@ def dashboard():
             series_data["habitaciones_bloqueadas"].append(g["habitaciones_bloqueadas"])
             series_data["ordenamiento"].append(g["ordenamiento"])
             series_data["habitaciones_liberadas"].append(g["habitaciones_liberadas"])
+            series_data["samtech_usuarios"].append(g["samtech_usuarios"])
             
             prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
             series_data["atencion_min"].append(round(prom_s/60.0, 2))
@@ -2249,6 +2279,7 @@ def dashboard():
             "habitaciones_bloqueadas_total": sum(series_data["habitaciones_bloqueadas"]),
             "ordenamiento_total": sum(series_data["ordenamiento"]),
             "habitaciones_liberadas_total": sum(series_data["habitaciones_liberadas"]),
+            "samtech_usuarios_total": sum(series_data["samtech_usuarios"]),
             "atencion_tiempo_prom_global": (
                 seconds_to_mmss(int(mean([int(x*60) for x in series_data["atencion_min"] if x>0])))
                 if any(x>0 for x in series_data["atencion_min"]) else "00:00"

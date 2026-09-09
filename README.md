@@ -14,7 +14,7 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 - Generar reporte de dotación por gerencia.
 - Exportar reporte a Excel.
 - Acceder al módulo Registros hotelería desde la misma cabecera y el mismo dominio.
-- Registrar, importar, consultar, editar, eliminar y exportar los 19 tipos de registros operacionales de hotelería.
+- Registrar, importar, consultar, editar, eliminar y exportar los 20 tipos de registros operacionales de hotelería.
 - Consultar el dashboard KPI consolidado de hotelería por fechas o semanas.
 
 ## Menú principal
@@ -51,7 +51,7 @@ desde una página abierta antes de esta corrección.
 
 ### Formularios y listados completos
 
-Los 19 formularios incluyen **Ver registros** junto a **Descargar Plantilla**
+Los 20 formularios incluyen **Ver registros** junto a **Descargar Plantilla**
 e **Importar**. El enlace abre directamente el listado del módulo activo;
 la encuesta también funciona al acceder con `tab=encuesta` o `tab=encuestas`.
 
@@ -83,7 +83,7 @@ corregirse antes de guardar; este campo no almacena el contenido del documento.
 
 ### Eliminar varios registros o todo el listado
 
-Los 19 tipos de registros de hotelería incluyen una casilla en cada fila y
+Los 20 tipos de registros de hotelería incluyen una casilla en cada fila y
 la opción **Seleccionar todos los registros del listado**. El contador muestra
 cuántos están marcados; **Eliminar seleccionados** actúa sobre esas filas.
 
@@ -289,6 +289,49 @@ a un día en el gráfico. Las cifras cuentan registros, no habitaciones únicas.
 
 Las tablas `ordenamiento` y `habitaciones_liberadas` se crean automáticamente
 al iniciar la aplicación, conservando las tablas y registros existentes.
+
+### Samtech usuarios
+
+Disponible en **Registros hotelería > Ingresar registros > Samtech usuarios**
+y en el selector de **Consultar registros**. El formulario, la edición, la
+plantilla Excel, el listado y la exportación CSV utilizan estos 15 campos,
+en el orden solicitado:
+
+1. Ticket
+2. División
+3. Área
+4. Lugar
+5. Ubicación
+6. Disciplina
+7. Especialidad
+8. Falla
+9. Empresa
+10. Fecha creación
+11. Fecha inicio
+12. Fecha término
+13. Fecha aprobación
+14. Estado
+15. Comentario
+
+Todos los campos son opcionales, incluidas las cuatro fechas. Basta un dato
+para guardar o importar una fila; las filas totalmente vacías se omiten.
+**Ticket** se guarda como texto para conservar los ceros iniciales. Falla y
+Comentario admiten varias líneas y se muestran completos. Estado es texto libre.
+La plantilla admite fechas de Excel y texto `DD/MM/AAAA` o `AAAA-MM-DD`.
+Se validan los datos informados; una fila inválida cancela la importación
+completa e indica su número para corregirla.
+
+Incluye **Ver registros**, barras horizontales sincronizadas, exportación CSV,
+edición con el lápiz, eliminación individual, selección múltiple y **Eliminar todos**.
+La tarjeta y el gráfico **Samtech usuarios** cuentan registros por **Fecha creación**.
+Los filtros del listado, exportación y borrado utilizan esa misma fecha. Las fechas
+de inicio, término y aprobación se conservan por separado y no añaden conteos al gráfico.
+Los registros sin fecha de creación pueden consultarse y exportarse sin filtros,
+y completarse posteriormente desde Editar. El conteo representa registros.
+
+La tabla `samtech_usuarios` se crea automáticamente al iniciar la aplicación,
+conservando las tablas y registros existentes. Este módulo guarda sus datos
+por separado de Misceláneo.
 
 Reportabilidad y Registros hotelería utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
