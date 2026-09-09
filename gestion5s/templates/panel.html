@@ -63,6 +63,12 @@
           <a href="{{ url_for('panel', tab='habitaciones_bloqueadas') }}" class="list-group-item list-group-item-action {% if tab=='habitaciones_bloqueadas' %}active{% endif %}">
             <i class="fas fa-ban me-2"></i>Habitaciones bloqueadas
           </a>
+          <a href="{{ url_for('panel', tab='ordenamiento') }}" class="list-group-item list-group-item-action {% if tab=='ordenamiento' %}active{% endif %}">
+            <i class="fas fa-sort-amount-down me-2"></i>Ordenamiento
+          </a>
+          <a href="{{ url_for('panel', tab='habitaciones_liberadas') }}" class="list-group-item list-group-item-action {% if tab=='habitaciones_liberadas' %}active{% endif %}">
+            <i class="fas fa-door-open me-2"></i>Habitaciones liberadas
+          </a>
         </div>
       </div>
     </div>
@@ -1078,9 +1084,9 @@
         </div>
       </div>
       {% endif %}
-      {% if tab in ['entradas_salidas', 'habitaciones_bloqueadas'] %}
-      {% set record_icon = 'fa-ban' if tab == 'habitaciones_bloqueadas' else 'fa-exchange-alt' %}
-      {% set record_title = 'Habitaciones bloqueadas' if tab == 'habitaciones_bloqueadas' else 'Registro de entradas y salidas' %}
+      {% if form_fields %}
+      {% set record_icon = {'entradas_salidas': 'fa-exchange-alt', 'habitaciones_bloqueadas': 'fa-ban', 'ordenamiento': 'fa-sort-amount-down', 'habitaciones_liberadas': 'fa-door-open'}[tab] %}
+      {% set record_title = {'entradas_salidas': 'Registro de entradas y salidas', 'habitaciones_bloqueadas': 'Habitaciones bloqueadas', 'ordenamiento': 'Ordenamiento', 'habitaciones_liberadas': 'Habitaciones liberadas'}[tab] %}
       <div class="card">
         <div class="card-header">
           <h5 class="mb-0"><i class="fas {{ record_icon }} me-2"></i>{{ record_title }}</h5>

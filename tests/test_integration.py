@@ -18,6 +18,7 @@ TABS = [
     "censo", "eventos", "duplicidades", "encuesta", "atencion",
     "robos", "miscelaneo", "desviaciones", "solicitud_ot", "reclamos",
     "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento", "entradas_salidas", "habitaciones_bloqueadas",
+    "ordenamiento", "habitaciones_liberadas",
 ]
 
 VIEWS = ["encuestas" if tab == "encuesta" else tab for tab in TABS]
@@ -40,6 +41,8 @@ FORM_DATA = {
     "cumplimiento": {"fecha": "2026-09-01", "empresa": "Prueba"},
     "entradas_salidas": {"fecha_ingreso": "2026-09-01", "hora_entrada": "08:15", "nombre": "Prueba", "n_tarjeta": "000123"},
     "habitaciones_bloqueadas": {"fecha_bloqueo": "2026-09-01", "habitacion": "001", "motivo": "Reparación"},
+    "ordenamiento": {"fecha_ejecucion": "2026-09-01", "habitacion": "001", "motivo_cambio": "Cambio de turno"},
+    "habitaciones_liberadas": {"fecha_devolucion": "2026-09-01", "habitacion": "001", "observacion": "Revisada"},
 }
 
 IMPORT_ROWS = {
@@ -60,6 +63,8 @@ IMPORT_ROWS = {
     "cumplimiento": ["2026-09-02", "", "", "", "", "", ""],
     "entradas_salidas": ["2026-09-02", "2026-09-03", "23:15", "07:45", "Empresa", "00042", "Persona", "12.345.678-9", "Noche", "A", "001", "Trabajo", "Recepción", "Sí", "000123", "Pendiente"],
     "habitaciones_bloqueadas": ["2026-09-02", "001", "000123", "Empresa", "00042", "Mantención", "Recepción informada", "2026-09-03", "", "", "", "Seguimiento"],
+    "ordenamiento": ["2026-09-02", "Empresa", "001", "Persona", "00123456-7", "Noche", "002", "Cambio de turno", "Sí", "Revisión"],
+    "habitaciones_liberadas": ["001", "Empresa", "Devolución", "2026-09-02", "Llaves recibidas", "2026-09-03", "Revisada"],
 }
 
 

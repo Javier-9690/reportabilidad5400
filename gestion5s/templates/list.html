@@ -47,7 +47,9 @@
             ('apertura', 'Apertura de habitación'),
             ('cumplimiento', 'Cumplimiento EECC'),
             ('entradas_salidas', 'Entradas y salidas'),
-            ('habitaciones_bloqueadas', 'Habitaciones bloqueadas')
+            ('habitaciones_bloqueadas', 'Habitaciones bloqueadas'),
+            ('ordenamiento', 'Ordenamiento'),
+            ('habitaciones_liberadas', 'Habitaciones liberadas')
           ] %}
           <select name="vista" class="form-select" onchange="this.form.submit()">
             {% for v, label in opciones %}
@@ -864,16 +866,15 @@
           <h5>No se encontraron registros</h5>
         </div>
       {% endif %}
-    {% elif vista in ['entradas_salidas', 'habitaciones_bloqueadas'] %}
-      {% set record_icon = 'fa-ban' if vista == 'habitaciones_bloqueadas' else 'fa-exchange-alt' %}
-      {% set filter_date_label = 'FECHA DE BLOQUEO' if vista == 'habitaciones_bloqueadas' else 'FECHA INGRESO' %}
+    {% elif record_columns %}
+      {% set record_icon = {'entradas_salidas': 'fa-exchange-alt', 'habitaciones_bloqueadas': 'fa-ban', 'ordenamiento': 'fa-sort-amount-down', 'habitaciones_liberadas': 'fa-door-open'}[vista] %}
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h4><i class="fas {{ record_icon }} me-2"></i>{{ entity_title }}</h4>
         <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity=vista, **request.args) }}">
           <i class="fas fa-download me-1"></i> Descargar CSV
         </a>
       </div>
-      <p class="small text-muted">Los filtros de este listado y su exportación se aplican a {{ filter_date_label }}. Para ver también los registros sin esa fecha, abre el módulo sin filtros.</p>
+      <p class="small text-muted">Los filtros de este listado y su exportación se aplican a {{ record_date_label }}. Para ver también los registros sin esa fecha, abre el módulo sin filtros.</p>
       {% if current_records %}
         <div class="table-responsive">
           <table class="data-table">
@@ -890,7 +891,7 @@
                   <td class="table-actions">{{ record_actions(vista, r.id) }}</td>
                   {% for name, label in record_columns %}
                     {% set value = r|attr(name) %}
-                    <td{% if name in ['motivo', 'comunicado', 'observacion'] %} class="record-long-text"{% endif %}>{{ value if value is not none and value != '' else '-' }}</td>
+                    <td{% if name in ['motivo', 'comunicado', 'observacion', 'motivo_cambio', 'comentario'] %} class="record-long-text"{% endif %}>{{ value if value is not none and value != '' else '-' }}</td>
                   {% endfor %}
                   <td><small class="text-muted">{{ r.creado.strftime('%d/%m/%Y %H:%M') }}</small></td>
                 </tr>

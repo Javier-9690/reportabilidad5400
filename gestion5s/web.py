@@ -16,7 +16,8 @@ from flask import (
 
 from gestion5s.editing import (
     EDIT_CONFIG, EXTENSION_FIELDS, ENTRY_EXIT_FIELDS, BLOCKED_ROOM_FIELDS,
-    OPTIONAL_RECORD_FIELDS, edit_fields, parse_edit_values, record_version,
+    ORDERING_FIELDS, RELEASED_ROOM_FIELDS, OPTIONAL_RECORD_FIELDS,
+    edit_fields, parse_edit_values, record_version,
 )
 from itsdangerous import BadData, URLSafeTimedSerializer
 
@@ -712,6 +713,35 @@ class HabitacionBloqueadaEntry(Base):
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
+class OrdenamientoEntry(Base):
+    __tablename__ = "ordenamiento"
+    id = Column(Integer, primary_key=True)
+    fecha_ejecucion = Column(Date, nullable=True, index=True)
+    empresa = Column(String(200), nullable=True)
+    habitacion = Column(String(100), nullable=True)
+    nombre = Column(String(200), nullable=True)
+    rut = Column(String(50), nullable=True)
+    turno = Column(String(100), nullable=True)
+    reasignacion = Column(String(100), nullable=True)
+    motivo_cambio = Column(Text, nullable=True)
+    procesado = Column(String(200), nullable=True)
+    pendiente = Column(String(200), nullable=True)
+    creado = Column(DateTime, nullable=False, default=now_utc)
+
+
+class HabitacionLiberadaEntry(Base):
+    __tablename__ = "habitaciones_liberadas"
+    id = Column(Integer, primary_key=True)
+    habitacion = Column(String(100), nullable=True)
+    empresa = Column(String(200), nullable=True)
+    entrega_devolucion = Column(String(200), nullable=True)
+    fecha_devolucion = Column(Date, nullable=True, index=True)
+    comentario = Column(Text, nullable=True)
+    uso_a_partir_de = Column(Date, nullable=True)
+    observacion = Column(Text, nullable=True)
+    creado = Column(DateTime, nullable=False, default=now_utc)
+
+
 def ensure_deviation_actions_column(engine):
     """Añade el campo opcional a instalaciones existentes sin alterar sus registros."""
     with engine.begin() as conn:
@@ -1152,6 +1182,7 @@ def registros():
             vista=vista, current_tab=None, **listing,
             record_count=len(rows), entity_title=EDIT_CONFIG[vista][0],
             record_columns=OPTIONAL_RECORD_FIELDS.get(vista, ()), current_records=rows,
+            record_date_label=dict(OPTIONAL_RECORD_FIELDS.get(vista, ())).get(ENTITY_DATE_FIELD.get(vista)),
             bulk_csrf=session.setdefault("hotel_bulk_csrf", secrets.token_hex(32)),
         )
     finally:
@@ -1485,6 +1516,8 @@ ENTITY_MODEL = {
     "cumplimiento": CumplimientoEECCEntry,
     "entradas_salidas": EntradaSalidaEntry,
     "habitaciones_bloqueadas": HabitacionBloqueadaEntry,
+    "ordenamiento": OrdenamientoEntry,
+    "habitaciones_liberadas": HabitacionLiberadaEntry,
 }
 
 ENTITY_LIST_KEY = {
@@ -1495,6 +1528,7 @@ ENTITY_LIST_KEY = {
     "extensiones": "extensiones", "onboarding": "onboarding", "apertura": "apertura",
     "cumplimiento": "cumplimiento", "entradas_salidas": "entradas_salidas",
     "habitaciones_bloqueadas": "habitaciones_bloqueadas",
+    "ordenamiento": "ordenamiento", "habitaciones_liberadas": "habitaciones_liberadas",
 }
 ENTITY_DATE_FIELD = {
     "encuestas": "fecha_hora", "onboarding": "fecha_hora",
@@ -1502,6 +1536,8 @@ ENTITY_DATE_FIELD = {
     "extensiones": "fecha_solicitud",
     "entradas_salidas": "fecha_ingreso",
     "habitaciones_bloqueadas": "fecha_bloqueo",
+    "ordenamiento": "fecha_ejecucion",
+    "habitaciones_liberadas": "fecha_devolucion",
 }
 
 
@@ -1834,6 +1870,8 @@ TEMPLATES = {
     "cumplimiento": ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"],
     "entradas_salidas": [label for _, label in ENTRY_EXIT_FIELDS],
     "habitaciones_bloqueadas": [label for _, label in BLOCKED_ROOM_FIELDS],
+    "ordenamiento": [label for _, label in ORDERING_FIELDS],
+    "habitaciones_liberadas": [label for _, label in RELEASED_ROOM_FIELDS],
 }
 
 @app.get("/template/<string:entity>.xlsx")
@@ -1868,6 +1906,8 @@ def template_xlsx(entity):
                                  6: "@", 8: "@", 10: "@", 11: "@", 15: "@"},
             "habitaciones_bloqueadas": {1: "DD/MM/YYYY", 2: "@", 3: "@", 5: "@",
                                        8: "DD/MM/YYYY", 9: "DD/MM/YYYY", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY"},
+            "ordenamiento": {1: "DD/MM/YYYY", 3: "@", 5: "@", 7: "@"},
+            "habitaciones_liberadas": {1: "@", 4: "DD/MM/YYYY", 6: "DD/MM/YYYY"},
         }[entity]
         for row in range(2, 202):
             for column, number_format in formats.items():
@@ -2259,6 +2299,8 @@ def dashboard():
                 "cumplimiento": 0,
                 "entradas": 0,
                 "habitaciones_bloqueadas": 0,
+                "ordenamiento": 0,
+                "habitaciones_liberadas": 0,
             })
 
         # Censo
@@ -2376,10 +2418,12 @@ def dashboard():
         for r in q.all():
             bucket(r.fecha.isoformat())["cumplimiento"] += 1
 
-        # Entradas y bloqueos se cuentan únicamente por sus fechas de registro.
+        # Cada módulo se cuenta por su fecha de negocio, sin asignar fechas a los vacíos.
         for Model, column, key in (
             (EntradaSalidaEntry, EntradaSalidaEntry.fecha_ingreso, "entradas"),
             (HabitacionBloqueadaEntry, HabitacionBloqueadaEntry.fecha_bloqueo, "habitaciones_bloqueadas"),
+            (OrdenamientoEntry, OrdenamientoEntry.fecha_ejecucion, "ordenamiento"),
+            (HabitacionLiberadaEntry, HabitacionLiberadaEntry.fecha_devolucion, "habitaciones_liberadas"),
         ):
             q = db.query(column, func.count(Model.id)).filter(column.isnot(None))
             if d_from: q = q.filter(column >= d_from)
@@ -2411,6 +2455,8 @@ def dashboard():
             "cumplimiento": [],
             "entradas": [],
             "habitaciones_bloqueadas": [],
+            "ordenamiento": [],
+            "habitaciones_liberadas": [],
         }
 
         for k in ordered_days:
@@ -2432,6 +2478,8 @@ def dashboard():
             series_data["cumplimiento"].append(g["cumplimiento"])
             series_data["entradas"].append(g["entradas"])
             series_data["habitaciones_bloqueadas"].append(g["habitaciones_bloqueadas"])
+            series_data["ordenamiento"].append(g["ordenamiento"])
+            series_data["habitaciones_liberadas"].append(g["habitaciones_liberadas"])
             
             prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
             series_data["atencion_min"].append(round(prom_s/60.0, 2))
@@ -2455,6 +2503,8 @@ def dashboard():
             "cumplimiento_total": sum(series_data["cumplimiento"]),
             "entradas_total": sum(series_data["entradas"]),
             "habitaciones_bloqueadas_total": sum(series_data["habitaciones_bloqueadas"]),
+            "ordenamiento_total": sum(series_data["ordenamiento"]),
+            "habitaciones_liberadas_total": sum(series_data["habitaciones_liberadas"]),
             "atencion_tiempo_prom_global": (
                 seconds_to_mmss(int(mean([int(x*60) for x in series_data["atencion_min"] if x>0])))
                 if any(x>0 for x in series_data["atencion_min"]) else "00:00"

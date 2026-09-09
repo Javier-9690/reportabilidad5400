@@ -14,7 +14,7 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 - Generar reporte de dotación por gerencia.
 - Exportar reporte a Excel.
 - Acceder al módulo Registros hotelería desde la misma cabecera y el mismo dominio.
-- Registrar, importar, consultar, editar, eliminar y exportar los 17 tipos de registros operacionales de hotelería.
+- Registrar, importar, consultar, editar, eliminar y exportar los 19 tipos de registros operacionales de hotelería.
 - Consultar el dashboard KPI consolidado de hotelería por fechas o semanas.
 
 ## Menú principal
@@ -51,7 +51,7 @@ desde una página abierta antes de esta corrección.
 
 ### Eliminar varios registros o todo el listado
 
-Los 17 tipos de registros de hotelería incluyen una casilla en cada fila y
+Los 19 tipos de registros de hotelería incluyen una casilla en cada fila y
 la opción **Seleccionar todos los registros del listado**. El contador muestra
 cuántos están marcados; **Eliminar seleccionados** actúa sobre esas filas.
 
@@ -205,7 +205,60 @@ Los registros sin fecha se consultan y exportan sin filtros.
 
 La tabla `habitaciones_bloqueadas` se crea automáticamente al iniciar la aplicación.
 
-Ambos módulos utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
+### Ordenamiento y Habitaciones liberadas
+
+Ambos registros están disponibles en **Registros hotelería > Ingresar registros**
+y en el selector de **Consultar registros**. Cada uno incluye formulario,
+descarga de plantilla Excel, importación, listado, exportación CSV, edición
+con el lápiz y eliminación individual, por selección o de todos los registros.
+
+**Ordenamiento** utiliza estas 10 columnas, en el mismo orden en el formulario,
+la edición, la plantilla y el listado:
+
+1. FECHA EJECUCIÓN
+2. EMPRESA
+3. HABITACIÓN
+4. NOMBRE
+5. RUT
+6. TURNO
+7. REASIGNACIÓN
+8. MOTIVO CAMBIO
+9. PROCESADO
+10. PENDIENTE
+
+**Habitaciones liberadas** utiliza estas 7 columnas:
+
+1. Habitacion
+2. Empresa
+3. Entrega /devolucion
+4. Fecha de devolucion
+5. Comentario
+6. USO A PARTIR DE
+7. Observación
+
+Todos los campos son opcionales, incluidas las fechas. Basta con un dato para
+guardar o importar una fila; las filas totalmente vacías se omiten. Los campos
+vacíos se conservan y pueden completarse después. Habitación, RUT y Reasignación
+admiten códigos con ceros iniciales como texto; Motivo cambio, Comentario y
+Observación conservan varias líneas. Procesado, Pendiente y Entrega /devolucion
+son campos de texto libre.
+
+Las plantillas admiten fechas de Excel y texto `DD/MM/AAAA` o `AAAA-MM-DD`.
+Las fechas informadas se validan; si alguna fila contiene un dato inválido,
+se indica su número y no se guarda ninguna fila del archivo.
+
+Cada módulo tiene una tarjeta y un gráfico en el dashboard. **Ordenamiento**
+cuenta registros por **FECHA EJECUCIÓN**; **Habitaciones liberadas**, por
+**Fecha de devolucion**. Los filtros de período o semana del listado, CSV y
+borrado utilizan esas mismas fechas. **USO A PARTIR DE** se conserva como
+fecha independiente y no sustituye la fecha de devolución. Los registros
+sin la fecha principal se consultan y exportan sin filtros, y no se asignan
+a un día en el gráfico. Las cifras cuentan registros, no habitaciones únicas.
+
+Las tablas `ordenamiento` y `habitaciones_liberadas` se crean automáticamente
+al iniciar la aplicación, conservando las tablas y registros existentes.
+
+Reportabilidad y Registros hotelería utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni
 sobrescribe información previa.
 

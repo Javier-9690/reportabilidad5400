@@ -58,9 +58,34 @@ BLOCKED_ROOM_FIELDS = (
     ("observacion", "OBSERVACIÓN"),
 )
 
+ORDERING_FIELDS = (
+    ("fecha_ejecucion", "FECHA EJECUCIÓN"),
+    ("empresa", "EMPRESA"),
+    ("habitacion", "HABITACIÓN"),
+    ("nombre", "NOMBRE"),
+    ("rut", "RUT"),
+    ("turno", "TURNO"),
+    ("reasignacion", "REASIGNACIÓN"),
+    ("motivo_cambio", "MOTIVO CAMBIO"),
+    ("procesado", "PROCESADO"),
+    ("pendiente", "PENDIENTE"),
+)
+
+RELEASED_ROOM_FIELDS = (
+    ("habitacion", "Habitacion"),
+    ("empresa", "Empresa"),
+    ("entrega_devolucion", "Entrega /devolucion"),
+    ("fecha_devolucion", "Fecha de devolucion"),
+    ("comentario", "Comentario"),
+    ("uso_a_partir_de", "USO A PARTIR DE"),
+    ("observacion", "Observación"),
+)
+
 OPTIONAL_RECORD_FIELDS = {
     "entradas_salidas": ENTRY_EXIT_FIELDS,
     "habitaciones_bloqueadas": BLOCKED_ROOM_FIELDS,
+    "ordenamiento": ORDERING_FIELDS,
+    "habitaciones_liberadas": RELEASED_ROOM_FIELDS,
 }
 
 
@@ -83,6 +108,8 @@ EDIT_CONFIG = {
     "cumplimiento": ("Cumplimiento EECC", "fecha empresa n_contrato co correo_electronico id_interno turno"),
     "entradas_salidas": ("Entradas y salidas", " ".join(name for name, _ in ENTRY_EXIT_FIELDS)),
     "habitaciones_bloqueadas": ("Habitaciones bloqueadas", " ".join(name for name, _ in BLOCKED_ROOM_FIELDS)),
+    "ordenamiento": ("Ordenamiento", " ".join(name for name, _ in ORDERING_FIELDS)),
+    "habitaciones_liberadas": ("Habitaciones liberadas", " ".join(name for name, _ in RELEASED_ROOM_FIELDS)),
 }
 
 FIELD_LABELS = {
@@ -130,6 +157,8 @@ def edit_fields(entity, record):
         "extensiones": dict(EXTENSION_FIELDS),
         "entradas_salidas": dict(ENTRY_EXIT_FIELDS),
         "habitaciones_bloqueadas": dict(BLOCKED_ROOM_FIELDS),
+        "ordenamiento": dict(ORDERING_FIELDS),
+        "habitaciones_liberadas": dict(RELEASED_ROOM_FIELDS),
     }.get(entity, FIELD_LABELS)
     for name in EDIT_CONFIG[entity][1].split():
         column = record.__table__.columns[name]
@@ -252,4 +281,6 @@ def parse_edit_values(entity, fields, form):
                              "fecha_liberada_mantencion", "fecha_liberada_investigacion"):
                     if values[name] is not None and values[name] < values["fecha_bloqueo"]:
                         errors[name] = "La fecha de liberación no puede ser anterior a la fecha de bloqueo."
+        elif entity in ("ordenamiento", "habitaciones_liberadas") and all(value is None for value in values.values()):
+            errors["_form"] = "Ingresa al menos un dato para guardar el registro."
     return values, errors
