@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Revisar importación de órdenes | {{ super() }}{% endblock %}
+{% block content %}
+<div class="content-container">
+  <h1 class="page-title">Revisar importación de órdenes</h1>
+  <p><strong>{{ filename }}</strong> · Hoja: {{ parsed.sheet }} · {{ '{:,}'.format(parsed.total).replace(',', '.') }} órdenes.</p>
+  <div class="alert alert-warning">
+    <strong>Se reemplazará todo el contenido de Misceláneos y Solicitudes OT.</strong>
+    La tabla muestra cuántos registros actuales se eliminarán y cuántos se cargarán.
+    Todavía no se han cambiado los registros. Esta vista previa vence en 30 minutos.
+  </div>
+  <div class="table-responsive mb-3"><table class="table table-bordered">
+    <thead><tr><th>Categoría</th><th>Registros actuales a eliminar</th><th>Órdenes nuevas</th><th>Regla de Especialidad</th></tr></thead>
+    <tbody>{% for entity, rows in parsed.groups.items() %}<tr>
+      <th scope="row">{{ titles[entity] }}</th>
+      <td>{{ '{:,}'.format(previous[entity].count).replace(',', '.') }}</td>
+      <td>{{ '{:,}'.format(rows|length).replace(',', '.') }}</td>
+      <td>{{ 'CARPINTERIA MENOR' if entity == 'miscelaneo' else 'Todas las demás, incluidas las vacías' }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p>Se ignoran tildes, mayúsculas y espacios adicionales al comparar Especialidad. CARPINTERIA se guarda en Solicitudes OT.</p>
+  {% if not parsed.groups.miscelaneo or not parsed.groups.solicitud_ot %}
+  <div class="alert alert-warning">Una categoría recibirá cero órdenes y quedará vacía si confirmas el reemplazo.</div>
+  {% endif %}
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h5">Efecto en Gestión de usuarios</h2>
+    <p>{{ report_note }}</p>
+    {% if parsed.start %}<p>Fechas de referencia del archivo: {{ parsed.start.strftime('%d/%m/%Y') }} al {{ parsed.end.strftime('%d/%m/%Y') }}.</p>{% endif %}
+    <p>{{ parsed.undated.solicitud_ot }} Solicitudes OT sin Fecha creación ni Fecha inicio quedarán guardadas y fuera de los reportes por fecha.
+       {{ parsed.fallback.solicitud_ot }} usarán Fecha inicio porque Fecha creación está vacía.</p>
+    <p class="mb-0">Los campos vacíos se conservan. Se omiten {{ parsed.blank_rows }} filas completamente vacías.
+       Hay {{ parsed.blank_specialty }} órdenes con Especialidad vacía y {{ parsed.duplicate_tickets }} repeticiones de ticket; cada fila cuenta una vez.</p>
+  </div></div>
+  <details class="card mb-3"><summary class="card-header">Estados del archivo y clasificación del reporte</summary>
+    <div class="table-responsive"><table class="table table-sm mb-0">
+      <thead><tr><th>Categoría</th><th>Estado original</th><th>Cantidad</th><th>Tratamiento en Gestión de usuarios</th></tr></thead>
+      <tbody>{% for row in status_rows %}<tr><td>{{ titles[row.entity] }}</td><td>{{ row.state }}</td><td>{{ row.count }}</td><td>{{ row.group }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% for entity, rows in parsed.groups.items() %}
+  <div class="card mb-3">
+    <div class="card-header"><h2 class="h5 mb-0">{{ titles[entity] }} · Muestra de hasta 5 órdenes</h2></div>
+    <div class="table-responsive" tabindex="0" role="region" aria-label="Vista previa {{ titles[entity] }}">
+      <table class="table table-sm table-bordered mb-0" style="min-width:1800px">
+        <thead><tr>{% for name, label in columns %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in rows[:5] %}<tr>{% for name, label in columns %}<td style="white-space:pre-wrap">{{ row[name]|record_value }}</td>{% endfor %}</tr>
+        {% else %}<tr><td colspan="15">Sin órdenes para esta categoría.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+  <form method="post" action="{{ url_for('order_imports.confirm') }}" class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="confirmation_token" value="{{ confirmation_token }}">
+    <div class="form-check mb-3">
+      <input type="checkbox" class="form-check-input" name="confirm_replace" id="confirmOrderReplace" value="1" required>
+      <label class="form-check-label" for="confirmOrderReplace">Confirmo eliminar todos los registros actuales de ambas categorías y reemplazarlos con las órdenes de este archivo.</label>
+    </div>
+    <button type="submit" class="btn btn-danger">Confirmar y reemplazar ambas bases</button>
+  </form>
+  <form method="post" action="{{ url_for('order_imports.cancel') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="confirmation_token" value="{{ confirmation_token }}">
+    <button type="submit" class="btn btn-outline-secondary">Cancelar y conservar los registros</button>
+  </form>
+</div>
+{% endblock %}

@@ -36,7 +36,7 @@ extremos y todos los días intermedios, aunque no tengan registros.
 | --- | --- | --- | --- |
 | Doble asignación | Duplicidades | Fecha | Estatus |
 | Reclamos usuarios | Reclamos de usuarios | Fecha | Estatus |
-| Solicitudes de usuarios | Solicitud y OT de usuario | Fecha inicio | Estado |
+| Solicitudes de usuarios | Solicitud y OT de usuario | Fecha creación; Fecha inicio si falta | Estado |
 | Samtech usuarios | Samtech usuarios | Fecha creación | Estado |
 | Desviaciones clientes | Desviaciones | Fecha | No tiene campo de estado |
 
@@ -90,6 +90,15 @@ con los conteos acumulados, sin promediar los porcentajes diarios. Sin casos
 clasificables se muestra 0% y se explica esa ausencia. Los casos sin clasificar
 no se incluyen en el denominador.
 
+La importación conjunta de órdenes alimenta **Solicitudes de usuarios** desde
+Solicitudes OT. CARPINTERIA MENOR se guarda únicamente en Misceláneos. En Solicitudes
+OT, **Aprobada/Aprobado** también cuenta como Cerrado; Completada ya es equivalente
+a Cerrado. Eliminado y Felicitaciones se conservan como Sin clasificar. Esta
+equivalencia adicional no cambia la clasificación de Samtech ni de otros módulos.
+Las cuatro fechas originales se conservan; la fecha de importación no sustituye
+la fecha del caso. El Excel agrega **Fecha para reporte**, calculada desde Fecha
+creación y, cuando está vacía, Fecha inicio, para reproducir exactamente los conteos.
+
 Los registros sin la fecha de referencia quedan fuera del período. Se informa
 cuántos existen en el histórico de las cinco categorías, para completar sus fechas;
 ese conteo no se atribuye al rango solicitado. Los criterios y estados pendientes
@@ -125,6 +134,55 @@ excede ese límite se informa sin truncarlo silenciosamente. La exportación usa
 las dependencias existentes del programa y no requiere migraciones ni nuevas tablas.
 
 ## Registros hotelería
+
+### Importación conjunta de órdenes: Misceláneos y Solicitudes OT
+
+Desde cualquiera de las dos categorías, selecciona el Excel de órdenes y pulsa
+**Importar órdenes · Revisar**. Ambas plantillas tienen las mismas 15 columnas:
+Ticket, División, Área, Lugar, Ubicación, Disciplina, Especialidad, Falla, Empresa,
+Fecha creación, Fecha inicio, Fecha término, Fecha aprobación, Estado y Comentario.
+Se acepta el formato del archivo `ordenes.xlsx`, con fechas `dd/mm/aaaa` o fechas
+reales de Excel, y también `aaaa-mm-dd`. Ticket se guarda en el campo OT existente.
+
+- **CARPINTERIA MENOR** en Especialidad → Misceláneos.
+- Todas las demás especialidades, incluidas las vacías → Solicitudes OT.
+- La comparación ignora tildes, mayúsculas y espacios adicionales. **CARPINTERIA**
+  y **CARPINTERIA MENOR EXTRA** no son CARPINTERIA MENOR y van a Solicitudes OT.
+
+La vista previa muestra los registros actuales que se eliminarán, las órdenes
+nuevas por destino, los estados, las fechas y hasta cinco ejemplos por categoría.
+Para ejecutar hay que marcar la confirmación y pulsar **Confirmar y reemplazar
+ambas bases**. **Cancelar** conserva los datos. No se acumula sobre las filas
+existentes: al confirmar, ambas categorías se reemplazan en una sola transacción.
+Si falla una parte, se revierten todos los cambios. Si alguna categoría recibe
+cero filas, la vista previa avisa que quedará vacía. Una plantilla totalmente
+vacía nunca permite borrar las bases.
+
+Los campos y fechas vacíos se admiten. Las filas completamente vacías se omiten.
+Un encabezado, fecha o valor inválido rechaza todo el archivo antes de reemplazar
+datos. Las fórmulas de origen deben convertirse a valores. Los tickets repetidos
+se señalan y cada fila cuenta una vez, sin deduplicar datos silenciosamente.
+Los campos largos, como Falla y Comentario, se conservan completos.
+
+Se valida que las bases no hayan cambiado desde la vista previa: una alta, edición
+o eliminación posterior obliga a revisarla nuevamente. La confirmación pertenece
+a la sesión que cargó el archivo, vence a los 30 minutos y se utiliza una sola vez.
+La última vista previa sustituye a las anteriores de esa sesión. El archivo
+temporal se elimina al confirmar, cancelar o limpiar vistas expiradas en una carga
+posterior. Los límites son 25 MB por archivo y 150.000 órdenes.
+
+Los 15 campos importados aparecen en formularios, edición, listados, búsqueda,
+CSV y detalle Excel. Solicitudes OT conserva también sus campos históricos.
+Sus listados y Misceláneos muestran 100 filas por página con todas las columnas.
+La búsqueda, CSV y **Eliminar todos** abarcan todo el resultado filtrado; las
+casillas seleccionan la página visible. El reporte de Gestión de usuarios consulta
+inmediatamente las nuevas Solicitudes OT, sin modificar Samtech ni las otras
+categorías. Los registros sin ambas fechas permanecen guardados y quedan fuera
+de los reportes por fecha; esta cantidad se informa.
+
+La actualización añade columnas opcionales a Solicitudes OT y una tabla temporal
+para las vistas previas, sin borrar los registros existentes. El reemplazo de datos
+ocurre únicamente al confirmar dentro del programa. No requiere nuevas dependencias.
 
 El módulo antes llamado Gestión 5S se encuentra en estas rutas dentro de la aplicación principal:
 

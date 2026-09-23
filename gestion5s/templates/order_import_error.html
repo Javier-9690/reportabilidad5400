@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Importación de órdenes | {{ super() }}{% endblock %}
+{% block content %}
+<div class="content-container">
+  <h1 class="page-title">Importación de órdenes</h1>
+  <div class="alert alert-danger" role="alert">{{ message }}</div>
+  <a class="btn btn-primary-custom" href="{{ url_for('panel', tab=tab) }}">Volver al formulario</a>
+</div>
+{% endblock %}

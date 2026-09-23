@@ -1,89 +1,127 @@
-REPORTABILIDAD 5400 — CORRECCIÓN DEL REPORTE: CINCO CATEGORÍAS
+REPORTABILIDAD 5400 — IMPORTACIÓN CONJUNTA DE ÓRDENES
+Actualización del 23/09/2026
 
-Programa completo con todas las mejoras de esta conversación.
-Base: https://github.com/Javier-9690/reportabilidad5400
-Commit de origen: f67683f33208d1917fd766649ef897df63ced824
+Programa completo con las mejoras anteriores de esta conversación.
+Repositorio: https://github.com/Javier-9690/reportabilidad5400
+Base: f67683f33208d1917fd766649ef897df63ced824
 
-CORRECCIÓN INCLUIDA
-El reporte ahora considera Doble asignación y Desviaciones clientes junto a
-Reclamos usuarios, Solicitudes de usuarios y Samtech usuarios.
-Abre Reportes > Gestión de usuarios, completa Desde y Hasta y pulsa Generar reporte.
-Se incluyen ambos extremos y todos los días del rango, incluso si tienen cero casos.
+NUEVO FLUJO PARA MISCELÁNEOS Y SOLICITUDES OT
+1. En Registros hotelería, abre Misceláneo o Solicitudes OT.
+2. Selecciona el archivo de órdenes y pulsa Importar órdenes · Revisar.
+3. Revisa cuántos registros actuales se eliminarán, cuántas órdenes nuevas
+   recibirá cada categoría, las fechas, estados y muestras del archivo.
+4. Para reemplazar, marca la confirmación y pulsa Confirmar y reemplazar ambas bases.
+   Cancelar conserva los registros anteriores.
 
-ORIGEN DE LOS DATOS Y ORDEN DE LAS FILAS
-1. Doble asignación: registro Duplicidades, columna Fecha y campo Estatus.
-2. Reclamos usuarios: Reclamos de usuarios, columna Fecha y campo Estatus.
-3. Solicitudes de usuarios: Solicitud y OT de usuario, Fecha inicio y campo Estado.
-4. Samtech usuarios: Samtech usuarios, Fecha creación y campo Estado.
-5. Desviaciones clientes: registro Desviaciones, columna Fecha, sin campo de estado.
-Cada fila guardada cuenta una vez. Los tickets repetidos cuentan por separado.
-Fecha cierre de Duplicidades no reemplaza su Fecha del registro. Las fechas de
-inicio, término y aprobación de Samtech no reemplazan su Fecha creación.
+Una sola importación reemplaza TODAS las filas de AMBAS categorías:
+- Especialidad CARPINTERIA MENOR → Misceláneos.
+- Cualquier otra especialidad, incluida vacía → Solicitudes OT.
+La comparación ignora mayúsculas, tildes y espacios adicionales. CARPINTERIA
+sin MENOR y CARPINTERIA MENOR EXTRA van a Solicitudes OT.
 
-ALCANCE
-- Las cinco filas figuran en la tabla diaria, en el mismo orden de la imagen.
-- El total diario y el total del período suman las cinco categorías.
-- El dashboard actualiza los indicadores, conclusiones y resumen por categoría.
-- Ambos gráficos incluyen las cinco categorías, con cinco series de volumen.
-- Ver registros abre cada categoría con las mismas fechas del reporte.
-- Se mantienen encabezados rojos, totales amarillos y barras horizontales.
+Ambas plantillas usan los 15 encabezados del archivo ordenes.xlsx:
+Ticket, División, Área, Lugar, Ubicación, Disciplina, Especialidad, Falla, Empresa,
+Fecha creación, Fecha inicio, Fecha término, Fecha aprobación, Estado, Comentario.
+Ticket se conserva en la columna OT existente. Se admiten campos y fechas vacíos,
+fechas dd/mm/aaaa, aaaa-mm-dd y fechas reales de Excel. Se omiten filas totalmente
+vacías. Se mantienen los textos completos y los ceros iniciales de identificadores.
+Las columnas pueden cambiar de orden, pero deben conservar los 15 encabezados.
 
-ESTADOS Y PORCENTAJE DE CIERRE
-Doble asignación se clasifica por Estatus. Desviaciones no tiene ese campo:
-sus casos aportan al volumen total y se muestran en Sin clasificar, sin atribuir
-un estado abierto o cerrado a partir de Acciones. Su porcentaje por categoría
-muestra No aplica. Las conclusiones explican esta condición y la distinguen de
-los estados vacíos o no reconocidos que sí necesitan revisión en otras categorías.
+Una fecha/valor inválido rechaza todo el archivo antes de reemplazar registros.
+Las fórmulas de origen deben convertirse a valores. Una plantilla vacía no
+permite borrar las bases. Si una sola categoría recibe cero órdenes, se avisa
+que quedará vacía al confirmar. Los tickets repetidos se señalan: cada fila
+cuenta una vez, sin deduplicar datos silenciosamente.
 
-El reporte utiliza el estado ACTUAL de los casos fechados en el período. Un caso
-cerrado permanece en su fecha de origen; no se reconstruyen estados históricos
-ni se atribuyen los cierres al día en que ocurrieron.
-Abierto/Abierta, No iniciada/No iniciado, En progreso/En proceso/En curso/
-En ejecución/Iniciado/Iniciada y Pendiente/En espera cuentan como abiertos.
-Cerrado/Cerrada, Resuelto/Resuelta, Finalizado/Finalizada, Completado/Completada y
-Terminado/Terminada cuentan como cerrados. Otros valores, incluidos Cancelado,
-Rechazado y los vacíos, quedan Sin clasificar. Se normalizan mayúsculas, tildes,
-espacios, guiones y guiones bajos sin modificar los estados guardados.
+PROTECCIÓN DEL REEMPLAZO
+El reemplazo de ambas categorías se realiza en una única transacción. Si falla
+una inserción, se recuperan todos los registros anteriores. La confirmación se
+utiliza una sola vez, está asociada a la sesión y vence a los 30 minutos.
+Si otra persona agrega, modifica o elimina registros después de la vista previa,
+se solicita revisar nuevamente el archivo. La última vista previa sustituye a
+las anteriores de esa sesión. El archivo temporal se elimina al confirmar,
+cancelar o limpiar vistas expiradas en la siguiente carga.
+Límites: archivo de hasta 25 MB y hasta 150.000 órdenes.
 
-Porcentaje cerrado = Cerrados / (Abiertos + Cerrados).
-El total del período usa los conteos acumulados, sin promediar porcentajes diarios.
-Sin casos clasificables se muestra 0% y se explica esa ausencia. Desviaciones y
-los estados sin clasificar quedan fuera del denominador. El total de registros
-siempre coincide con abiertos + cerrados + sin clasificar.
-Los registros sin fecha de referencia quedan fuera del rango. Se informa cuántos
-hay en el histórico de estas categorías, sin atribuirlos al período solicitado.
+EFECTO EN GESTIÓN DE USUARIOS
+Se conservan las cinco filas del reporte: Doble asignación, Reclamos usuarios,
+Solicitudes de usuarios, Samtech usuarios y Desviaciones clientes.
+Solicitudes de usuarios se alimenta inmediatamente de Solicitudes OT después
+de confirmar la importación. CARPINTERIA MENOR pertenece a Misceláneos y no
+se añade a esa fila. Samtech conserva su registro independiente.
 
-EXCEL PARA ENVÍO
-Exportar Excel descarga reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx con siete hojas:
-1. Reporte diario: fechas reales, conteos, totales y porcentajes con fórmulas.
-2. Conclusiones: indicadores, resumen, conclusiones, dos gráficos y criterios.
-3. Doble asignación: todos los campos de Duplicidades dentro del rango.
-4. Reclamos usuarios: todos los campos de los registros del rango.
-5. Solicitudes OT: todos los campos de los registros del rango.
-6. Samtech usuarios: todos los campos de los registros del rango.
-7. Desviaciones clientes: todos los campos, incluido Acciones, dentro del rango.
-Las cinco hojas de detalle incluyen Estado agrupado, encabezados fijos y autofiltro.
-Desviaciones muestra Sin campo de estado en Estado agrupado. Los campos vacíos
-siguen vacíos; los textos e identificadores conservan sus ceros iniciales.
-Los conteos usan COUNTIFS sobre las hojas de detalle, con resultados guardados
-para visores. Los gráficos de Excel se enlazan a las cinco categorías y se
-mantienen completos al imprimir el dashboard.
+Solicitudes OT se agrupa por Fecha creación, usando Fecha inicio si la primera
+está vacía. Así, las órdenes No Iniciada con Fecha creación entran en el período.
+No se utiliza la fecha de importación ni se sustituyen las cuatro fechas originales.
+Si ambas fechas están vacías, la orden se guarda y queda fuera de los reportes
+por fecha; se informa la cantidad. Los registros antiguos sin Fecha creación
+siguen usando su Fecha inicio hasta que se reemplacen o editen.
 
-La descarga consulta nuevamente la información y registra la hora de exportación
-UTC. Las conclusiones corresponden a esa exportación. Tras editar registros,
-genera un archivo nuevo. Si cambias Desde o Hasta, pulsa Generar reporte antes
-de exportar. El archivo se descarga para enviarlo; el programa no envía correos.
+En Solicitudes OT, Aprobada/Aprobado y Completada cuentan como cerradas.
+No Iniciada y En Progreso cuentan como abiertas, junto a las equivalencias
+anteriores del reporte. Eliminado y Felicitaciones quedan Sin clasificar:
+suman al volumen, pero no al denominador del porcentaje de cierre.
+La equivalencia adicional de Aprobada se aplica únicamente a Solicitudes OT.
+Los estados originales del Excel no se modifican.
 
-SI YA INSTALASTE LA VERSIÓN ANTERIOR DEL REPORTE
-Reemplaza estos archivos, conservando sus carpetas:
+El dashboard, las conclusiones, el listado filtrado y el Excel usan los mismos
+criterios. La hoja Solicitudes OT del Excel muestra los 15 campos importados,
+los campos históricos, Fecha para reporte y Estado agrupado. Fecha para reporte
+se calcula mediante una fórmula para que los COUNTIFS diarios reproduzcan los
+conteos del programa. Los criterios de fecha y estado están visibles en el reporte.
+
+LISTADOS Y CAMPOS
+Misceláneos y Solicitudes OT muestran 100 filas por página con todas las columnas
+y desplazamiento horizontal. La búsqueda, el CSV y Eliminar todos abarcan todas
+las páginas con los filtros actuales. Las casillas seleccionan la página visible.
+Se conservan Ver registros, edición con lápiz, eliminación individual y múltiple.
+Solicitudes OT conserva sus campos históricos además de las 15 columnas nuevas.
+
+VERIFICACIÓN CON EL ARCHIVO ADJUNTO
+Se leyó ordenes.xlsx y se probó la importación en una base TEMPORAL aislada:
+- Total: 28.408 órdenes.
+- Misceláneos: 6.690 órdenes.
+- Solicitudes OT: 21.718 órdenes.
+Los conteos diarios del reporte del 31/08/2026 al 23/09/2026 se contrastaron con
+el Excel original: 711 Solicitudes OT, 59 abiertas y 652 cerradas.
+Esto es una comprobación; NO se cargó el archivo en producción y el archivo de
+datos no está dentro del ZIP. Debes importarlo desde el programa tras actualizar.
+
+SI YA INSTALASTE LA ENTREGA ANTERIOR DEL REPORTE
+Reemplaza estos archivos, respetando sus carpetas:
 - README.md
+- gestion5s/editing.py
+- gestion5s/templates/list.html
+- gestion5s/templates/panel.html
 - gestion5s/user_report_excel.py
 - gestion5s/user_reports.py
-- static/js/user_report.js
+- gestion5s/web.py
 - templates/user_report.html
-- tests/test_user_report_interface.cjs
+- tests/test_integration.py
 - tests/test_user_reports.py
-No se necesitan archivos adicionales respecto de esa entrega.
+
+Añade estos archivos nuevos:
+- gestion5s/order_import_routes.py
+- gestion5s/orders.py
+- gestion5s/templates/order_import_error.html
+- gestion5s/templates/order_import_preview.html
+- tests/test_order_import.py
+
+INSTALACIÓN Y ACTUALIZACIÓN DE BASE DE DATOS
+1. Descomprime el ZIP y copia los archivos indicados en las mismas carpetas.
+2. Guarda los cambios en la rama de GitHub utilizada por Render.
+3. Despliega el último commit o espera el despliegue automático.
+4. Abre Misceláneo o Solicitudes OT e importa ordenes.xlsx con vista previa.
+5. Confirma el reemplazo cuando revises las cantidades.
+No subas el ZIP como sustituto de los archivos del programa.
+
+Al iniciar, se agregan columnas opcionales a Solicitudes OT y una tabla temporal
+para las vistas previas. Falla de Misceláneos admite textos largos. La migración
+conserva los registros existentes: no realiza el reemplazo automáticamente.
+No se requieren dependencias nuevas. La transacción usa el bloqueo adecuado de
+PostgreSQL o SQLite para evitar sobrescribir cambios desde la vista previa.
+Los cambios no están publicados en GitHub ni desplegados en Render: la conexión
+verificada al repositorio tiene permiso de lectura, sin permiso de escritura.
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
@@ -108,8 +146,13 @@ MEJORAS ANTERIORES INCLUIDAS
 El README detalla las columnas y el funcionamiento de cada módulo.
 
 
+- Reporte de Gestión de usuarios con las cinco categorías, conclusiones,
+  ambos gráficos y Excel de siete hojas, incluyendo Desviaciones y Doble asignación.
+- Desviaciones aporta al total y queda fuera del porcentaje de cierre porque
+  su registro no tiene campo de estado; se explica como Sin clasificar.
+
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
-Reemplaza estos archivos, conservando sus carpetas:
+Reemplaza:
 - README.md
 - app.py
 - gestion5s/templates/base.html
@@ -122,11 +165,15 @@ Reemplaza estos archivos, conservando sus carpetas:
 - templates/dashboard.html
 - tests/test_integration.py
 
-Añade estos archivos nuevos:
+Añade:
 - gestion5s/editing.py
+- gestion5s/order_import_routes.py
+- gestion5s/orders.py
 - gestion5s/searching.py
 - gestion5s/templates/bulk_delete_confirm.html
 - gestion5s/templates/edit.html
+- gestion5s/templates/order_import_error.html
+- gestion5s/templates/order_import_preview.html
 - gestion5s/templates/record_fields.html
 - gestion5s/user_report_excel.py
 - gestion5s/user_report_routes.py
@@ -145,31 +192,20 @@ Añade estos archivos nuevos:
 - tests/test_extension_fields.py
 - tests/test_form_structure.py
 - tests/test_hotel_interface.cjs
+- tests/test_order_import.py
 - tests/test_record_search.py
 - tests/test_room_operations.py
 - tests/test_samtech_users.py
 - tests/test_user_report_interface.cjs
 - tests/test_user_reports.py
 
-PUBLICAR LA ACTUALIZACIÓN
-1. Descomprime el ZIP y copia los archivos indicados a sus carpetas.
-2. Guarda los cambios en la rama de GitHub que utiliza tu servicio de Render.
-3. Espera el despliegue automático o despliega el último commit desde Render.
-No subas el ZIP como sustituto de los archivos del programa.
-Los cambios aún no están publicados en GitHub ni desplegados en Render, porque
-la conexión disponible al repositorio tiene permiso de lectura.
-La corrección del reporte usa las dependencias existentes y no requiere nuevas
-tablas ni migraciones. Se conservan las migraciones de las mejoras anteriores.
-
 COMPROBACIONES
-Pasaron las 88 pruebas funcionales con bases SQLite temporales, incluidas las
-14 pruebas del reporte. Cubren las cinco fuentes, límites de fechas, días vacíos,
-estados, campos opcionales, fórmulas, totales, porcentajes ponderados, detalle
-completo, gráficos, filtros, errores y conservación de datos. Se comprobó que
-Acciones no se interprete como un estado ni modifique los conteos de cierre.
-Las pruebas JavaScript verificaron ambas visualizaciones con cinco categorías,
-los colores, los cambios de fechas y el regreso del navegador.
-Se verificaron 504 fórmulas mediante recálculo en LibreOffice, con exportaciones
-de 13 días y un día. Se revisaron visualmente la tabla, el dashboard, las cinco
-series y los gráficos completos al imprimir. Los datos usados fueron sintéticos;
-no se accedió a la base de producción ni se incluyeron datos de prueba en el ZIP.
+Pasaron las 101 pruebas funcionales, incluidas 13 pruebas de la nueva importación.
+Se verificaron clasificación exacta, ambas vías de entrada, campos vacíos,
+encabezados reordenados, fechas de Excel, cancelación, confirmación obligatoria,
+reintentos, expiración, cambios simultáneos, reversión tras fallo parcial,
+migración aditiva y paginación sin limitar la búsqueda, CSV ni Eliminar todos.
+Se probó el archivo real completo y se conciliaron los conteos por día y estado.
+Se recalcularon y verificaron 411 fórmulas en una exportación de prueba mediante
+LibreOffice, incluida Fecha para reporte; se revisaron gráficos y criterios.
+Las pruebas usaron bases temporales, sin modificar datos de producción.

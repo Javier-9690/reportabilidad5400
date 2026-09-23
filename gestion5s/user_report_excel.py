@@ -6,6 +6,7 @@ import math
 
 import xlsxwriter
 from xlsxwriter.utility import xl_col_to_name, xl_rowcol_to_cell
+from openpyxl.utils.datetime import to_excel
 
 from gestion5s.user_reports import OPEN_STATUSES, STATUS_ALIASES, STATUS_LABELS, classify_status
 
@@ -88,7 +89,12 @@ def export_user_report(report):
         for row, record in enumerate(category["details"], 5):
             for column, field in enumerate(fields):
                 value = record[field["name"]]
-                if value is None:
+                if field["name"] == category.get("report_date_field"):
+                    creation = xl_rowcol_to_cell(row, next(i for i, f in enumerate(fields) if f["name"] == category["date"]))
+                    started = xl_rowcol_to_cell(row, next(i for i, f in enumerate(fields) if f["name"] == category["date_fallback"]))
+                    sheet.write_formula(row, column, f'=IF({creation}<>"",{creation},IF({started}<>"",{started},""))',
+                                        formats["date"], to_excel(value) if value else "")
+                elif value is None:
                     sheet.write_blank(row, column, None, formats["text"])
                 elif field["kind"] == "duration":
                     sheet.write_number(row, column, value / 86400, formats["duration"])
@@ -102,7 +108,7 @@ def export_user_report(report):
                     sheet.write_number(row, column, value, formats["raw_number"])
                 else:
                     sheet.write_string(row, column, str(value), formats["source_text"])
-            status_label = (STATUS_LABELS[classify_status(record[category["status"]])]
+            status_label = (STATUS_LABELS[classify_status(record[category["status"]], entity=category["entity"])]
                             if category["status"] else "Sin campo de estado")
             sheet.write_string(row, last_column, status_label, formats["text"])
         last_row = max(5, len(category["details"]) + 4)
@@ -111,7 +117,7 @@ def export_user_report(report):
         sheet.set_landscape()
         sheet.repeat_rows(4)
         sheet.set_footer("&LReportabilidad 5400&R&P / &N")
-        date_index = next(index for index, field in enumerate(fields) if field["name"] == category["date"])
+        date_index = next(index for index, field in enumerate(fields) if field["name"] == category.get("report_date_field", category["date"]))
         date_letter = xl_col_to_name(date_index)
         status_letter = xl_col_to_name(last_column)
         source_ranges[category["entity"]] = {
@@ -285,7 +291,7 @@ def export_user_report(report):
     dashboard.insert_chart(chart_row, 10, status)
     note_row = chart_row + 18
     dashboard.merge_range(note_row, 0, note_row, 18, "Criterios del informe", formats["section"])
-    notes = [report["method_note"], report["rate_note"], report["without_status_note"],
+    notes = [report["method_note"], report["rate_note"], report["without_status_note"], report["orders_note"],
              "Cada fila guardada cuenta una vez. Los tickets repetidos cuentan por separado. Se incluyen todos los días del rango.",
              "Fechas utilizadas: " + "; ".join(f"{c['label']}: {c['date_label']}" for c in report["categories"]),
              "Registros sin fecha en el histórico, excluidos del rango: " + "; ".join(f"{c['label']}: {c['undated']}" for c in report["categories"])]

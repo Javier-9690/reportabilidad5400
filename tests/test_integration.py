@@ -54,9 +54,9 @@ IMPORT_ROWS = {
     "encuesta": ["2026-09-02 10:00", "Bien", 5, "Bien", 5, "Bien", 5, "Bien", 5, "Bien", 5, 25, 5.0, ""],
     "atencion": ["2026-09-02", "03:30", 2],
     "robos": ["2026-09-02", "08:30"] + [""] * 9,
-    "miscelaneo": ["OT", "", "", "", "", "", "", "", "", "2026-09-02", "", "", "", "", ""],
+    "miscelaneo": ["OT", "", "", "", "", "", "CARPINTERIA MENOR", "", "", "2026-09-02", "", "", "", "", ""],
     "desviaciones": ["", "2026-09-02"] + [""] * 11 + ["Señalizar y programar reparación."],
-    "solicitud_ot": ["", "", "", "", "", "", "", "", "", "", "", "2026-09-02", "", "04:20", "", "", ""],
+    "solicitud_ot": ["OT", "", "", "", "", "", "GASFITER", "", "", "2026-09-02", "", "", "", "No Iniciada", ""],
     "reclamos": ["", "2026-09-02"] + [""] * 13,
     "alarmas": ["", "", "", "2026-09-02", "", "", "", None, None, None, None, "08:00", "", "", "2026-09-02", "", ""],
     "extensiones": ["2026-09-02", "", "", "", "", "CC-400", 2, "Excepción", "2026-09-02", "2026-09-03", "", ""],
@@ -135,15 +135,28 @@ class IntegratedApplicationTest(unittest.TestCase):
                 workbook.save(payload)
                 payload.seek(0)
 
+                data = {"file": (payload, f"{entity}.xlsx")}
+                if entity in ("miscelaneo", "solicitud_ot"):
+                    from tests.test_edit_records import FormValues
+                    page = self.client.get(f"/gestion-5s/panel?tab={entity}").get_data(as_text=True)
+                    data["csrf_token"] = FormValues(page).values["csrf_token"]
+
                 response = self.client.post(
                     f"/gestion-5s/import/{entity}",
-                    data={"file": (payload, f"{entity}.xlsx")},
+                    data=data,
                     content_type="multipart/form-data",
                     follow_redirects=True,
                 )
                 self.assertEqual(response.status_code, 200)
                 self.assertNotIn(b"Error importando", response.data)
                 self.assertNotIn(b"No se pudo leer", response.data)
+                if entity in ("miscelaneo", "solicitud_ot"):
+                    preview = FormValues(response.get_data(as_text=True)).values
+                    response = self.client.post("/gestion-5s/import/ordenes/confirm", data={
+                        "csrf_token": preview["csrf_token"], "confirmation_token": preview["confirmation_token"],
+                        "confirm_replace": "1",
+                    })
+                    self.assertEqual(response.status_code, 302)
 
 
 if __name__ == "__main__":

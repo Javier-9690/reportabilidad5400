@@ -16,15 +16,16 @@ from flask import (
 
 from gestion5s.editing import (
     EDIT_CONFIG, EXTENSION_FIELDS, ENTRY_EXIT_FIELDS, BLOCKED_ROOM_FIELDS,
-    ORDERING_FIELDS, RELEASED_ROOM_FIELDS, SAMTECH_USER_FIELDS, OPTIONAL_RECORD_FIELDS,
+    ORDERING_FIELDS, RELEASED_ROOM_FIELDS, SAMTECH_USER_FIELDS, ORDER_IMPORT_FIELDS, OPTIONAL_RECORD_FIELDS,
     edit_fields, list_fields, display_record_value, parse_edit_values, record_version,
 )
 from gestion5s.searching import clean_search_term, record_search_condition
+from gestion5s.orders import ORDER_ENTITIES, order_reference_column, order_reference_date
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Date, DateTime, Time, Float, Text, func, MetaData, Table
+    create_engine, Column, Integer, String, Date, DateTime, Time, Float, Text, LargeBinary, func, MetaData, Table
 )
 from sqlalchemy.schema import CreateTable
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -527,7 +528,7 @@ class MiscelaneoEntry(Base):
     ubicacion = Column(String(200), nullable=True)
     disciplina = Column(String(200), nullable=True)
     especialidad = Column(String(200), nullable=True)
-    falla = Column(String(200), nullable=True)
+    falla = Column(Text, nullable=True)
     empresa = Column(String(200), nullable=True)
     fecha_creacion = Column(Date, nullable=True)
     fecha_inicio = Column(Date, nullable=True)
@@ -576,6 +577,18 @@ class SolicitudOTEntry(Base):
     satisfaccion_reclamo = Column(String(200), nullable=True)
     motivo = Column(String(200), nullable=True)
     observacion = Column(Text, nullable=True)
+    division = Column(String(200), nullable=True)
+    area = Column(String(200), nullable=True)
+    lugar = Column(String(200), nullable=True)
+    ubicacion = Column(String(200), nullable=True)
+    disciplina = Column(String(200), nullable=True)
+    especialidad = Column(String(200), nullable=True)
+    falla = Column(Text, nullable=True)
+    empresa = Column(String(200), nullable=True)
+    fecha_creacion = Column(Date, nullable=True)
+    fecha_termino = Column(Date, nullable=True)
+    fecha_aprobacion = Column(Date, nullable=True)
+    comentario = Column(Text, nullable=True)
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 class ReclamoUsuarioEntry(Base):
@@ -765,6 +778,33 @@ class SamtechUsuarioEntry(Base):
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
+class OrderImportBatch(Base):
+    """Archivo validado temporal, compartido por los workers hasta confirmar."""
+    __tablename__ = "hotel_order_import_batches"
+    id = Column(String(64), primary_key=True)
+    owner = Column(String(64), nullable=False, index=True)
+    filename = Column(String(200), nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    snapshot = Column(Text, nullable=False)
+    return_tab = Column(String(30), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+def ensure_order_import_columns(engine):
+    """Ampliación aditiva: el histórico permanece intacto hasta la confirmación."""
+    with engine.begin() as conn:
+        optional = " IF NOT EXISTS" if conn.dialect.name == "postgresql" else ""
+        existing = {column["name"] for column in inspect(conn).get_columns("solicitudes_ot")}
+        for name, _ in ORDER_IMPORT_FIELDS:
+            if name not in existing:
+                data_type = SolicitudOTEntry.__table__.columns[name].type.compile(dialect=conn.dialect)
+                conn.execute(text(f"ALTER TABLE solicitudes_ot ADD COLUMN{optional} {name} {data_type}"))
+        if conn.dialect.name == "postgresql":
+            columns = {column["name"]: column for column in inspect(conn).get_columns("miscelaneo")}
+            if not isinstance(columns["falla"]["type"], Text):
+                conn.execute(text("ALTER TABLE miscelaneo ALTER COLUMN falla TYPE TEXT"))
+
+
 def ensure_deviation_actions_column(engine):
     """Añade el campo opcional a instalaciones existentes sin alterar sus registros."""
     with engine.begin() as conn:
@@ -824,6 +864,7 @@ Base.metadata.create_all(ENGINE)
 ensure_deviation_actions_column(ENGINE)
 ensure_extension_columns(ENGINE)
 ensure_optional_entry_exit_fields(ENGINE)
+ensure_order_import_columns(ENGINE)
 
 # Compatibilidad con instalaciones anteriores cuya tabla no tenía la fecha de negocio.
 columns = {column["name"] for column in inspect(ENGINE).get_columns("cumplimiento_eecc")}
@@ -920,6 +961,8 @@ def panel():
         "panel.html", tab=tab, entity=entity, entity_title=EDIT_CONFIG[entity][0],
         week_map=WEEK_MAP, current_tab=tab, form_fields=fields, field_errors=errors,
         optional_record=entity in OPTIONAL_RECORD_FIELDS, total_auto=total_auto,
+        order_import=entity in ORDER_ENTITIES,
+        order_csrf=session.setdefault("hotel_orders_csrf", secrets.token_hex(32)) if entity in ORDER_ENTITIES else None,
     ), status
 
 
@@ -936,9 +979,25 @@ def registros():
     db = SessionLocal()
     try:
         Model = ENTITY_MODEL[vista]
-        date_column = getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
+        date_column = order_reference_column(Model) if vista == "solicitud_ot" else getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
         date_order = date_column.desc().nullslast()
-        rows = hotel_records_query(db, vista, d_from, d_to, search).order_by(date_order, Model.id.desc()).all()
+        query = hotel_records_query(db, vista, d_from, d_to, search)
+        pagination = None
+        if vista in ORDER_ENTITIES:
+            record_count = query.count()
+            pages = max(1, (record_count + 99) // 100)
+            page = min(pages, max(1, request.args.get("page", 1, type=int)))
+            rows = query.order_by(date_order, Model.id.desc()).offset((page - 1) * 100).limit(100).all()
+            filters = {name: request.args[name] for name in ("from", "to", "semana", "q") if request.args.get(name)}
+            pagination = {"page": page, "pages": pages, "start": (page - 1) * 100 + 1 if record_count else 0,
+                          "end": min(page * 100, record_count),
+                          "previous": url_for("registros", vista=vista, page=max(1, page - 1), **filters),
+                          "next": url_for("registros", vista=vista, page=min(pages, page + 1), **filters),
+                          "first": url_for("registros", vista=vista, page=1, **filters),
+                          "last": url_for("registros", vista=vista, page=pages, **filters)}
+        else:
+            rows = query.order_by(date_order, Model.id.desc()).all()
+            record_count = len(rows)
         listing = {key: [] for key in ENTITY_LIST_KEY.values()}
         listing[ENTITY_LIST_KEY[vista]] = rows
         return render_template(
@@ -950,10 +1009,10 @@ def registros():
                 if value is not None
             }),
             vista=vista, current_tab=None, **listing,
-            record_count=len(rows), entity_title=EDIT_CONFIG[vista][0],
+            record_count=record_count, pagination=pagination, entity_title=EDIT_CONFIG[vista][0],
             record_columns=list_fields(vista, Model()), current_records=rows,
-            record_date_label=next(field["label"] for field in edit_fields(vista, Model())
-                                   if field["name"] == date_column.key),
+            record_date_label="Fecha creación (Fecha inicio si falta)" if vista == "solicitud_ot" else next(
+                field["label"] for field in edit_fields(vista, Model()) if field["name"] == date_column.key),
             bulk_csrf=session.setdefault("hotel_bulk_csrf", secrets.token_hex(32)),
         )
     finally:
@@ -1100,24 +1159,15 @@ def download_entity(entity):
 
         elif entity == "solicitud_ot":
             q = query
-            rows = q.order_by(SolicitudOTEntry.fecha_inicio, SolicitudOTEntry.id).all()
-            headers = ["n_solicitud","descripcion_problema","tipo_solicitud","modulo","habitacion","tipo_turno",
-                       "jornada","via_solicitud","correo_usuario","tipo_tarea","ot","fecha_inicio","estado",
-                       "tiempo_respuesta_mmss","satisfaccion_reclamo","motivo","observacion"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            rows = q.order_by(order_reference_column(SolicitudOTEntry), SolicitudOTEntry.id).all()
+            fields = list_fields(entity, SolicitudOTEntry())
+            headers = ["tiempo_respuesta_mmss" if f["name"] == "tiempo_respuesta_sec" else f["name"] for f in fields]
+            w = csv.DictWriter(buf, fieldnames=headers)
+            w.writeheader()
             for r in rows:
-                w.writerow({
-                    "n_solicitud": r.n_solicitud or "", "descripcion_problema": r.descripcion_problema or "",
-                    "tipo_solicitud": r.tipo_solicitud or "", "modulo": r.modulo or "",
-                    "habitacion": r.habitacion or "", "tipo_turno": r.tipo_turno or "",
-                    "jornada": r.jornada or "", "via_solicitud": r.via_solicitud or "",
-                    "correo_usuario": r.correo_usuario or "", "tipo_tarea": r.tipo_tarea or "",
-                    "ot": r.ot or "", "fecha_inicio": r.fecha_inicio.isoformat() if r.fecha_inicio else "",
-                    "estado": r.estado or "",
-                    "tiempo_respuesta_mmss": seconds_to_mmss(r.tiempo_respuesta_sec or 0),
-                    "satisfaccion_reclamo": r.satisfaccion_reclamo or "", "motivo": r.motivo or "",
-                    "observacion": r.observacion or "",
-                })
+                w.writerow({header: display_record_value(getattr(r, field["name"]), field["kind"])
+                            if getattr(r, field["name"]) not in (None, "") else ""
+                            for header, field in zip(headers, fields)})
 
         elif entity == "reclamos":
             q = query
@@ -1280,7 +1330,7 @@ ENTITY_LIST_KEY = {
 }
 ENTITY_DATE_FIELD = {
     "encuestas": "fecha_hora", "onboarding": "fecha_hora",
-    "miscelaneo": "fecha_creacion", "solicitud_ot": "fecha_inicio",
+    "miscelaneo": "fecha_creacion", "solicitud_ot": "fecha_creacion",
     "extensiones": "fecha_solicitud",
     "entradas_salidas": "fecha_ingreso",
     "habitaciones_bloqueadas": "fecha_bloqueo",
@@ -1300,7 +1350,7 @@ def read_record_search(source):
 def hotel_records_query(db, entity, d_from=None, d_to=None, search=""):
     """Una sola regla de fechas y búsqueda para consultar, exportar y eliminar."""
     Model = ENTITY_MODEL[entity]
-    column = getattr(Model, ENTITY_DATE_FIELD.get(entity, "fecha"))
+    column = order_reference_column(Model) if entity == "solicitud_ot" else getattr(Model, ENTITY_DATE_FIELD.get(entity, "fecha"))
     query = db.query(Model)
     if isinstance(column.type, DateTime):
         if d_from:
@@ -1341,6 +1391,8 @@ def records_return_url(entity, target):
                 search = clean_search_term(query["q"][0])
                 if search:
                     filters["q"] = search
+            if entity in ORDER_ENTITIES and query.get("page") and query["page"][0].isdigit():
+                filters["page"] = max(1, int(query["page"][0]))
     except ValueError:
         pass
     return url_for("registros", vista=entity, **filters)
@@ -1607,19 +1659,12 @@ TEMPLATES = {
         "FECHA","HORA","MODULO","HABITACION","EMPRESA","NOMBRE_CLIENTE","RUT",
         "MEDIO_RECLAMO","ESPECIES","OBSERVACIONES","RECEPCIONA"
     ],
-    "miscelaneo": [
-        "OT","DIVISION","AREA","LUGAR","UBICACION","DISCIPLINA","ESPECIALIDAD","FALLA","EMPRESA",
-        "FECHA_CREACION","FECHA_INICIO","FECHA_TERMINO","FECHA_APROBACION","ESTADO","COMENTARIO"
-    ],
+    "miscelaneo": [label for _, label in ORDER_IMPORT_FIELDS],
     "desviaciones": [
         "N_SOLICITUD","FECHA","ID","EMPRESA_CONTRATISTA","DESCRIPCION_PROBLEMA","TIPO_RIESGO",
         "TIPO_SOLICITUD","PABELLON","HABITACION","VIA_SOLICITUD","QUIEN_INFORMA","RIESGO_MATERIAL","CORREO_DESTINO","ACCIONES"
     ],
-    "solicitud_ot": [
-        "N_SOLICITUD","DESCRIPCION_PROBLEMA","TIPO_SOLICITUD","MODULO","HABITACION","TIPO_TURNO","JORNADA",
-        "VIA_SOLICITUD","CORREO_USUARIO","TIPO_TAREA","OT","FECHA_INICIO","ESTADO","TIEMPO_RESPUESTA_MMSS",
-        "SATISFACCION_RECLAMO","MOTIVO","OBSERVACION"
-    ],
+    "solicitud_ot": [label for _, label in ORDER_IMPORT_FIELDS],
     "reclamos": [
         "N_SOLICITUD","FECHA","ID","EMPRESA_CONTRATISTA","DESCRIPCION_PROBLEMA","TIPO_SOLICITUD","PABELLON",
         "HABITACION","VIA_SOLICITUD","INGRESAR_CONTACTO","NOMBRE_USUARIO","RESPONSABLE","ESTATUS",
@@ -1665,7 +1710,7 @@ def template_xlsx(entity):
     # Escribir los encabezados
     ws.append(headers)
 
-    if entity in OPTIONAL_RECORD_FIELDS:
+    if entity in OPTIONAL_RECORD_FIELDS or entity in ORDER_ENTITIES:
         ws.freeze_panes = "A2"
         for cell in ws[1]:
             cell.font = Font(bold=True)
@@ -1679,6 +1724,8 @@ def template_xlsx(entity):
             "ordenamiento": {1: "DD/MM/YYYY", 3: "@", 5: "@", 7: "@"},
             "habitaciones_liberadas": {1: "@", 4: "DD/MM/YYYY", 6: "DD/MM/YYYY"},
             "samtech_usuarios": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
+            "miscelaneo": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
+            "solicitud_ot": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
         }[entity]
         for row in range(2, 202):
             for column, number_format in formats.items():
@@ -1732,6 +1779,9 @@ def template_xlsx(entity):
 @app.post("/import/<string:entity>")
 def import_xlsx(entity):
     entity = entity.lower()
+    if entity in ORDER_ENTITIES:
+        from gestion5s.order_import_routes import preview_order_import
+        return preview_order_import(entity)
     if entity not in TEMPLATES:
         flash("Entidad no válida para importación.")
         return redirect(url_for("panel", tab="censo"))
@@ -2125,9 +2175,8 @@ def dashboard():
         if d_from: q = q.filter(MiscelaneoEntry.fecha_creacion >= d_from)
         if d_to:   q = q.filter(MiscelaneoEntry.fecha_creacion <= d_to)
         for r in q.all():
-            # Agrupar por la fecha de negocio; si viene nula, caer al timestamp de creación
-            key_date = r.fecha_creacion or r.creado.date()
-            bucket(key_date.isoformat())["miscelaneo"] += 1
+            if r.fecha_creacion:
+                bucket(r.fecha_creacion.isoformat())["miscelaneo"] += 1
 
 
         # Desviaciones
@@ -2137,15 +2186,15 @@ def dashboard():
         for r in q.all():
             bucket(r.fecha.isoformat())["desviaciones"] += 1
 
-        # Solicitudes OT
-        # Solicitudes OT (filtrar por fecha de negocio)
+        # Solicitudes OT: misma fecha de referencia que el listado y el reporte.
         q = db.query(SolicitudOTEntry)
-        if d_from: q = q.filter(SolicitudOTEntry.fecha_inicio >= d_from)
-        if d_to:   q = q.filter(SolicitudOTEntry.fecha_inicio <= d_to)
+        reference_date = order_reference_column(SolicitudOTEntry)
+        if d_from: q = q.filter(reference_date >= d_from)
+        if d_to:   q = q.filter(reference_date <= d_to)
         for r in q.all():
-            # Agrupar por la fecha de negocio; si viene nula, caer al timestamp de creación
-            key_date = r.fecha_inicio or r.creado.date()
-            bucket(key_date.isoformat())["solicitudes_ot"] += 1
+            key_date = order_reference_date(r)
+            if key_date:
+                bucket(key_date.isoformat())["solicitudes_ot"] += 1
 
 
         # Reclamos
@@ -2300,6 +2349,10 @@ def dashboard():
 
 
 # -----------------------------------------------------------------------------
+# Importación conjunta de órdenes (rutas separadas del ingreso manual).
+from gestion5s.order_import_routes import order_imports
+app.register_blueprint(order_imports)
+
 # MAIN
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":

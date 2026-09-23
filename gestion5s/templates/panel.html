@@ -88,14 +88,23 @@
               <i class="fas fa-download me-1"></i> Descargar Plantilla
             </a>
             <form method="post" action="{{ url_for('import_xlsx', entity=tab) }}" enctype="multipart/form-data" class="record-import-form d-flex gap-2 flex-wrap">
+              {% if order_import %}<input type="hidden" name="csrf_token" value="{{ order_csrf }}">{% endif %}
               <label for="record-import-file" class="visually-hidden">Plantilla de {{ entity_title }}</label>
               <input id="record-import-file" type="file" class="form-control form-control-sm" name="file" accept=".xlsx" required>
-              <button class="btn btn-primary-custom btn-sm" type="submit"><i class="fas fa-upload me-1"></i> Importar</button>
+              <button class="btn btn-primary-custom btn-sm" type="submit"><i class="fas fa-upload me-1"></i> {{ 'Importar órdenes · Revisar' if order_import else 'Importar' }}</button>
             </form>
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('registros', vista=entity) }}">
               <i class="fas fa-list me-1"></i> Ver registros
             </a>
           </div>
+          {% if order_import %}
+          <div class="alert alert-info">
+            Importa el archivo de órdenes desde cualquiera de estas dos categorías.
+            <strong>CARPINTERIA MENOR irá a Misceláneos; el resto a Solicitudes OT.</strong>
+            Verás las cantidades y una muestra antes de confirmar el reemplazo de todos los registros de ambas bases.
+            Puedes dejar campos y fechas vacíos.
+          </div>
+          {% endif %}
           {% if optional_record %}
           <p class="small text-muted">Puedes dejar campos vacíos y completarlos después desde Editar. Las filas totalmente vacías de la plantilla se omiten.</p>
           {% else %}

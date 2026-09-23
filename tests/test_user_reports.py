@@ -37,6 +37,8 @@ class UserReportsTest(unittest.TestCase):
     def create(self, entity, day="2026-08-31", status="Cerrado", **extra):
         source = next(item for item in SOURCES if item["entity"] == entity)
         data = {**FORM_DATA[entity], source["date"]: day or ""}
+        if source.get("date_fallback"):
+            data[source["date_fallback"]] = ""
         if source["status"]:
             data[source["status"]] = status
         data.update(extra)
@@ -259,7 +261,8 @@ class UserReportsTest(unittest.TestCase):
         for source, expected in zip(SOURCES, (3, 3, 3, 4, 5)):
             sheet = values[source["sheet"]]
             fields = web.list_fields(source["entity"], web.ENTITY_MODEL[source["entity"]]())
-            self.assertEqual([cell.value for cell in sheet[5]], [field["label"] for field in fields] + ["Estado agrupado"])
+            extra = ["Fecha para reporte"] if source.get("report_date_field") else []
+            self.assertEqual([cell.value for cell in sheet[5]], [field["label"] for field in fields] + extra + ["Estado agrupado"])
             self.assertEqual(sheet.max_row - 5, expected)
             self.assertEqual(sheet.freeze_panes, "A6")
             self.assertTrue(sheet.auto_filter.ref)

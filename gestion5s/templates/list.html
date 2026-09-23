@@ -92,7 +92,7 @@
       <div>
         <div class="form-check mb-1">
           <input class="form-check-input" type="checkbox" id="selectAllRecords" {% if not record_count %}disabled{% endif %}>
-          <label class="form-check-label fw-semibold" for="selectAllRecords">Seleccionar todos los registros del listado</label>
+          <label class="form-check-label fw-semibold" for="selectAllRecords">Seleccionar todos los registros {{ 'de esta página' if pagination and pagination.pages > 1 else 'del listado' }}</label>
         </div>
         <div class="small text-muted"><span id="selectedRecordCount" aria-live="polite">0 seleccionados</span> · {{ record_count }} registros de {{ entity_title }}</div>
       </div>
@@ -140,6 +140,18 @@
     <p role="status"><strong>{{ record_count }} {{ 'coincidencia' if record_count == 1 else 'coincidencias' }}</strong> para “{{ search }}” en {{ entity_title }} con los filtros actuales.</p>
     {% endif %}
     <p class="small text-muted">Los filtros de fecha de este listado y su exportación se aplican a {{ record_date_label }}. Para incluir también los registros sin esa fecha, deja las fechas y la semana sin seleccionar.</p>
+    {% if pagination %}
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <p class="mb-0" role="status">Mostrando {{ pagination.start }}–{{ pagination.end }} de {{ record_count }} registros · Página {{ pagination.page }} de {{ pagination.pages }}.</p>
+      {% if pagination.pages > 1 %}
+      <nav aria-label="Páginas de registros" class="d-flex gap-2">
+        {% if pagination.page > 1 %}<a class="btn btn-sm btn-outline-secondary" href="{{ pagination.first }}">Primera</a><a class="btn btn-sm btn-outline-secondary" href="{{ pagination.previous }}">Anterior</a>{% endif %}
+        {% if pagination.page < pagination.pages %}<a class="btn btn-sm btn-outline-secondary" href="{{ pagination.next }}">Siguiente</a><a class="btn btn-sm btn-outline-secondary" href="{{ pagination.last }}">Última</a>{% endif %}
+      </nav>
+      {% endif %}
+    </div>
+    <p class="small text-muted">La búsqueda, Descargar CSV y Eliminar todos abarcan todas las páginas con los filtros actuales. La selección de casillas se aplica a la página visible.</p>
+    {% endif %}
     {% if current_records %}
     <p id="records-scroll-help" class="small text-muted mb-2"><i class="fas fa-arrows-alt-h me-1" aria-hidden="true"></i>Se muestran todos los campos. Usa la barra horizontal para recorrer las columnas y la vertical para recorrer las filas.</p>
     <div class="records-table-container" data-record-table>

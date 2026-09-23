@@ -99,6 +99,12 @@ SAMTECH_USER_FIELDS = (
     ("comentario", "Comentario"),
 )
 
+# El archivo de órdenes comparte los 15 encabezados de Samtech. Ticket se
+# conserva en la columna OT existente de estas dos tablas.
+ORDER_IMPORT_FIELDS = tuple(("ot" if name == "ticket" else name, label)
+                            for name, label in SAMTECH_USER_FIELDS)
+LEGACY_OT_FIELDS = "n_solicitud descripcion_problema tipo_solicitud modulo habitacion tipo_turno jornada via_solicitud correo_usuario tipo_tarea tiempo_respuesta_sec satisfaccion_reclamo motivo observacion"
+
 OPTIONAL_RECORD_FIELDS = {
     "entradas_salidas": ENTRY_EXIT_FIELDS,
     "habitaciones_bloqueadas": BLOCKED_ROOM_FIELDS,
@@ -118,7 +124,7 @@ EDIT_CONFIG = {
     "robos": ("Robos y hurtos", "fecha hora modulo habitacion empresa nombre_cliente rut medio_reclamo especies observaciones recepciona"),
     "miscelaneo": ("Misceláneo", "ot division area lugar ubicacion disciplina especialidad falla empresa fecha_creacion fecha_inicio fecha_termino fecha_aprobacion estado comentario"),
     "desviaciones": ("Desviaciones", "n_solicitud fecha id_interno empresa_contratista descripcion_problema tipo_riesgo tipo_solicitud pabellon habitacion via_solicitud quien_informa riesgo_material correo_destino acciones"),
-    "solicitud_ot": ("Solicitud y OT de usuario", "n_solicitud descripcion_problema tipo_solicitud modulo habitacion tipo_turno jornada via_solicitud correo_usuario tipo_tarea ot fecha_inicio estado tiempo_respuesta_sec satisfaccion_reclamo motivo observacion"),
+    "solicitud_ot": ("Solicitud y OT de usuario", " ".join(name for name, _ in ORDER_IMPORT_FIELDS) + " " + LEGACY_OT_FIELDS),
     "reclamos": ("Reclamos de usuarios", "n_solicitud fecha id_interno empresa_contratista descripcion_problema tipo_solicitud pabellon habitacion via_solicitud ingresar_contacto nombre_usuario responsable estatus notificacion_usuario plan_accion"),
     "alarmas": ("Activación de alarma", "modulo n_habitacion nombre_recepcionista fecha empresa id_interno co aviso_mantencion_h llegada_mantencion_h aviso_lider_h llegada_lider_h hora_reporte_salfa tipo_evento tipo_actividad fecha_reporte turno_recepcion_ingresos observaciones"),
     "extensiones": ("Extensión y excepción", " ".join(name for name, _ in EXTENSION_FIELDS)),
@@ -176,6 +182,8 @@ def record_version(record):
 def edit_fields(entity, record):
     fields = []
     labels = {
+        "miscelaneo": {**FIELD_LABELS, **dict(ORDER_IMPORT_FIELDS)},
+        "solicitud_ot": {**FIELD_LABELS, **dict(ORDER_IMPORT_FIELDS)},
         "extensiones": dict(EXTENSION_FIELDS),
         "entradas_salidas": dict(ENTRY_EXIT_FIELDS),
         "habitaciones_bloqueadas": dict(BLOCKED_ROOM_FIELDS),

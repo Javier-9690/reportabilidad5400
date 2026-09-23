@@ -8,6 +8,7 @@ import unicodedata
 from sqlalchemy import func
 
 from gestion5s.editing import list_fields
+from gestion5s.orders import ORDER_REPORT_NOTE, order_reference_column, order_reference_date
 
 
 SOURCES = (
@@ -15,8 +16,8 @@ SOURCES = (
      "status": "estatus", "sheet": "Doble asignación", "expected_open": ("abierto",), "color": "#7950A3"},
     {"entity": "reclamos", "label": "Reclamos usuarios", "date": "fecha", "date_label": "Fecha",
      "status": "estatus", "sheet": "Reclamos usuarios", "expected_open": ("abierto",), "color": "#B42318"},
-    {"entity": "solicitud_ot", "label": "Solicitudes de usuarios", "date": "fecha_inicio",
-     "date_label": "Fecha inicio", "status": "estado", "sheet": "Solicitudes OT",
+    {"entity": "solicitud_ot", "label": "Solicitudes de usuarios", "date": "fecha_creacion", "date_fallback": "fecha_inicio",
+     "date_label": "Fecha creación (Fecha inicio si falta)", "report_date_field": "_fecha_reporte", "status": "estado", "sheet": "Solicitudes OT",
      "expected_open": ("no_iniciada",), "color": "#1667A5"},
     {"entity": "samtech_usuarios", "label": "Samtech usuarios", "date": "fecha_creacion",
      "date_label": "Fecha creación", "status": "estado", "sheet": "Samtech usuarios",
@@ -53,10 +54,12 @@ WITHOUT_STATUS_NOTE = (
 )
 
 
-def classify_status(value):
+def classify_status(value, entity=None):
     normalized = unicodedata.normalize("NFKD", value or "")
     normalized = "".join(char for char in normalized if not unicodedata.combining(char)).casefold()
     normalized = re.sub(r"[\s_-]+", " ", normalized).strip()
+    if entity == "solicitud_ot" and normalized in ("aprobada", "aprobado"):
+        return "cerrado"
     return STATUS_LOOKUP.get(normalized, "sin_clasificar")
 
 
@@ -91,7 +94,7 @@ def build_user_report(db, models, start, end, include_details=False):
     categories = []
     for source in SOURCES:
         model = models[source["entity"]]
-        date_column = getattr(model, source["date"])
+        date_column = order_reference_column(model) if source.get("date_fallback") else getattr(model, source["date"])
         status_column = getattr(model, source["status"]) if source["status"] else None
         scope = (date_column >= start, date_column <= end)
         fields = list_fields(source["entity"], model())
@@ -100,8 +103,12 @@ def build_user_report(db, models, start, end, include_details=False):
             grouped = Counter()
             for record in db.query(model).filter(*scope).order_by(date_column, model.id).yield_per(1000):
                 state = getattr(record, source["status"]) if source["status"] else None
-                grouped[(getattr(record, source["date"]), state)] += 1
-                details.append({field["name"]: getattr(record, field["name"]) for field in fields})
+                day = order_reference_date(record) if source.get("date_fallback") else getattr(record, source["date"])
+                grouped[(day, state)] += 1
+                detail = {field["name"]: getattr(record, field["name"]) for field in fields}
+                if source.get("report_date_field"):
+                    detail[source["report_date_field"]] = day
+                details.append(detail)
             groups = [(day, state, count) for (day, state), count in grouped.items()]
         elif status_column is not None:
             groups = db.query(date_column, status_column, func.count(model.id)).filter(*scope).group_by(
@@ -113,7 +120,7 @@ def build_user_report(db, models, start, end, include_details=False):
         series = {key: [0] * len(days) for key in STATUS_LABELS}
         unknown = Counter()
         for day, state, count in groups:
-            code = classify_status(state)
+            code = classify_status(state, entity=source["entity"])
             series[code][day_index[day]] += count
             if code == "sin_clasificar" and source["status"]:
                 unknown[(state or "").strip() or "(vacío)"] += count
@@ -127,11 +134,14 @@ def build_user_report(db, models, start, end, include_details=False):
         denominator = totals["open"] + totals["closed"]
         totals["rate"] = (totals["closed"] / denominator if denominator else 0) if source["status"] else None
         totals["without_status"] = totals["records"] if not source["status"] else 0
+        output_fields = [{key: field[key] for key in ("name", "label", "kind")} for field in fields]
+        if source.get("report_date_field"):
+            output_fields.append({"name": source["report_date_field"], "label": "Fecha para reporte", "kind": "date"})
         categories.append({
             **source, "series": series, "counts": counts, "totals": totals,
             "unknown_states": [{"state": state, "count": count} for state, count in sorted(unknown.items())],
             "undated": db.query(func.count(model.id)).filter(date_column.is_(None)).scalar(),
-            "fields": [{key: field[key] for key in ("name", "label", "kind")} for field in fields],
+            "fields": output_fields,
             "details": details,
         })
 
@@ -190,6 +200,7 @@ def build_user_report(db, models, start, end, include_details=False):
         "categories": categories, "counts": counts, "totals": totals, "sections": sections,
         "generated_at": datetime.now(timezone.utc), "method_note": METHOD_NOTE, "rate_note": RATE_NOTE,
         "without_status_note": WITHOUT_STATUS_NOTE,
+        "orders_note": ORDER_REPORT_NOTE,
     }
     report["conclusions"] = make_conclusions(report)
     return report
