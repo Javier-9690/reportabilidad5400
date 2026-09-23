@@ -251,7 +251,7 @@ class OrderImportTest(unittest.TestCase):
         self.assertEqual(self.confirm(preview).status_code, 409)
         self.assertEqual(self.snapshot(), before)
 
-    def test_report_uses_imported_creation_status_and_fallback_without_miscellaneous(self):
+    def test_report_uses_full_general_import_with_creation_status_and_fallback(self):
         orders = [order("M", "CARPINTERIA MENOR", estado="Aprobada"),
                   order("A", estado="Aprobada", fecha_inicio="15/10/2026"),
                   order("B", estado="Completada", fecha_creacion="12/09/2026"),
@@ -264,8 +264,8 @@ class OrderImportTest(unittest.TestCase):
         report = self.report()
         category = next(c for c in report["categories"] if c["entity"] == "solicitud_ot")
         self.assertEqual({key: category["totals"][key] for key in ("records", "open", "closed", "unclassified")},
-                         {"records": 6, "open": 2, "closed": 2, "unclassified": 2})
-        self.assertEqual(category["counts"]["records"], [3, 1] + [0] * 10 + [2])
+                         {"records": 7, "open": 2, "closed": 3, "unclassified": 2})
+        self.assertEqual(category["counts"]["records"], [4, 1] + [0] * 10 + [2])
         self.assertEqual(category["undated"], 1)
         self.assertEqual(classify_status("Aprobada", "solicitud_ot"), "cerrado")
         self.assertEqual(classify_status("Aprobada", "samtech_usuarios"), "sin_clasificar")
@@ -276,18 +276,18 @@ class OrderImportTest(unittest.TestCase):
         response = self.client.get("/reports/usuarios.xlsx", query_string=filters)
         self.assertEqual(response.status_code, 200)
         workbook = load_workbook(BytesIO(response.data), data_only=True)
-        sheet = workbook["Solicitudes OT"]
+        sheet = workbook["Solicitudes totales Samtech"]
         headers = [c.value for c in sheet[5]]
         rows = list(sheet.iter_rows(min_row=6, values_only=True))
-        self.assertEqual(len(rows), 6)
-        self.assertEqual({row[0] for row in rows}, {"A", "B", "C", "D", "E", "F"})
+        self.assertEqual(len(rows), 7)
+        self.assertEqual({row[0] for row in rows}, {"M", "A", "B", "C", "D", "E", "F"})
         self.assertEqual(headers[:15], [label for _, label in ORDER_IMPORT_FIELDS])
-        self.assertEqual(headers[-2:], ["Fecha para reporte", "Estado agrupado"])
-        self.assertEqual(sum(row[-1] == "Cerrado" for row in rows), 2)
-        totals = next(row for row in workbook["Reporte diario"] if row[0].value == "Solicitudes de usuarios")
-        self.assertEqual(totals[-1].value, 6)
+        self.assertEqual(headers[-3:], ["Fecha para reporte", "Registro de origen", "Estado agrupado"])
+        self.assertEqual(sum(row[-1] == "Cerrado" for row in rows), 3)
+        totals = next(row for row in workbook["Reporte diario"] if row[0].value == "Solicitudes totales Samtech")
+        self.assertEqual(totals[-1].value, 7)
         formula_book = load_workbook(BytesIO(response.data))
-        self.assertTrue(formula_book["Solicitudes OT"].cell(6, len(headers) - 1).value.startswith("=IF("))
+        self.assertTrue(formula_book["Solicitudes totales Samtech"].cell(6, headers.index("Fecha para reporte") + 1).value.startswith("=IF("))
         # Listado, búsqueda, CSV y dashboard usan la misma fecha que Gestión de usuarios.
         url = "/gestion-5s/registros?vista=solicitud_ot&from=2026-08-31&to=2026-09-12"
         listing = self.client.get(url).get_data(as_text=True)

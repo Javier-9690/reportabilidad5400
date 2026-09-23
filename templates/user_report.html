@@ -9,7 +9,7 @@
     <div>
       <div class="report-eyebrow">Reportes de hotelería</div>
       <h1 class="h3 mb-1">Gestión de usuarios</h1>
-      <p class="mb-0">Doble asignación, Reclamos usuarios, Solicitudes de usuarios, Samtech usuarios y Desviaciones clientes.</p>
+      <p class="mb-0">Doble asignación, Reclamos usuarios, Solicitudes de usuarios, Solicitudes totales Samtech y Desviaciones clientes.</p>
     </div>
     {% if report %}
     <a class="btn btn-success report-export-btn" id="exportUserReport"
@@ -49,15 +49,16 @@
     </div>
     <p class="small text-muted">{{ report.method_note }}</p>
     <p class="small text-muted">{{ report.without_status_note }}</p>
+    <p class="alert alert-info">{{ report.overlap_note }}</p>
     <div class="user-report-kpis mb-3">
-      {% for key, label in [('records', 'Total registros'), ('open', 'Casos abiertos'), ('closed', 'Casos cerrados'), ('unclassified', 'Sin clasificar')] %}
+      {% for key, label in [('records', 'Registros (suma de categorías)'), ('open', 'Registros abiertos'), ('closed', 'Registros cerrados'), ('unclassified', 'Sin clasificar')] %}
       <div class="card shadow-sm user-kpi user-kpi-{{ key }}"><div class="card-body">
         <div class="user-kpi-label">{{ label }}</div><div class="user-kpi-value" data-kpi="{{ key }}">{{ report.totals[key] }}</div>
       </div></div>
       {% endfor %}
       <div class="card shadow-sm user-kpi user-kpi-rate"><div class="card-body">
         <div class="user-kpi-label">% cerrado</div><div class="user-kpi-value" data-kpi="rate">{{ ('%.1f'|format(report.totals.rate * 100))|replace('.', ',') }}%</div>
-        <div class="small text-muted">{{ report.totals.classified }} casos clasificables</div>
+        <div class="small text-muted">{{ report.totals.classified }} registros clasificables</div>
       </div></div>
     </div>
 
@@ -86,7 +87,7 @@
           <th scope="row">{{ category.label }}</th>
           {% for key in ['records', 'open', 'closed', 'unclassified'] %}<td>{{ category.totals[key] }}</td>{% endfor %}
           <td>{% if category.status %}{{ ('%.1f'|format(category.totals.rate * 100))|replace('.', ',') }}%{% else %}No aplica{% endif %}</td>
-          <td><a href="/gestion-5s/registros?vista={{ category.entity }}&amp;from={{ report.start.isoformat() }}&amp;to={{ report.end.isoformat() }}">Ver registros</a></td>
+          <td>{% for source in category.source_links %}<a class="d-block" href="/gestion-5s/registros?vista={{ source.entity }}&amp;from={{ report.start.isoformat() }}&amp;to={{ report.end.isoformat() }}">Ver registros{% if category.source_links|length > 1 %}: {{ source.label }}{% endif %}</a>{% endfor %}</td>
         </tr>{% endfor %}</tbody>
       </table></div>
     </div>

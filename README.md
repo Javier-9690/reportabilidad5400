@@ -36,8 +36,8 @@ extremos y todos los días intermedios, aunque no tengan registros.
 | --- | --- | --- | --- |
 | Doble asignación | Duplicidades | Fecha | Estatus |
 | Reclamos usuarios | Reclamos de usuarios | Fecha | Estatus |
-| Solicitudes de usuarios | Solicitud y OT de usuario | Fecha creación; Fecha inicio si falta | Estado |
-| Samtech usuarios | Samtech usuarios | Fecha creación | Estado |
+| Solicitudes de usuarios | Solicitudes de usuarios Samtech QR | Fecha creación; Fecha inicio si falta | Estado |
+| Solicitudes totales Samtech | Misceláneos + Solicitudes OT (carga general completa) | Fecha creación; Fecha inicio si falta | Estado |
 | Desviaciones clientes | Desviaciones | Fecha | No tiene campo de estado |
 
 El reporte diario reproduce las secciones de la referencia: registros, casos
@@ -90,14 +90,27 @@ con los conteos acumulados, sin promediar los porcentajes diarios. Sin casos
 clasificables se muestra 0% y se explica esa ausencia. Los casos sin clasificar
 no se incluyen en el denominador.
 
-La importación conjunta de órdenes alimenta **Solicitudes de usuarios** desde
-Solicitudes OT. CARPINTERIA MENOR se guarda únicamente en Misceláneos. En Solicitudes
-OT, **Aprobada/Aprobado** también cuenta como Cerrado; Completada ya es equivalente
-a Cerrado. Eliminado y Felicitaciones se conservan como Sin clasificar. Esta
-equivalencia adicional no cambia la clasificación de Samtech ni de otros módulos.
-Las cuatro fechas originales se conservan; la fecha de importación no sustituye
-la fecha del caso. El Excel agrega **Fecha para reporte**, calculada desde Fecha
-creación y, cuando está vacía, Fecha inicio, para reproducir exactamente los conteos.
+Las solicitudes QR se cargan en **Solicitudes de usuarios Samtech QR** y alimentan
+exclusivamente **Solicitudes de usuarios**. La importación conjunta de órdenes
+alimenta **Solicitudes totales Samtech** sumando Misceláneos y Solicitudes OT;
+CARPINTERIA MENOR sigue guardándose en Misceláneos. La tabla anterior Samtech
+usuarios conserva sus datos y funciones, pero ya no alimenta este reporte.
+
+Ambos indicadores pueden compartir tickets. **Total registros (suma de categorías)**
+suma las filas del reporte y no representa tickets únicos. La advertencia figura
+en pantalla y en Excel. Los estados de cada indicador provienen de su propia
+carga, por lo que conviene actualizar ambos archivos al comparar el período.
+
+En QR, Misceláneos y Solicitudes OT, **Aprobada/Aprobado** cuenta como Cerrado;
+Completada también equivale a Cerrado. Eliminado y Felicitaciones quedan Sin
+clasificar. Las cuatro fechas originales se conservan. Se usa Fecha creación
+y, si falta, Fecha inicio; término, aprobación y fecha de importación no reemplazan
+esta referencia. El Excel añade **Fecha para reporte** calculada con la misma regla.
+El detalle de Solicitudes totales Samtech incluye **Registro de origen** para
+distinguir Misceláneos de Solicitudes OT, con todas sus columnas vigentes.
+
+El reporte lee una versión coherente de todas las categorías aunque se confirme
+una importación en otra conexión mientras se genera la pantalla o el Excel.
 
 Los registros sin la fecha de referencia quedan fuera del período. Se informa
 cuántos existen en el histórico de las cinco categorías, para completar sus fechas;
@@ -114,7 +127,7 @@ El archivo se llama `reporte_usuarios_AAAA-MM-DD_AAAA-MM-DD.xlsx` e incluye:
   y porcentajes mediante fórmulas. Las fechas y la columna de ítems quedan fijas.
 - **Conclusiones**: indicadores, resumen por categoría, conclusiones, dos gráficos
   de Excel y criterios del informe.
-- **Doble asignación**, **Reclamos usuarios**, **Solicitudes OT**, **Samtech usuarios**
+- **Doble asignación**, **Reclamos usuarios**, **Solicitudes usuarios QR**, **Solicitudes totales Samtech**
   y **Desviaciones clientes**: todos los campos
   vigentes de cada registro del rango, encabezados fijos, autofiltro y Estado
   agrupado. Los textos e identificadores conservan su valor, incluidos ceros iniciales.
@@ -167,7 +180,8 @@ Los campos largos, como Falla y Comentario, se conservan completos.
 Se valida que las bases no hayan cambiado desde la vista previa: una alta, edición
 o eliminación posterior obliga a revisarla nuevamente. La confirmación pertenece
 a la sesión que cargó el archivo, vence a los 30 minutos y se utiliza una sola vez.
-La última vista previa sustituye a las anteriores de esa sesión. El archivo
+La última vista previa sustituye a las anteriores de esa sesión para la misma
+carga. La carga general y la QR mantienen confirmaciones independientes. El archivo
 temporal se elimina al confirmar, cancelar o limpiar vistas expiradas en una carga
 posterior. Los límites son 25 MB por archivo y 150.000 órdenes.
 
@@ -176,8 +190,8 @@ CSV y detalle Excel. Solicitudes OT conserva también sus campos históricos.
 Sus listados y Misceláneos muestran 100 filas por página con todas las columnas.
 La búsqueda, CSV y **Eliminar todos** abarcan todo el resultado filtrado; las
 casillas seleccionan la página visible. El reporte de Gestión de usuarios consulta
-inmediatamente las nuevas Solicitudes OT, sin modificar Samtech ni las otras
-categorías. Los registros sin ambas fechas permanecen guardados y quedan fuera
+inmediatamente la carga general completa como Solicitudes totales Samtech.
+La importación general conserva las solicitudes QR y los demás registros. Los registros sin ambas fechas permanecen guardados y quedan fuera
 de los reportes por fecha; esta cantidad se informa.
 
 La actualización añade columnas opcionales a Solicitudes OT y una tabla temporal
@@ -241,7 +255,7 @@ corregirse antes de guardar; este campo no almacena el contenido del documento.
 
 En **Consultar registros / Ver registros**, elige la **Categoría**, escribe una
 palabra o número en **Buscar dentro de esta categoría** y pulsa **Buscar** o
-Enter. Funciona en los 20 tipos de registros, incluido Samtech usuarios.
+Enter. Funciona en los 21 tipos de registros, incluidos Samtech usuarios y las solicitudes QR.
 Encuentra coincidencias parciales en cualquiera de los campos vigentes de esa
 categoría, incluidos observaciones, acciones, ID, RUT, habitación y ticket.
 No distingue mayúsculas ni tildes: `mantencion` encuentra `Mantención`.
@@ -469,7 +483,41 @@ a un día en el gráfico. Las cifras cuentan registros, no habitaciones únicas.
 Las tablas `ordenamiento` y `habitaciones_liberadas` se crean automáticamente
 al iniciar la aplicación, conservando las tablas y registros existentes.
 
+### Solicitudes de usuarios Samtech QR
+
+Nuevo registro independiente en **Registros hotelería > Ingresar registros**
+(`/gestion-5s/panel?tab=samtech_qr`). Usa las mismas 15 columnas del archivo
+Samtech: Ticket, División, Área, Lugar, Ubicación, Disciplina, Especialidad,
+Falla, Empresa, Fecha creación, Fecha inicio, Fecha término, Fecha aprobación,
+Estado y Comentario.
+
+Incluye formulario, **Ver registros**, plantilla Excel, importación confirmada,
+exportación CSV de todo el resultado filtrado, buscador por palabra o número,
+edición con lápiz, eliminación individual, múltiple y **Eliminar todos**.
+El listado muestra todas las columnas, barras de desplazamiento y 100 filas por
+página. El dashboard de registros tiene su tarjeta y gráfico propios.
+
+Para cargar un archivo QR, selecciona el Excel y pulsa **Importar órdenes · Revisar**.
+La vista previa muestra cuántos registros QR se reemplazarán y una muestra.
+Marca la confirmación y pulsa **Confirmar y reemplazar solicitudes QR**.
+Todas las especialidades, incluida CARPINTERIA MENOR, permanecen en el registro QR.
+Esta operación reemplaza exclusivamente la tabla QR; no modifica Misceláneos,
+Solicitudes OT ni el antiguo Samtech usuarios. La carga general tampoco modifica QR.
+
+Se admiten campos y fechas vacíos. La plantilla vacía no puede eliminar la base;
+un dato inválido cancela el archivo completo. Si falla el guardado, se recuperan
+los registros anteriores. Una edición posterior a la vista previa obliga a volver
+a revisarla. Reimportar el mismo archivo reemplaza los datos y no acumula duplicados.
+
+El listado, CSV, dashboard y reporte usan Fecha creación, o Fecha inicio si falta.
+Los registros sin ambas fechas quedan guardados y fuera de los filtros por fecha.
+La tabla `samtech_usuarios_qr` se crea al iniciar la aplicación actualizada, sin
+mover ni borrar datos anteriores y sin nuevas dependencias.
+
 ### Samtech usuarios
+
+Este registro anterior conserva su histórico. Gestión de usuarios ahora utiliza
+la carga QR y la carga general descritas arriba; ya no consulta esta tabla.
 
 Disponible en **Registros hotelería > Ingresar registros > Samtech usuarios**
 y en el selector de **Consultar registros**. El formulario, la edición, la
@@ -535,7 +583,7 @@ destino ya contienen registros, para evitar duplicados.
 python -m unittest discover -v
 ```
 
-Las pruebas de búsqueda verifican las 20 categorías, coincidencias parciales,
+Las pruebas de búsqueda verifican las 21 categorías, coincidencias parciales,
 tildes, números, campos opcionales, exportación, filtros combinados y alcance del
 borrado confirmado. Se ejecutan con SQLite temporal; la consulta de PostgreSQL
 también se comprueba mediante compilación SQL.
@@ -548,7 +596,7 @@ node tests/test_hotel_interface.cjs
 node tests/test_user_report_interface.cjs
 ```
 
-El reporte de usuarios tiene pruebas para los conteos y estados de sus tres fuentes,
+El reporte de usuarios tiene pruebas para los conteos y estados de sus cinco indicadores,
 rangos inclusivos, días vacíos, porcentaje ponderado, fechas faltantes, filtros,
 exportación, datos completos, fórmulas, gráficos y navegación. La interfaz comprueba
 que cambiar las fechas pida generar el reporte de nuevo antes de descargarlo.

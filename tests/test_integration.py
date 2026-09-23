@@ -19,7 +19,7 @@ TABS = [
     "robos", "miscelaneo", "desviaciones", "solicitud_ot", "reclamos",
     "alarmas", "extensiones", "onboarding", "apertura", "cumplimiento", "entradas_salidas", "habitaciones_bloqueadas",
     "ordenamiento", "habitaciones_liberadas",
-    "samtech_usuarios",
+    "samtech_usuarios", "samtech_qr",
 ]
 
 VIEWS = ["encuestas" if tab == "encuesta" else tab for tab in TABS]
@@ -45,6 +45,7 @@ FORM_DATA = {
     "ordenamiento": {"fecha_ejecucion": "2026-09-01", "habitacion": "001", "motivo_cambio": "Cambio de turno"},
     "habitaciones_liberadas": {"fecha_devolucion": "2026-09-01", "habitacion": "001", "observacion": "Revisada"},
     "samtech_usuarios": {"fecha_creacion": "2026-09-01", "ticket": "000123", "comentario": "Solicitud de usuario"},
+    "samtech_qr": {"fecha_creacion": "2026-09-01", "ticket": "000456", "comentario": "Solicitud QR"},
 }
 
 IMPORT_ROWS = {
@@ -69,6 +70,8 @@ IMPORT_ROWS = {
     "habitaciones_liberadas": ["001", "Empresa", "Devolución", "2026-09-02", "Llaves recibidas", "2026-09-03", "Revisada"],
     "samtech_usuarios": ["000123", "División", "Área", "Lugar", "Ubicación", "Disciplina", "Especialidad", "Falla", "Empresa", "2026-09-02", "", "", "", "Pendiente", "Seguimiento"],
 }
+
+IMPORT_ROWS["samtech_qr"] = [*IMPORT_ROWS["samtech_usuarios"]]
 
 
 class IntegratedApplicationTest(unittest.TestCase):
@@ -136,7 +139,7 @@ class IntegratedApplicationTest(unittest.TestCase):
                 payload.seek(0)
 
                 data = {"file": (payload, f"{entity}.xlsx")}
-                if entity in ("miscelaneo", "solicitud_ot"):
+                if entity in ("miscelaneo", "solicitud_ot", "samtech_qr"):
                     from tests.test_edit_records import FormValues
                     page = self.client.get(f"/gestion-5s/panel?tab={entity}").get_data(as_text=True)
                     data["csrf_token"] = FormValues(page).values["csrf_token"]
@@ -150,7 +153,7 @@ class IntegratedApplicationTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertNotIn(b"Error importando", response.data)
                 self.assertNotIn(b"No se pudo leer", response.data)
-                if entity in ("miscelaneo", "solicitud_ot"):
+                if entity in ("miscelaneo", "solicitud_ot", "samtech_qr"):
                     preview = FormValues(response.get_data(as_text=True)).values
                     response = self.client.post("/gestion-5s/import/ordenes/confirm", data={
                         "csrf_token": preview["csrf_token"], "confirmation_token": preview["confirmation_token"],

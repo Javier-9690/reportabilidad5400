@@ -5,7 +5,7 @@
   <h1 class="page-title">Revisar importación de órdenes</h1>
   <p><strong>{{ filename }}</strong> · Hoja: {{ parsed.sheet }} · {{ '{:,}'.format(parsed.total).replace(',', '.') }} órdenes.</p>
   <div class="alert alert-warning">
-    <strong>Se reemplazará todo el contenido de Misceláneos y Solicitudes OT.</strong>
+    <strong>Se reemplazará todo el contenido de {{ 'Solicitudes de usuarios Samtech QR' if qr_import else 'Misceláneos y Solicitudes OT' }}.</strong>
     La tabla muestra cuántos registros actuales se eliminarán y cuántos se cargarán.
     Todavía no se han cambiado los registros. Esta vista previa vence en 30 minutos.
   </div>
@@ -15,19 +15,23 @@
       <th scope="row">{{ titles[entity] }}</th>
       <td>{{ '{:,}'.format(previous[entity].count).replace(',', '.') }}</td>
       <td>{{ '{:,}'.format(rows|length).replace(',', '.') }}</td>
-      <td>{{ 'CARPINTERIA MENOR' if entity == 'miscelaneo' else 'Todas las demás, incluidas las vacías' }}</td>
+      <td>{{ 'Todas las especialidades permanecen en Samtech QR' if qr_import else ('CARPINTERIA MENOR' if entity == 'miscelaneo' else 'Todas las demás, incluidas las vacías') }}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
-  <p>Se ignoran tildes, mayúsculas y espacios adicionales al comparar Especialidad. CARPINTERIA se guarda en Solicitudes OT.</p>
-  {% if not parsed.groups.miscelaneo or not parsed.groups.solicitud_ot %}
+  {% if qr_import %}
+  <p>Esta carga alimenta la fila <strong>Solicitudes de usuarios</strong> del reporte. Se conserva completa en el registro QR, incluida CARPINTERIA MENOR. La carga general se importa por separado desde Misceláneos o Solicitudes OT.</p>
+  {% else %}
+  <p>Se ignoran tildes, mayúsculas y espacios adicionales al comparar Especialidad. CARPINTERIA se guarda en Solicitudes OT. La carga completa alimenta <strong>Solicitudes totales Samtech</strong>.</p>
+  {% endif %}
+  {% if not qr_import and (not parsed.groups.miscelaneo or not parsed.groups.solicitud_ot) %}
   <div class="alert alert-warning">Una categoría recibirá cero órdenes y quedará vacía si confirmas el reemplazo.</div>
   {% endif %}
   <div class="card mb-3"><div class="card-body">
     <h2 class="h5">Efecto en Gestión de usuarios</h2>
     <p>{{ report_note }}</p>
     {% if parsed.start %}<p>Fechas de referencia del archivo: {{ parsed.start.strftime('%d/%m/%Y') }} al {{ parsed.end.strftime('%d/%m/%Y') }}.</p>{% endif %}
-    <p>{{ parsed.undated.solicitud_ot }} Solicitudes OT sin Fecha creación ni Fecha inicio quedarán guardadas y fuera de los reportes por fecha.
-       {{ parsed.fallback.solicitud_ot }} usarán Fecha inicio porque Fecha creación está vacía.</p>
+    {% for entity in parsed.groups %}<p>{{ titles[entity] }}: {{ parsed.undated[entity] }} sin Fecha creación ni Fecha inicio quedarán guardadas y fuera de los reportes por fecha.
+       {{ parsed.fallback[entity] }} usarán Fecha inicio porque Fecha creación está vacía.</p>{% endfor %}
     <p class="mb-0">Los campos vacíos se conservan. Se omiten {{ parsed.blank_rows }} filas completamente vacías.
        Hay {{ parsed.blank_specialty }} órdenes con Especialidad vacía y {{ parsed.duplicate_tickets }} repeticiones de ticket; cada fila cuenta una vez.</p>
   </div></div>
@@ -54,9 +58,9 @@
     <input type="hidden" name="confirmation_token" value="{{ confirmation_token }}">
     <div class="form-check mb-3">
       <input type="checkbox" class="form-check-input" name="confirm_replace" id="confirmOrderReplace" value="1" required>
-      <label class="form-check-label" for="confirmOrderReplace">Confirmo eliminar todos los registros actuales de ambas categorías y reemplazarlos con las órdenes de este archivo.</label>
+      <label class="form-check-label" for="confirmOrderReplace">Confirmo eliminar todos los registros actuales de {{ 'Solicitudes de usuarios Samtech QR' if qr_import else 'Misceláneos y Solicitudes OT' }} y reemplazarlos con las órdenes de este archivo.</label>
     </div>
-    <button type="submit" class="btn btn-danger">Confirmar y reemplazar ambas bases</button>
+    <button type="submit" class="btn btn-danger">{{ 'Confirmar y reemplazar solicitudes QR' if qr_import else 'Confirmar y reemplazar ambas bases' }}</button>
   </form>
   <form method="post" action="{{ url_for('order_imports.cancel') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

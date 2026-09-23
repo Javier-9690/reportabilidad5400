@@ -89,6 +89,7 @@ class EditHotelRecordsTest(unittest.TestCase):
             "ordenamiento": ("motivo_cambio", "Cambio de turno", "Cambio de turno"),
             "habitaciones_liberadas": ("observacion", "Lista para uso", "Lista para uso"),
             "samtech_usuarios": ("estado", "Resuelto", "Resuelto"),
+            "samtech_qr": ("estado", "Aprobada", "Aprobada"),
         }
         for entity, (name, value, expected) in changes.items():
             with self.subTest(entity=entity):

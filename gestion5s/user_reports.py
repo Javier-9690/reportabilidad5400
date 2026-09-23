@@ -8,7 +8,8 @@ import unicodedata
 from sqlalchemy import func
 
 from gestion5s.editing import list_fields
-from gestion5s.orders import ORDER_REPORT_NOTE, order_reference_column, order_reference_date
+from gestion5s.orders import (ORDER_IMPORT_ENTITIES, ORDER_REPORT_NOTE, ORDER_OVERLAP_NOTE,
+                             ORDER_TITLES, order_reference_column, order_reference_date)
 
 
 SOURCES = (
@@ -16,11 +17,12 @@ SOURCES = (
      "status": "estatus", "sheet": "Doble asignación", "expected_open": ("abierto",), "color": "#7950A3"},
     {"entity": "reclamos", "label": "Reclamos usuarios", "date": "fecha", "date_label": "Fecha",
      "status": "estatus", "sheet": "Reclamos usuarios", "expected_open": ("abierto",), "color": "#B42318"},
-    {"entity": "solicitud_ot", "label": "Solicitudes de usuarios", "date": "fecha_creacion", "date_fallback": "fecha_inicio",
-     "date_label": "Fecha creación (Fecha inicio si falta)", "report_date_field": "_fecha_reporte", "status": "estado", "sheet": "Solicitudes OT",
+    {"entity": "samtech_qr", "label": "Solicitudes de usuarios", "date": "fecha_creacion", "date_fallback": "fecha_inicio",
+     "date_label": "Fecha creación (Fecha inicio si falta)", "report_date_field": "_fecha_reporte", "status": "estado", "sheet": "Solicitudes usuarios QR",
      "expected_open": ("no_iniciada",), "color": "#1667A5"},
-    {"entity": "samtech_usuarios", "label": "Samtech usuarios", "date": "fecha_creacion",
-     "date_label": "Fecha creación", "status": "estado", "sheet": "Samtech usuarios",
+    {"entity": "solicitud_ot", "entities": ("miscelaneo", "solicitud_ot"), "label": "Solicitudes totales Samtech",
+     "date": "fecha_creacion", "date_fallback": "fecha_inicio", "report_date_field": "_fecha_reporte",
+     "date_label": "Fecha creación (Fecha inicio si falta)", "status": "estado", "sheet": "Solicitudes totales Samtech",
      "expected_open": ("no_iniciada", "en_progreso"), "color": "#198754"},
     {"entity": "desviaciones", "label": "Desviaciones clientes", "date": "fecha", "date_label": "Fecha",
      "status": None, "sheet": "Desviaciones clientes", "expected_open": (), "color": "#B86A00"},
@@ -58,7 +60,7 @@ def classify_status(value, entity=None):
     normalized = unicodedata.normalize("NFKD", value or "")
     normalized = "".join(char for char in normalized if not unicodedata.combining(char)).casefold()
     normalized = re.sub(r"[\s_-]+", " ", normalized).strip()
-    if entity == "solicitud_ot" and normalized in ("aprobada", "aprobado"):
+    if entity in ORDER_IMPORT_ENTITIES and normalized in ("aprobada", "aprobado"):
         return "cerrado"
     return STATUS_LOOKUP.get(normalized, "sin_clasificar")
 
@@ -93,30 +95,39 @@ def build_user_report(db, models, start, end, include_details=False):
     day_index = {day: index for index, day in enumerate(days)}
     categories = []
     for source in SOURCES:
-        model = models[source["entity"]]
-        date_column = order_reference_column(model) if source.get("date_fallback") else getattr(model, source["date"])
-        status_column = getattr(model, source["status"]) if source["status"] else None
-        scope = (date_column >= start, date_column <= end)
-        fields = list_fields(source["entity"], model())
+        entities = source.get("entities", (source["entity"],))
+        fields = list_fields(source["entity"], models[source["entity"]]())
         details = []
-        if include_details:
-            grouped = Counter()
-            for record in db.query(model).filter(*scope).order_by(date_column, model.id).yield_per(1000):
-                state = getattr(record, source["status"]) if source["status"] else None
-                day = order_reference_date(record) if source.get("date_fallback") else getattr(record, source["date"])
-                grouped[(day, state)] += 1
-                detail = {field["name"]: getattr(record, field["name"]) for field in fields}
-                if source.get("report_date_field"):
-                    detail[source["report_date_field"]] = day
-                details.append(detail)
-            groups = [(day, state, count) for (day, state), count in grouped.items()]
-        elif status_column is not None:
-            groups = db.query(date_column, status_column, func.count(model.id)).filter(*scope).group_by(
-                date_column, status_column,
-            ).all()
-        else:
-            groups = [(day, None, count) for day, count in db.query(date_column, func.count(model.id))
-                      .filter(*scope).group_by(date_column).all()]
+        groups, undated = [], 0
+        for entity in entities:
+            model = models[entity]
+            date_column = order_reference_column(model) if source.get("date_fallback") else getattr(model, source["date"])
+            status_column = getattr(model, source["status"]) if source["status"] else None
+            scope = (date_column >= start, date_column <= end)
+            undated += db.query(func.count(model.id)).filter(date_column.is_(None)).scalar()
+            if include_details:
+                grouped = Counter()
+                for record in db.query(model).filter(*scope).order_by(date_column, model.id).yield_per(1000):
+                    state = getattr(record, source["status"]) if source["status"] else None
+                    day = order_reference_date(record) if source.get("date_fallback") else getattr(record, source["date"])
+                    grouped[(day, state)] += 1
+                    # La carga general conserva también las columnas históricas de OT.
+                    detail = {field["name"]: getattr(record, field["name"], None) for field in fields}
+                    if source.get("report_date_field"):
+                        detail[source["report_date_field"]] = day
+                    if len(entities) > 1:
+                        detail["_origen"] = ORDER_TITLES[entity]
+                    details.append(detail)
+                groups.extend((day, state, count) for (day, state), count in grouped.items())
+            elif status_column is not None:
+                groups.extend(db.query(date_column, status_column, func.count(model.id)).filter(*scope).group_by(
+                    date_column, status_column,
+                ).all())
+            else:
+                groups.extend((day, None, count) for day, count in db.query(date_column, func.count(model.id))
+                              .filter(*scope).group_by(date_column).all())
+        if include_details and len(entities) > 1:
+            details.sort(key=lambda record: record[source.get("report_date_field", source["date"])])
         series = {key: [0] * len(days) for key in STATUS_LABELS}
         unknown = Counter()
         for day, state, count in groups:
@@ -137,10 +148,13 @@ def build_user_report(db, models, start, end, include_details=False):
         output_fields = [{key: field[key] for key in ("name", "label", "kind")} for field in fields]
         if source.get("report_date_field"):
             output_fields.append({"name": source["report_date_field"], "label": "Fecha para reporte", "kind": "date"})
+        if len(entities) > 1:
+            output_fields.append({"name": "_origen", "label": "Registro de origen", "kind": "text"})
         categories.append({
             **source, "series": series, "counts": counts, "totals": totals,
             "unknown_states": [{"state": state, "count": count} for state, count in sorted(unknown.items())],
-            "undated": db.query(func.count(model.id)).filter(date_column.is_(None)).scalar(),
+            "undated": undated,
+            "source_links": [{"entity": entity, "label": ORDER_TITLES.get(entity, source["label"])} for entity in entities],
             "fields": output_fields,
             "details": details,
         })
@@ -161,7 +175,7 @@ def build_user_report(db, models, start, end, include_details=False):
                 "kind": kind, "refs": refs}
 
     record_rows = [row(c["entity"] + "_records", c["label"], c["counts"]["records"]) for c in categories]
-    record_rows.append(row("total_records", "Total registros", counts["records"], kind="total",
+    record_rows.append(row("total_records", "Total registros (suma de categorías)", counts["records"], kind="total",
                            refs=[r["key"] for r in record_rows]))
     open_rows = []
     for category in categories:
@@ -201,6 +215,7 @@ def build_user_report(db, models, start, end, include_details=False):
         "generated_at": datetime.now(timezone.utc), "method_note": METHOD_NOTE, "rate_note": RATE_NOTE,
         "without_status_note": WITHOUT_STATUS_NOTE,
         "orders_note": ORDER_REPORT_NOTE,
+        "overlap_note": ORDER_OVERLAP_NOTE,
     }
     report["conclusions"] = make_conclusions(report)
     return report
@@ -216,11 +231,11 @@ def make_conclusions(report):
     if not totals["records"]:
         conclusions.append("No hay registros con fecha dentro del rango seleccionado.")
     else:
-        conclusions.append(f"Se {'registró' if totals['records'] == 1 else 'registraron'} {cases(totals['records'])}: "
+        conclusions.append(f"La suma de las categorías es de {totals['records']} registros: "
                            f"{totals['open']} {'abierto' if totals['open'] == 1 else 'abiertos'}, "
                            f"{totals['closed']} {'cerrado' if totals['closed'] == 1 else 'cerrados'} y {totals['unclassified']} sin clasificar.")
         if totals["classified"]:
-            conclusions.append(f"El cierre es {percent_text(totals['rate'])} entre {cases(totals['classified'])} "
+            conclusions.append(f"El cierre es {percent_text(totals['rate'])} entre {totals['classified']} registros "
                                "con estado clasificable, considerando su estado actual.")
         else:
             conclusions.append("No hay estados clasificables para evaluar el porcentaje de cierre.")

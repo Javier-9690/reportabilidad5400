@@ -1,4 +1,4 @@
-"""Vista previa y reemplazo transaccional de Misceláneos y Solicitudes OT."""
+"""Reemplazo confirmado de la carga general o, por separado, de solicitudes QR."""
 
 from datetime import timedelta
 import hashlib
@@ -11,8 +11,9 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from gestion5s.editing import ORDER_IMPORT_FIELDS, record_version
-from gestion5s.orders import MAX_UPLOAD_BYTES, ORDER_ENTITIES, ORDER_REPORT_NOTE, parse_orders
+from gestion5s.editing import ORDER_IMPORT_FIELDS, SAMTECH_USER_FIELDS, record_version
+from gestion5s.orders import (MAX_UPLOAD_BYTES, ORDER_ENTITIES, ORDER_TITLES,
+                             ORDER_REPORT_NOTE, order_import_targets, parse_orders)
 from gestion5s.user_reports import classify_status, STATUS_LABELS
 
 order_imports = Blueprint("order_imports", __name__)
@@ -44,11 +45,11 @@ def _serializer():
     return URLSafeTimedSerializer(current_app.secret_key, salt="hotel-orders-replacement")
 
 
-def orders_snapshot(db):
+def orders_snapshot(db, targets=ORDER_ENTITIES):
     """Detecta altas, bajas y ediciones desde la vista previa, incluso sin cambiar el total."""
     web = _web()
     result = {}
-    for entity in ORDER_ENTITIES:
+    for entity in targets:
         model = web.ENTITY_MODEL[entity]
         digest, count = hashlib.sha256(), 0
         for record in db.query(model).order_by(model.id).yield_per(1000):
@@ -59,6 +60,7 @@ def orders_snapshot(db):
 
 
 def preview_order_import(entity):
+    targets = order_import_targets(entity)
     if not _csrf_valid():
         return _error("La sesión del formulario expiró. Vuelve al formulario y selecciona el archivo nuevamente.", entity)
     uploaded = request.files.get("file")
@@ -66,7 +68,7 @@ def preview_order_import(entity):
         return _error("Selecciona el archivo de órdenes en formato .xlsx.", entity)
     content = uploaded.read(MAX_UPLOAD_BYTES + 1)
     try:
-        parsed = parse_orders(content)
+        parsed = parse_orders(content, entity=entity)
     except ValueError as exc:
         return _error(str(exc), entity)
     except Exception:
@@ -75,10 +77,11 @@ def preview_order_import(entity):
     web = _web()
     with web.SessionLocal() as db:
         try:
-            snapshot = orders_snapshot(db)
+            snapshot = orders_snapshot(db, targets)
             owner = _owner()
             db.query(web.OrderImportBatch).filter(
-                (web.OrderImportBatch.expires_at < web.now_utc()) | (web.OrderImportBatch.owner == owner)
+                (web.OrderImportBatch.expires_at < web.now_utc()) |
+                ((web.OrderImportBatch.owner == owner) & web.OrderImportBatch.return_tab.in_(targets))
             ).delete(synchronize_session=False)
             batch = web.OrderImportBatch(
                 id=secrets.token_hex(32), owner=owner,
@@ -91,14 +94,15 @@ def preview_order_import(entity):
             token = _serializer().dumps({"id": batch.id, "owner": owner})
             status_rows = [
                 {"entity": key, "state": state, "count": count,
-                 "group": STATUS_LABELS[classify_status(state, entity=key)] if key == "solicitud_ot" else "Fuera del reporte de gestión"}
-                for key in ORDER_ENTITIES for state, count in sorted(parsed["states"][key].items())
+                 "group": STATUS_LABELS[classify_status(state, entity=key)]}
+                for key in targets for state, count in sorted(parsed["states"][key].items())
             ]
             response = make_response(render_template(
                 "order_import_preview.html", parsed=parsed, previous=snapshot, filename=batch.filename,
                 confirmation_token=token, csrf_token=session["hotel_orders_csrf"],
-                columns=ORDER_IMPORT_FIELDS, report_note=ORDER_REPORT_NOTE, status_rows=status_rows,
-                tab=entity, titles={"miscelaneo": "Misceláneos", "solicitud_ot": "Solicitudes OT"},
+                columns=SAMTECH_USER_FIELDS if entity == "samtech_qr" else ORDER_IMPORT_FIELDS,
+                report_note=ORDER_REPORT_NOTE, status_rows=status_rows, qr_import=entity == "samtech_qr",
+                tab=entity, titles=ORDER_TITLES,
             ))
             response.headers["Cache-Control"] = "no-store"
             return response
@@ -122,7 +126,7 @@ def _payload():
 
 def _insert_groups(db, models, groups):
     # Lotes acotados: el Excel adjunto contiene más de 28.000 órdenes.
-    for entity in ORDER_ENTITIES:
+    for entity in groups:
         for offset in range(0, len(groups[entity]), 500):
             db.execute(models[entity].__table__.insert(), groups[entity][offset:offset + 500])
 
@@ -134,7 +138,7 @@ def confirm():
     except ValueError as exc:
         return _error(str(exc))
     if request.form.get("confirm_replace") != "1":
-        return _error("Marca la confirmación para reemplazar ambas bases. Todavía no se ha modificado ningún registro.")
+        return _error("Marca la confirmación para reemplazar los registros indicados en la vista previa. Todavía no se ha modificado ningún registro.")
     web = _web()
     tab = "solicitud_ot"
     with web.SessionLocal() as db:
@@ -145,13 +149,15 @@ def confirm():
             if not batch or batch.expires_at < web.now_utc():
                 return _error("Esta vista previa ya se utilizó, se canceló o expiró. Vuelve a cargar el archivo.", status=409)
             tab = batch.return_tab
-            parsed = parse_orders(batch.content)
+            targets = order_import_targets(tab)
+            parsed = parse_orders(batch.content, entity=tab)
             if db.get_bind().dialect.name == "postgresql":
                 # Bloquea también nuevas inserciones hasta terminar la transacción.
-                db.execute(text("LOCK TABLE miscelaneo, solicitudes_ot IN SHARE ROW EXCLUSIVE MODE"))
-            if orders_snapshot(db) != json.loads(batch.snapshot):
+                tables = ", ".join(web.ENTITY_MODEL[key].__tablename__ for key in targets)
+                db.execute(text(f"LOCK TABLE {tables} IN SHARE ROW EXCLUSIVE MODE"))
+            if orders_snapshot(db, targets) != json.loads(batch.snapshot):
                 return _error("Los registros cambiaron desde la vista previa. No se reemplazó nada. Vuelve a cargar el archivo para revisar las cantidades actuales.", tab, 409)
-            for entity in ORDER_ENTITIES:
+            for entity in targets:
                 db.query(web.ENTITY_MODEL[entity]).delete(synchronize_session=False)
             _insert_groups(db, web.ENTITY_MODEL, parsed["groups"])
             db.delete(batch)  # La misma confirmación no puede ejecutarse dos veces.
@@ -162,9 +168,9 @@ def confirm():
         except SQLAlchemyError:
             db.rollback()
             current_app.logger.exception("Se revirtió el reemplazo de órdenes")
-            return _error("No se pudo completar la importación. Se conservaron todos los registros anteriores de ambas bases. Vuelve a cargar el archivo e inténtalo nuevamente.", tab, 503)
-    counts = {key: len(parsed["groups"][key]) for key in ORDER_ENTITIES}
-    flash(f"Reemplazo completado: {counts['miscelaneo']:,} Misceláneos y {counts['solicitud_ot']:,} Solicitudes OT. El reporte de Gestión de usuarios ya utiliza los datos nuevos.".replace(",", "."), "success")
+            return _error("No se pudo completar la importación. Se conservaron todos los registros anteriores. Vuelve a cargar el archivo e inténtalo nuevamente.", tab, 503)
+    summary = " y ".join(f"{len(parsed['groups'][key]):,} {ORDER_TITLES[key]}" for key in targets).replace(",", ".")
+    flash(f"Reemplazo completado: {summary}. El reporte de Gestión de usuarios ya utiliza los datos nuevos.", "success")
     return redirect(url_for("registros", vista=tab))
 
 

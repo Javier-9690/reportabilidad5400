@@ -214,6 +214,13 @@
           <div class="label">Samtech usuarios</div>
         </div>
       </div>
+      <div class="col-md-2 col-6 mb-3">
+        <div class="stats-card border-primary">
+          <i class="fas fa-qrcode text-primary"></i>
+          <div class="number text-primary">{{ cards.samtech_qr_total }}</div>
+          <div class="label">Solicitudes de usuarios Samtech QR</div>
+        </div>
+      </div>
     </div>
 
     <!-- Primera fila de gráficos -->
@@ -513,6 +520,21 @@
         </div>
       </div>
     </div>
+    <div class="row">
+      <div class="col-12 mb-4">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-qrcode me-2"></i>Solicitudes de usuarios Samtech QR</h5>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted">Registros por Fecha creación (Fecha inicio si falta) dentro del período seleccionado.</p>
+            <div class="chart-container">
+              <canvas id="samtechQRChart" role="img" aria-label="Cantidad diaria de registros de Solicitudes de usuarios Samtech QR"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script>
       // === Configuración y estilo unificado ===
@@ -721,6 +743,13 @@
         type: 'line',
         data: { labels, datasets: [
           makeDataset('Samtech usuarios', series.samtech_usuarios, '#7c3aed', 'rgba(124, 58, 237, 0.1)')
+        ]},
+        options: countChartOptions
+      });
+      new Chart(document.getElementById('samtechQRChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          makeDataset('Solicitudes de usuarios Samtech QR', series.samtech_qr, '#1667A5', 'rgba(22, 103, 165, 0.1)')
         ]},
         options: countChartOptions
       });

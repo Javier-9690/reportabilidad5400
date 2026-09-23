@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const script = fs.readFileSync(path.join(__dirname, '../static/js/user_report.js'), 'utf8');
 const sample = {
   labels: ['31-ago', '1-sep', '2-sep'], dates: ['2026-08-31', '2026-09-01', '2026-09-02'],
-  categories: ['Doble asignación', 'Reclamos usuarios', 'Solicitudes de usuarios', 'Samtech usuarios', 'Desviaciones clientes'],
+  categories: ['Doble asignación', 'Reclamos usuarios', 'Solicitudes de usuarios', 'Solicitudes totales Samtech', 'Desviaciones clientes'],
   colors: ['#7950A3', '#B42318', '#1667A5', '#198754', '#B86A00'],
   daily: [[2, 1, 0], [2, 0, 0], [1, 2, 0], [3, 1, 0], [3, 0, 2]],
   open: [1, 1, 2, 2, 0], closed: [1, 1, 1, 1, 0], unclassified: [1, 0, 0, 1, 5]

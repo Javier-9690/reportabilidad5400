@@ -68,23 +68,23 @@ class UserReportsTest(unittest.TestCase):
         self.create("duplicidades", day="2026-09-01", status="")
         self.create("reclamos", status="Abierto")
         self.create("reclamos", status="Cerrado")
-        self.create("solicitud_ot", status="No iniciada")
-        self.create("samtech_usuarios", status="No iniciada", ticket="000001")
-        self.create("samtech_usuarios", status="En progreso", ticket="000002")
-        self.create("samtech_usuarios", status="Cerrado", ticket="000003")
-        self.create("solicitud_ot", day="2026-09-01", status="En proceso")
-        self.create("solicitud_ot", day="2026-09-01", status="Cerrado")
-        self.create("samtech_usuarios", day="2026-09-01", status="")
+        self.create("samtech_qr", status="No iniciada")
+        self.create("solicitud_ot", status="No iniciada", ot="000001")
+        self.create("solicitud_ot", status="En progreso", ot="000002")
+        self.create("solicitud_ot", status="Cerrado", ot="000003")
+        self.create("samtech_qr", day="2026-09-01", status="En proceso")
+        self.create("samtech_qr", day="2026-09-01", status="Cerrado")
+        self.create("solicitud_ot", day="2026-09-01", status="")
         self.create("reclamos", day="2026-09-12", status="Cerrado")
         for _ in range(3):
             self.create("desviaciones")
         for _ in range(2):
             self.create("desviaciones", day="2026-09-12")
-        for entity in ("duplicidades", "reclamos", "solicitud_ot", "samtech_usuarios", "desviaciones"):
+        for entity in ("duplicidades", "reclamos", "samtech_qr", "solicitud_ot", "desviaciones"):
             self.create(entity, day="2026-08-30")
             self.create(entity, day="2026-09-13")
+        self.create("samtech_qr", day=None)
         self.create("solicitud_ot", day=None)
-        self.create("samtech_usuarios", day=None)
 
     def test_navigation_range_form_and_initial_state(self):
         for path in ("/", "/gestion-5s/panel", "/reports/usuarios"):
@@ -104,7 +104,7 @@ class UserReportsTest(unittest.TestCase):
     def test_daily_counts_include_five_sources_both_boundaries_and_empty_days(self):
         self.sample()
         # Otros módulos no contribuyen a este informe aunque tengan la misma fecha.
-        self.assertEqual(self.client.post("/gestion-5s/panel?tab=miscelaneo", data=FORM_DATA["miscelaneo"]).status_code, 302)
+        self.assertEqual(self.client.post("/gestion-5s/panel?tab=samtech_usuarios", data=FORM_DATA["samtech_usuarios"]).status_code, 302)
         report = self.result()
         self.assertEqual(report["days"], [date(2026, 8, 31) + timedelta(days=i) for i in range(13)])
         self.assertEqual(report["counts"], {
@@ -118,14 +118,14 @@ class UserReportsTest(unittest.TestCase):
         self.assertAlmostEqual(totals["rate"], 5 / 11)
         self.assertEqual([c["totals"]["records"] for c in report["categories"]], [3, 3, 3, 4, 5])
         self.assertEqual([row["label"] for row in report["sections"][0]["rows"][:-1]],
-                         ["Doble asignación", "Reclamos usuarios", "Solicitudes de usuarios", "Samtech usuarios", "Desviaciones clientes"])
+                         ["Doble asignación", "Reclamos usuarios", "Solicitudes de usuarios", "Solicitudes totales Samtech", "Desviaciones clientes"])
         self.assertEqual([section["key"] for section in report["sections"]], ["records", "open", "closed", "unclassified", "comparison"])
         open_rows = report["sections"][1]["rows"]
-        self.assertIn("solicitud_ot_en_progreso", [row["key"] for row in open_rows])
+        self.assertIn("samtech_qr_en_progreso", [row["key"] for row in open_rows])
         self.assertEqual(sum(row["total"] for row in open_rows[:-1]), open_rows[-1]["total"])
         text = " ".join(report["conclusions"])
         self.assertIn("45,5%", text)
-        self.assertIn("11 casos", text)
+        self.assertIn("11 registros", text)
         self.assertIn("La categoría con más registros es Desviaciones clientes: 5 casos", text)
         self.assertIn("Revisar estados: 2 casos", text)
         self.assertIn("31/08/2026", text)
@@ -143,21 +143,21 @@ class UserReportsTest(unittest.TestCase):
         for raw, expected in cases.items():
             with self.subTest(status=raw):
                 self.assertEqual(classify_status(raw), expected)
-                self.create("samtech_usuarios", status=raw)
+                self.create("solicitud_ot", status=raw)
         report = self.result()
         self.assertEqual(report["totals"]["closed"], 4)
         self.assertEqual(report["totals"]["unclassified"], 6)
         self.assertEqual(report["totals"]["open"], 7)
         with self.sessions() as db:
-            self.assertIn("No cerrado", {row.estado for row in db.query(web.SamtechUsuarioEntry)})
+            self.assertIn("No cerrado", {row.estado for row in db.query(web.SolicitudOTEntry)})
 
     def test_closure_percentage_is_weighted_and_does_not_include_unclassified(self):
         for _ in range(9):
             self.create("reclamos", status="Abierto")
         self.create("reclamos")
-        self.create("samtech_usuarios", day="2026-09-01")
+        self.create("solicitud_ot", day="2026-09-01")
         for _ in range(5):
-            self.create("solicitud_ot", status="")
+            self.create("samtech_qr", status="")
         report = self.result()
         rate = report["sections"][-1]["rows"][-1]
         self.assertEqual(rate["values"][:2], [0.1, 1])
@@ -167,9 +167,9 @@ class UserReportsTest(unittest.TestCase):
         self.assertEqual(report["totals"]["records"], 16)
 
     def test_reference_dates_are_independent_from_end_dates_and_internal_creation(self):
-        self.create("samtech_usuarios", day="2026-08-31", fecha_inicio="2026-08-20", fecha_termino="2026-10-15", fecha_aprobacion="2026-11-01")
-        self.create("samtech_usuarios", day="2026-07-01", fecha_inicio="2026-08-31", fecha_termino="2026-09-01")
-        self.create("solicitud_ot", day="2026-09-12")
+        self.create("solicitud_ot", day="2026-08-31", fecha_inicio="2026-08-20", fecha_termino="2026-10-15", fecha_aprobacion="2026-11-01")
+        self.create("solicitud_ot", day="2026-07-01", fecha_inicio="2026-08-31", fecha_termino="2026-09-01")
+        self.create("samtech_qr", day="2026-09-12")
         self.create("reclamos", day="2026-08-31")
         self.create("duplicidades", day="2026-08-31", fecha_cierre="2026-10-15")
         self.create("duplicidades", day="2026-07-01", fecha_cierre="2026-08-31")
@@ -218,7 +218,7 @@ class UserReportsTest(unittest.TestCase):
         self.assertIn('data-record-scroll-top', page)
         self.assertIn('data-report-row="total_records"', page)
         payload = json.loads(re.search(r'<script id="userReportChartData" type="application/json">(.*?)</script>', page, re.S).group(1))
-        self.assertEqual(payload["categories"], ["Doble asignación", "Reclamos usuarios", "Solicitudes de usuarios", "Samtech usuarios", "Desviaciones clientes"])
+        self.assertEqual(payload["categories"], ["Doble asignación", "Reclamos usuarios", "Solicitudes de usuarios", "Solicitudes totales Samtech", "Desviaciones clientes"])
         self.assertEqual(len(set(payload["colors"])), 5)
         self.assertEqual(payload["open"], [1, 1, 2, 2, 0])
         self.assertEqual(payload["closed"], [1, 2, 1, 1, 0])
@@ -229,7 +229,7 @@ class UserReportsTest(unittest.TestCase):
         links = PageStructure(page).links
         download = next(link for link in links if "/reports/usuarios.xlsx" in link)
         self.assertEqual(parse_qs(urlsplit(download).query), {key: [value] for key, value in self.filters.items()})
-        for entity in ("duplicidades", "reclamos", "solicitud_ot", "samtech_usuarios", "desviaciones"):
+        for entity in ("duplicidades", "reclamos", "samtech_qr", "solicitud_ot", "miscelaneo", "desviaciones"):
             detail = next(link for link in links if f"vista={entity}" in link)
             self.assertEqual(parse_qs(urlsplit(detail).query), {"vista": [entity], "from": ["2026-08-31"], "to": ["2026-09-12"]})
             self.assertEqual(self.client.get(detail).status_code, 200)
@@ -238,13 +238,13 @@ class UserReportsTest(unittest.TestCase):
         self.sample()
         content = self.export()
         formulas, values = load_workbook(BytesIO(content)), load_workbook(BytesIO(content), data_only=True)
-        self.assertEqual(values.sheetnames, ["Reporte diario", "Conclusiones", "Doble asignación", "Reclamos usuarios", "Solicitudes OT", "Samtech usuarios", "Desviaciones clientes"])
+        self.assertEqual(values.sheetnames, ["Reporte diario", "Conclusiones", "Doble asignación", "Reclamos usuarios", "Solicitudes usuarios QR", "Solicitudes totales Samtech", "Desviaciones clientes"])
         daily = values["Reporte diario"]
         self.assertEqual(daily.max_column, 15)
         self.assertEqual([cell.value.date() for cell in daily[7][1:14]], [date(2026, 8, 31) + timedelta(days=i) for i in range(13)])
         self.assertEqual(daily.freeze_panes, "B8")
         self.assertEqual(daily["A7"].fill.fgColor.rgb, "FFF00000")
-        total_row = next(row for row in daily if row[0].value == "Total registros")
+        total_row = next(row for row in daily if row[0].value == "Total registros (suma de categorías)")
         self.assertEqual([cell.value for cell in total_row[1:]], [11, 4] + [0] * 10 + [3, 18])
         self.assertEqual(total_row[1].fill.fgColor.rgb, "FFFFFF00")
         percent_row = next(row for row in daily if row[0].value == "% cerrado")
@@ -262,12 +262,14 @@ class UserReportsTest(unittest.TestCase):
             sheet = values[source["sheet"]]
             fields = web.list_fields(source["entity"], web.ENTITY_MODEL[source["entity"]]())
             extra = ["Fecha para reporte"] if source.get("report_date_field") else []
+            if source.get("entities"):
+                extra.append("Registro de origen")
             self.assertEqual([cell.value for cell in sheet[5]], [field["label"] for field in fields] + extra + ["Estado agrupado"])
             self.assertEqual(sheet.max_row - 5, expected)
             self.assertEqual(sheet.freeze_panes, "A6")
             self.assertTrue(sheet.auto_filter.ref)
-        self.assertEqual(values["Samtech usuarios"]["A6"].value, "000001")
-        self.assertEqual(values["Samtech usuarios"]["A6"].data_type, "s")
+        self.assertEqual(values["Solicitudes totales Samtech"]["A6"].value, "000001")
+        self.assertEqual(values["Solicitudes totales Samtech"]["A6"].data_type, "s")
         with ZipFile(BytesIO(content)) as archive:
             self.assertIsNone(archive.testzip())
             charts = [name for name in archive.namelist() if re.fullmatch(r"xl/charts/chart\d+.xml", name)]
@@ -295,7 +297,7 @@ class UserReportsTest(unittest.TestCase):
         self.assertEqual(report["conclusions"], ["No hay registros con fecha dentro del rango seleccionado."])
         values = load_workbook(BytesIO(self.export()), data_only=True)
         self.assertEqual(values["Conclusiones"]["Q6"].value, 0)
-        self.create("samtech_usuarios", status="")
+        self.create("solicitud_ot", status="")
         report = self.result()
         self.assertEqual(report["totals"]["records"], 1)
         self.assertEqual(report["totals"]["classified"], 0)
@@ -321,7 +323,7 @@ class UserReportsTest(unittest.TestCase):
         for start, end, expected in (("2024-02-28", "2024-03-01", 3), ("2026-12-31", "2027-01-01", 2),
                                      ("2026-08-31", "2026-08-31", 1)):
             with self.subTest(start=start, end=end):
-                self.create("samtech_usuarios", day=end)
+                self.create("solicitud_ot", day=end)
                 report = self.result(start_date=start, end_date=end)
                 self.assertEqual(len(report["days"]), expected)
                 self.assertEqual(report["counts"]["records"][-1], 1)
@@ -331,26 +333,26 @@ class UserReportsTest(unittest.TestCase):
 
     def test_html_escaping_literal_excel_strings_and_read_only_behavior(self):
         text = '<script>alert("x")</script>'
-        rid = self.create("samtech_usuarios", status=text, ticket="=1+1", comentario="https://example.org", falla="@SUM(A1:A2)")
+        rid = self.create("solicitud_ot", status=text, ot="=1+1", comentario="https://example.org", falla="@SUM(A1:A2)")
         response = self.client.get("/reports/usuarios", query_string=self.filters)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(text, response.get_data(as_text=True))
         values = load_workbook(BytesIO(self.export()))
-        sheet = values["Samtech usuarios"]
+        sheet = values["Solicitudes totales Samtech"]
         self.assertEqual(sheet["A6"].value, "=1+1")
         self.assertEqual(sheet["A6"].data_type, "s")
         self.assertIsNone(sheet["O6"].hyperlink)
         self.assertEqual(sheet["N6"].value, text)
         with self.sessions() as db:
-            record = db.get(web.SamtechUsuarioEntry, rid)
-            self.assertEqual((record.ticket, record.estado), ("=1+1", text))
-            self.assertEqual(db.query(web.SamtechUsuarioEntry).count(), 1)
+            record = db.get(web.SolicitudOTEntry, rid)
+            self.assertEqual((record.ot, record.estado), ("=1+1", text))
+            self.assertEqual(db.query(web.SolicitudOTEntry).count(), 1)
 
     def test_reports_refresh_after_record_edits(self):
-        rid = self.create("samtech_usuarios", status="No iniciada")
+        rid = self.create("solicitud_ot", status="No iniciada")
         self.assertEqual(self.result()["totals"]["open"], 1)
         with self.sessions() as db:
-            db.get(web.SamtechUsuarioEntry, rid).estado = "Cerrado"
+            db.get(web.SolicitudOTEntry, rid).estado = "Cerrado"
             db.commit()
         report = self.result()
         self.assertEqual((report["totals"]["open"], report["totals"]["closed"]), (0, 1))
@@ -363,7 +365,7 @@ class UserReportsTest(unittest.TestCase):
                 response = self.client.get(path, query_string=self.filters)
                 self.assertEqual(response.status_code, 503)
                 self.assertNotIn('data-kpi=', response.get_data(as_text=True))
-        self.create("samtech_usuarios", comentario="x" * 32768)
+        self.create("solicitud_ot", comentario="x" * 32768)
         response = self.client.get("/reports/usuarios.xlsx", query_string=self.filters)
         self.assertEqual(response.status_code, 400)
         self.assertIn("32.767 caracteres", response.get_data(as_text=True))

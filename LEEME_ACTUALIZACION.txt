@@ -1,136 +1,142 @@
-REPORTABILIDAD 5400 — IMPORTACIÓN CONJUNTA DE ÓRDENES
+REPORTABILIDAD 5400 — SOLICITUDES DE USUARIOS SAMTECH QR
 Actualización del 23/09/2026
 
 Programa completo con las mejoras anteriores de esta conversación.
 Repositorio: https://github.com/Javier-9690/reportabilidad5400
 Base: f67683f33208d1917fd766649ef897df63ced824
 
-NUEVO FLUJO PARA MISCELÁNEOS Y SOLICITUDES OT
-1. En Registros hotelería, abre Misceláneo o Solicitudes OT.
-2. Selecciona el archivo de órdenes y pulsa Importar órdenes · Revisar.
-3. Revisa cuántos registros actuales se eliminarán, cuántas órdenes nuevas
-   recibirá cada categoría, las fechas, estados y muestras del archivo.
-4. Para reemplazar, marca la confirmación y pulsa Confirmar y reemplazar ambas bases.
-   Cancelar conserva los registros anteriores.
+NUEVO REGISTRO QR
+Abre Registros hotelería > Ingresar registros > Solicitudes de usuarios Samtech QR.
+Incluye formulario, plantilla Excel, importación, Ver registros, exportación CSV,
+buscador por palabra o número, edición con lápiz, eliminación individual,
+selección múltiple, Eliminar todos y tarjeta/gráfico en el dashboard de registros.
 
-Una sola importación reemplaza TODAS las filas de AMBAS categorías:
-- Especialidad CARPINTERIA MENOR → Misceláneos.
-- Cualquier otra especialidad, incluida vacía → Solicitudes OT.
-La comparación ignora mayúsculas, tildes y espacios adicionales. CARPINTERIA
-sin MENOR y CARPINTERIA MENOR EXTRA van a Solicitudes OT.
-
-Ambas plantillas usan los 15 encabezados del archivo ordenes.xlsx:
+Conserva los 15 campos del formato Samtech:
 Ticket, División, Área, Lugar, Ubicación, Disciplina, Especialidad, Falla, Empresa,
-Fecha creación, Fecha inicio, Fecha término, Fecha aprobación, Estado, Comentario.
-Ticket se conserva en la columna OT existente. Se admiten campos y fechas vacíos,
-fechas dd/mm/aaaa, aaaa-mm-dd y fechas reales de Excel. Se omiten filas totalmente
-vacías. Se mantienen los textos completos y los ceros iniciales de identificadores.
-Las columnas pueden cambiar de orden, pero deben conservar los 15 encabezados.
+Fecha creación, Fecha inicio, Fecha término, Fecha aprobación, Estado y Comentario.
+Se admiten campos y fechas vacíos. Los identificadores conservan ceros iniciales.
+Los listados muestran todos los campos con barras de desplazamiento, 100 filas por
+página y textos completos. Buscar, exportar CSV y Eliminar todos abarcan todo el
+resultado filtrado. Las casillas seleccionan la página visible.
 
-Una fecha/valor inválido rechaza todo el archivo antes de reemplazar registros.
-Las fórmulas de origen deben convertirse a valores. Una plantilla vacía no
-permite borrar las bases. Si una sola categoría recibe cero órdenes, se avisa
-que quedará vacía al confirmar. Los tickets repetidos se señalan: cada fila
-cuenta una vez, sin deduplicar datos silenciosamente.
+CARGA QR CON CONFIRMACIÓN
+1. Selecciona el archivo QR y pulsa Importar órdenes · Revisar.
+2. Revisa los registros actuales que se eliminarán, las solicitudes nuevas,
+   fechas, estados y la muestra de datos.
+3. Marca la confirmación y pulsa Confirmar y reemplazar solicitudes QR.
+   Cancelar conserva los registros existentes.
 
-PROTECCIÓN DEL REEMPLAZO
-El reemplazo de ambas categorías se realiza en una única transacción. Si falla
-una inserción, se recuperan todos los registros anteriores. La confirmación se
-utiliza una sola vez, está asociada a la sesión y vence a los 30 minutos.
-Si otra persona agrega, modifica o elimina registros después de la vista previa,
-se solicita revisar nuevamente el archivo. La última vista previa sustituye a
-las anteriores de esa sesión. El archivo temporal se elimina al confirmar,
-cancelar o limpiar vistas expiradas en la siguiente carga.
-Límites: archivo de hasta 25 MB y hasta 150.000 órdenes.
+La importación reemplaza exclusivamente los registros QR. Todas las especialidades,
+incluida CARPINTERIA MENOR, permanecen dentro del registro QR. No modifica
+Misceláneos, Solicitudes OT ni el antiguo Samtech usuarios.
+La importación general desde Misceláneos o Solicitudes OT sigue separando
+CARPINTERIA MENOR hacia Misceláneos y el resto hacia Solicitudes OT; tampoco
+modifica los registros QR. Ambas cargas tienen confirmaciones independientes.
 
-EFECTO EN GESTIÓN DE USUARIOS
-Se conservan las cinco filas del reporte: Doble asignación, Reclamos usuarios,
-Solicitudes de usuarios, Samtech usuarios y Desviaciones clientes.
-Solicitudes de usuarios se alimenta inmediatamente de Solicitudes OT después
-de confirmar la importación. CARPINTERIA MENOR pertenece a Misceláneos y no
-se añade a esa fila. Samtech conserva su registro independiente.
+Una plantilla vacía o una fila inválida impide el reemplazo. Si falla el guardado,
+la transacción recupera los datos anteriores. Si los registros cambian después
+de la vista previa, hay que revisarla nuevamente. La confirmación pertenece a
+la sesión, vence en 30 minutos y no puede ejecutarse dos veces. Reimportar el
+mismo archivo reemplaza los datos sin acumular otra copia.
+Límites: 25 MB por archivo y 150.000 filas. Cada fila no vacía cuenta una vez;
+se informa si hay tickets repetidos sin deduplicarlos silenciosamente.
 
-Solicitudes OT se agrupa por Fecha creación, usando Fecha inicio si la primera
-está vacía. Así, las órdenes No Iniciada con Fecha creación entran en el período.
-No se utiliza la fecha de importación ni se sustituyen las cuatro fechas originales.
-Si ambas fechas están vacías, la orden se guarda y queda fuera de los reportes
-por fecha; se informa la cantidad. Los registros antiguos sin Fecha creación
-siguen usando su Fecha inicio hasta que se reemplacen o editen.
+NUEVAS FUENTES DE GESTIÓN DE USUARIOS
+- Solicitudes de usuarios: exclusivamente Solicitudes de usuarios Samtech QR.
+- Solicitudes totales Samtech: la carga general COMPLETA, Misceláneos + Solicitudes OT.
+  Sustituye la fila antes llamada Samtech usuarios.
+- Se conservan Doble asignación, Reclamos usuarios y Desviaciones clientes.
 
-En Solicitudes OT, Aprobada/Aprobado y Completada cuentan como cerradas.
-No Iniciada y En Progreso cuentan como abiertas, junto a las equivalencias
-anteriores del reporte. Eliminado y Felicitaciones quedan Sin clasificar:
-suman al volumen, pero no al denominador del porcentaje de cierre.
-La equivalencia adicional de Aprobada se aplica únicamente a Solicitudes OT.
-Los estados originales del Excel no se modifican.
+El antiguo registro Samtech usuarios conserva sus datos y funciones, pero ya no
+alimenta este reporte. No se copian sus datos a QR automáticamente.
+Pantalla, conclusiones, gráficos y Excel utilizan los nuevos nombres y fuentes.
+El Excel sigue teniendo siete hojas; los nuevos detalles se llaman Solicitudes
+usuarios QR y Solicitudes totales Samtech. Este último identifica Registro de
+origen e incluye también los campos históricos de Solicitudes OT.
 
-El dashboard, las conclusiones, el listado filtrado y el Excel usan los mismos
-criterios. La hoja Solicitudes OT del Excel muestra los 15 campos importados,
-los campos históricos, Fecha para reporte y Estado agrupado. Fecha para reporte
-se calcula mediante una fórmula para que los COUNTIFS diarios reproduzcan los
-conteos del programa. Los criterios de fecha y estado están visibles en el reporte.
+Las solicitudes QR pueden estar también en la carga general. Como en la tabla
+original, el total suma las filas de las categorías y NO representa tickets únicos.
+Se explica en pantalla y Excel con Total registros (suma de categorías).
+Los estados de QR y de la carga general son independientes: importa ambos archivos
+actualizados para comparar el período.
 
-LISTADOS Y CAMPOS
-Misceláneos y Solicitudes OT muestran 100 filas por página con todas las columnas
-y desplazamiento horizontal. La búsqueda, el CSV y Eliminar todos abarcan todas
-las páginas con los filtros actuales. Las casillas seleccionan la página visible.
-Se conservan Ver registros, edición con lápiz, eliminación individual y múltiple.
-Solicitudes OT conserva sus campos históricos además de las 15 columnas nuevas.
+FECHAS Y ESTADOS
+QR, Misceláneos y Solicitudes OT se agrupan por Fecha creación; si está vacía,
+se usa Fecha inicio. Si ambas faltan, el registro se guarda y queda fuera de los
+reportes por fecha. Nunca se usa la fecha de importación como fecha del caso.
+Se conservan las fechas de término y aprobación originales. El Excel calcula
+Fecha para reporte con la misma regla para reproducir los conteos diarios.
+Aprobada/Aprobado y Completada se consideran cerradas; No Iniciada y En Progreso
+se consideran abiertas, junto a las equivalencias anteriores. Eliminado y
+Felicitaciones quedan Sin clasificar y fuera del denominador del porcentaje de cierre.
+Desviaciones no tiene campo de estado y conserva su tratamiento anterior.
+Los reportes mantienen una lectura coherente aunque se confirme otra carga
+mientras se están generando.
 
-VERIFICACIÓN CON EL ARCHIVO ADJUNTO
-Se leyó ordenes.xlsx y se probó la importación en una base TEMPORAL aislada:
-- Total: 28.408 órdenes.
-- Misceláneos: 6.690 órdenes.
-- Solicitudes OT: 21.718 órdenes.
-Los conteos diarios del reporte del 31/08/2026 al 23/09/2026 se contrastaron con
-el Excel original: 711 Solicitudes OT, 59 abiertas y 652 cerradas.
-Esto es una comprobación; NO se cargó el archivo en producción y el archivo de
-datos no está dentro del ZIP. Debes importarlo desde el programa tras actualizar.
+VERIFICACIÓN
+- 110 pruebas Python aprobadas, incluidas importación QR, aislamiento de las cargas,
+  rollback, edición concurrente, formulario, búsqueda, exportación y borrado.
+- Comprobaciones de interfaz JavaScript aprobadas.
+- Ambos archivos se importaron en una base TEMPORAL aislada:
+  28.408 órdenes generales = 6.690 Misceláneos + 21.718 Solicitudes OT.
+  2.661 solicitudes QR; las 398 con CARPINTERIA MENOR permanecen en QR.
+- Todas las 2.661 solicitudes QR aparecen también en la carga general.
+- Histórico: general 28.302 cerradas, 85 abiertas, 21 sin clasificar;
+  QR 2.644 cerradas, 9 abiertas, 8 sin clasificar.
+- Del 31/08/2026 al 23/09/2026: general 1.104 (1.026 cerradas, 78 abiertas);
+  QR 44 (36 cerradas, 8 abiertas). Conteos contrastados por cada día y estado.
+- Excel del 31/08/2026 al 12/09/2026: 973 fórmulas coinciden después de recalcular
+  en LibreOffice. Revisados visualmente nombres, tablas, gráficos y criterios.
+No se cargaron datos en producción. Los archivos adjuntos y los datos de validación
+no están incluidos en este ZIP.
 
-SI YA INSTALASTE LA ENTREGA ANTERIOR DEL REPORTE
-Reemplaza estos archivos, respetando sus carpetas:
+INSTALACIÓN
+1. Descomprime el ZIP y copia los archivos del programa en sus mismas carpetas.
+2. Guarda los cambios en la rama de GitHub utilizada por Render.
+3. Despliega el último commit o espera el despliegue automático.
+4. En Registros hotelería > Solicitudes de usuarios Samtech QR, carga el archivo QR
+   y confirma después de revisar la vista previa.
+5. Mantén la carga general actualizada desde Misceláneos o Solicitudes OT.
+6. En Reportes > Gestión de usuarios, selecciona el rango y genera el reporte/Excel.
+No subas el ZIP como sustituto de los archivos del programa.
+
+La tabla samtech_usuarios_qr se crea al iniciar el programa actualizado.
+No se mueven ni borran datos anteriores al iniciar. No hay dependencias nuevas.
+Los cambios están preparados en este paquete, NO publicados en GitHub ni
+desplegados en Render: la conexión al repositorio tiene permiso de lectura.
+
+SI YA INSTALASTE LA IMPORTACIÓN CONJUNTA (VERSIÓN 15)
+Reemplaza:
 - README.md
 - gestion5s/editing.py
+- gestion5s/order_import_routes.py
+- gestion5s/orders.py
+- gestion5s/templates/dashboard.html
 - gestion5s/templates/list.html
+- gestion5s/templates/order_import_preview.html
 - gestion5s/templates/panel.html
 - gestion5s/user_report_excel.py
+- gestion5s/user_report_routes.py
 - gestion5s/user_reports.py
 - gestion5s/web.py
 - templates/user_report.html
+- tests/test_edit_records.py
 - tests/test_integration.py
+- tests/test_order_import.py
+- tests/test_user_report_interface.cjs
 - tests/test_user_reports.py
 
-Añade estos archivos nuevos:
-- gestion5s/order_import_routes.py
-- gestion5s/orders.py
-- gestion5s/templates/order_import_error.html
-- gestion5s/templates/order_import_preview.html
-- tests/test_order_import.py
-
-INSTALACIÓN Y ACTUALIZACIÓN DE BASE DE DATOS
-1. Descomprime el ZIP y copia los archivos indicados en las mismas carpetas.
-2. Guarda los cambios en la rama de GitHub utilizada por Render.
-3. Despliega el último commit o espera el despliegue automático.
-4. Abre Misceláneo o Solicitudes OT e importa ordenes.xlsx con vista previa.
-5. Confirma el reemplazo cuando revises las cantidades.
-No subas el ZIP como sustituto de los archivos del programa.
-
-Al iniciar, se agregan columnas opcionales a Solicitudes OT y una tabla temporal
-para las vistas previas. Falla de Misceláneos admite textos largos. La migración
-conserva los registros existentes: no realiza el reemplazo automáticamente.
-No se requieren dependencias nuevas. La transacción usa el bloqueo adecuado de
-PostgreSQL o SQLite para evitar sobrescribir cambios desde la vista previa.
-Los cambios no están publicados en GitHub ni desplegados en Render: la conexión
-verificada al repositorio tiene permiso de lectura, sin permiso de escritura.
+Añade:
+- tests/test_samtech_qr.py
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
 - Reportes conserva Dotación, Ocupabilidad, EGP y F&A y añade Gestión de usuarios.
-- Los 20 módulos tienen Ver registros, todos sus campos y textos completos,
+- Los 21 módulos tienen Ver registros, todos sus campos y textos completos,
   barras horizontales sincronizadas y desplazamiento vertical.
 - Ingreso, plantillas Excel, importación, exportación CSV, edición con lápiz,
   eliminación individual, selección múltiple y Eliminar todos con confirmación.
-- Buscador por palabra o número en las 20 categorías, con coincidencias parciales,
+- Buscador por palabra o número en las 21 categorías, con coincidencias parciales,
   sin distinguir mayúsculas ni tildes; respeta la categoría, fechas y semana.
 - El buscador se conserva al editar, eliminar y exportar; el borrado múltiple
   utiliza exactamente la selección confirmada y detecta cambios concurrentes.
@@ -142,7 +148,7 @@ MEJORAS ANTERIORES INCLUIDAS
 - Habitaciones bloqueadas, Ordenamiento y Habitaciones liberadas completos.
 - Samtech usuarios con sus 15 campos, formulario, plantilla, importación,
   listado, edición, exportación, eliminación y gráfico por Fecha creación.
-- Campos y fechas vacíos admitidos en los cinco registros nuevos de la conversación.
+- Campos y fechas vacíos admitidos en los seis registros nuevos de la conversación.
 El README detalla las columnas y el funcionamiento de cada módulo.
 
 
@@ -150,6 +156,7 @@ El README detalla las columnas y el funcionamiento de cada módulo.
   ambos gráficos y Excel de siete hojas, incluyendo Desviaciones y Doble asignación.
 - Desviaciones aporta al total y queda fuera del porcentaje de cierre porque
   su registro no tiene campo de estado; se explica como Sin clasificar.
+
 
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza:
@@ -195,17 +202,7 @@ Añade:
 - tests/test_order_import.py
 - tests/test_record_search.py
 - tests/test_room_operations.py
+- tests/test_samtech_qr.py
 - tests/test_samtech_users.py
 - tests/test_user_report_interface.cjs
 - tests/test_user_reports.py
-
-COMPROBACIONES
-Pasaron las 101 pruebas funcionales, incluidas 13 pruebas de la nueva importación.
-Se verificaron clasificación exacta, ambas vías de entrada, campos vacíos,
-encabezados reordenados, fechas de Excel, cancelación, confirmación obligatoria,
-reintentos, expiración, cambios simultáneos, reversión tras fallo parcial,
-migración aditiva y paginación sin limitar la búsqueda, CSV ni Eliminar todos.
-Se probó el archivo real completo y se conciliaron los conteos por día y estado.
-Se recalcularon y verificaron 411 fórmulas en una exportación de prueba mediante
-LibreOffice, incluida Fecha para reporte; se revisaron gráficos y criterios.
-Las pruebas usaron bases temporales, sin modificar datos de producción.

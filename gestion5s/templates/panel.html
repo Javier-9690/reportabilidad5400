@@ -72,6 +72,9 @@
           <a href="{{ url_for('panel', tab='samtech_usuarios') }}" class="list-group-item list-group-item-action {% if tab=='samtech_usuarios' %}active{% endif %}">
             <i class="fas fa-ticket-alt me-2"></i>Samtech usuarios
           </a>
+          <a href="{{ url_for('panel', tab='samtech_qr') }}" class="list-group-item list-group-item-action {% if tab=='samtech_qr' %}active{% endif %}">
+            <i class="fas fa-qrcode me-2"></i>Solicitudes de usuarios Samtech QR
+          </a>
         </div>
       </div>
     </div>
@@ -99,11 +102,21 @@
           </div>
           {% if order_import %}
           <div class="alert alert-info">
+            {% if entity == 'samtech_qr' %}
+            Carga aquí el archivo de solicitudes ingresadas por QR. <strong>Todas las especialidades se guardarán en Solicitudes de usuarios Samtech QR.</strong>
+            Verás las cantidades y una muestra antes de confirmar el reemplazo de los registros QR.
+            Este registro alimenta <strong>Solicitudes de usuarios</strong> en Gestión de usuarios.
+            {% else %}
             Importa el archivo de órdenes desde cualquiera de estas dos categorías.
             <strong>CARPINTERIA MENOR irá a Misceláneos; el resto a Solicitudes OT.</strong>
             Verás las cantidades y una muestra antes de confirmar el reemplazo de todos los registros de ambas bases.
+            La carga completa alimenta <strong>Solicitudes totales Samtech</strong> en Gestión de usuarios.
+            {% endif %}
             Puedes dejar campos y fechas vacíos.
           </div>
+          {% endif %}
+          {% if entity == 'samtech_usuarios' %}
+          <p class="alert alert-info">Este registro conserva los datos anteriores de Samtech usuarios. Para Gestión de usuarios, carga las solicitudes QR en <a href="{{ url_for('panel', tab='samtech_qr') }}">Solicitudes de usuarios Samtech QR</a> y el total general desde <a href="{{ url_for('panel', tab='solicitud_ot') }}">Solicitudes OT</a> o Misceláneos.</p>
           {% endif %}
           {% if optional_record %}
           <p class="small text-muted">Puedes dejar campos vacíos y completarlos después desde Editar. Las filas totalmente vacías de la plantilla se omiten.</p>

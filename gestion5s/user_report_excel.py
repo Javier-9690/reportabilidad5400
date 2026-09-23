@@ -75,7 +75,7 @@ def export_user_report(report):
         sheet.set_row(0, 32)
         sheet.merge_range(1, 0, 1, last_column, period, formats["subtitle"])
         sheet.merge_range(2, 0, 2, last_column,
-                          f"Fuente: Registros hotelería > {category['label']}. Fecha utilizada: {category['date_label']}. {stamp}", formats["subtitle"])
+                          f"Fuente: Registros hotelería > {' + '.join(s['label'] for s in category['source_links'])}. Fecha utilizada: {category['date_label']}. {stamp}", formats["subtitle"])
         sheet.set_row(2, 30)
         sheet.merge_range(3, 0, 3, last_column,
                           "Estado agrupado aplica las equivalencias del informe. Para incorporar cambios del programa, genera una nueva exportación.", formats["subtitle"])
@@ -136,8 +136,8 @@ def export_user_report(report):
     daily.set_row(0, 48 if total_column < 5 else 34)
     daily.merge_range(1, 0, 1, title_end, period + " · " + stamp, formats["subtitle"])
     daily.set_row(1, 32)
-    daily.merge_range(2, 0, 2, title_end, report["method_note"], formats["subtitle"])
-    daily.set_row(2, 45 if total_column < 5 else 30)
+    daily.merge_range(2, 0, 2, title_end, report["method_note"] + " " + report["overlap_note"], formats["subtitle"])
+    daily.set_row(2, 110 if total_column < 5 else 55)
     daily.merge_range(3, 0, 3, title_end, report["rate_note"], formats["subtitle"])
     daily.set_row(3, 60 if total_column < 5 else 35)
     row_index = {}
@@ -224,7 +224,7 @@ def export_user_report(report):
     dashboard.set_row(0, 34)
     dashboard.merge_range("A2:S2", period, formats["subtitle"])
     dashboard.merge_range("A3:S3", stamp, formats["subtitle"])
-    cards = [("records", "Total registros", "total_records"), ("open", "Abiertos", "total_open"),
+    cards = [("records", "Registros (suma de categorías)", "total_records"), ("open", "Abiertos", "total_open"),
              ("closed", "Cerrados", "total_closed"), ("unclassified", "Sin clasificar", "total_unclassified"),
              ("rate", "% cerrado", "closure_rate")]
     for index, (key, label, source_key) in enumerate(cards):
@@ -291,7 +291,7 @@ def export_user_report(report):
     dashboard.insert_chart(chart_row, 10, status)
     note_row = chart_row + 18
     dashboard.merge_range(note_row, 0, note_row, 18, "Criterios del informe", formats["section"])
-    notes = [report["method_note"], report["rate_note"], report["without_status_note"], report["orders_note"],
+    notes = [report["method_note"], report["rate_note"], report["without_status_note"], report["orders_note"], report["overlap_note"],
              "Cada fila guardada cuenta una vez. Los tickets repetidos cuentan por separado. Se incluyen todos los días del rango.",
              "Fechas utilizadas: " + "; ".join(f"{c['label']}: {c['date_label']}" for c in report["categories"]),
              "Registros sin fecha en el histórico, excluidos del rango: " + "; ".join(f"{c['label']}: {c['undated']}" for c in report["categories"])]
@@ -301,7 +301,7 @@ def export_user_report(report):
               for c in report["categories"] for item in c["unknown_states"]]
     for row, note in enumerate(notes, note_row + 1):
         dashboard.merge_range(row, 0, row, 18, note, formats["subtitle"])
-        dashboard.set_row(row, 32)
+        dashboard.set_row(row, 48 if len(note) > 350 else 32)
     dashboard.set_landscape()
     dashboard.set_paper(8)
     dashboard.set_print_scale(85)

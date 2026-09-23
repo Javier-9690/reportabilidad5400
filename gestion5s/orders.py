@@ -15,14 +15,29 @@ from sqlalchemy import func
 from gestion5s.editing import ORDER_IMPORT_FIELDS
 
 ORDER_ENTITIES = ("miscelaneo", "solicitud_ot")
+ORDER_IMPORT_ENTITIES = (*ORDER_ENTITIES, "samtech_qr")
+ORDER_TITLES = {"miscelaneo": "Misceláneos", "solicitud_ot": "Solicitudes OT",
+                "samtech_qr": "Solicitudes de usuarios Samtech QR"}
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_ORDER_ROWS = 150000
 ORDER_REPORT_NOTE = (
-    "Solicitudes de usuarios se alimenta de Solicitudes OT, sin CARPINTERIA MENOR, "
-    "que se guarda en Misceláneos. Se usa Fecha creación y, si falta, Fecha inicio. "
-    "Aprobada y Completada cuentan como cerradas en Solicitudes OT; Eliminado y "
-    "Felicitaciones quedan Sin clasificar. Samtech usuarios conserva su registro independiente."
+    "Solicitudes de usuarios se alimenta exclusivamente del registro Solicitudes de usuarios Samtech QR, "
+    "incluidas todas sus especialidades. Solicitudes totales Samtech reúne la carga general de Misceláneos "
+    "y Solicitudes OT. Se usa Fecha creación y, si falta, Fecha inicio. Aprobada y Completada cuentan como "
+    "cerradas en estos registros; Eliminado y Felicitaciones quedan Sin clasificar. "
+    "El registro anterior Samtech usuarios se conserva y ya no alimenta este reporte."
 )
+ORDER_OVERLAP_NOTE = (
+    "Las solicitudes QR pueden estar también en Solicitudes totales Samtech. "
+    "El total suma las filas de las categorías: no representa tickets únicos. "
+    "Los estados de cada indicador corresponden a su propia carga; actualiza ambos archivos para compararlos."
+)
+
+
+def order_import_targets(entity):
+    if entity not in ORDER_IMPORT_ENTITIES:
+        raise ValueError("Categoría de importación inválida.")
+    return ("samtech_qr",) if entity == "samtech_qr" else ORDER_ENTITIES
 
 
 def normalize_order_text(value):
@@ -87,7 +102,7 @@ def _text(cell, identifier=False):
     return str(value).strip()
 
 
-def parse_orders(content):
+def parse_orders(content, entity="solicitud_ot"):
     """No escribe en BD. Si una fila es inválida, se rechaza el archivo completo."""
     if not content or len(content) > MAX_UPLOAD_BYTES:
         raise ValueError("Sube un archivo .xlsx de hasta 25 MB.")
@@ -112,10 +127,12 @@ def parse_orders(content):
             raise ValueError("Se necesita una hoja con estos 15 encabezados, sin columnas repetidas: " +
                              ", ".join(label for _, label in ORDER_IMPORT_FIELDS) + ".")
         sheet, columns = candidates[0]
-        groups = {entity: [] for entity in ORDER_ENTITIES}
-        states = {entity: Counter() for entity in ORDER_ENTITIES}
-        undated = dict.fromkeys(ORDER_ENTITIES, 0)
-        fallback = dict.fromkeys(ORDER_ENTITIES, 0)
+        targets = order_import_targets(entity)
+        qr = entity == "samtech_qr"
+        groups = {key: [] for key in targets}
+        states = {key: Counter() for key in targets}
+        undated = dict.fromkeys(targets, 0)
+        fallback = dict.fromkeys(targets, 0)
         dates, tickets = [], Counter()
         blank_rows = blank_specialty = total = 0
         for row_number, row in enumerate(sheet.iter_rows(min_row=2), 2):
@@ -143,22 +160,24 @@ def parse_orders(content):
                     raise ValueError(f"Fila {row_number}, {label}: {exc}.") from exc
             if any(not _blank(cell.value) for i, cell in enumerate(row) if i not in columns.values()):
                 raise ValueError(f"Fila {row_number}: hay datos en una columna sin encabezado.")
-            entity = order_destination(values["especialidad"])
-            groups[entity].append(values)
-            states[entity][values["estado"] or "(vacío)"] += 1
+            destination = "samtech_qr" if qr else order_destination(values["especialidad"])
+            states[destination][values["estado"] or "(vacío)"] += 1
             if not values["especialidad"]:
                 blank_specialty += 1
             day = values["fecha_creacion"] or values["fecha_inicio"]
             if day:
                 dates.append(day)
                 if not values["fecha_creacion"]:
-                    fallback[entity] += 1
+                    fallback[destination] += 1
             else:
-                undated[entity] += 1
+                undated[destination] += 1
             if values["ot"]:
                 tickets[values["ot"]] += 1
+            if qr:
+                values["ticket"] = values.pop("ot")
+            groups[destination].append(values)
         if not total:
-            raise ValueError("El archivo no contiene órdenes. No se permite vaciar ambas bases con una plantilla vacía.")
+            raise ValueError("El archivo no contiene órdenes. No se permite eliminar los registros con una plantilla vacía.")
         return {"groups": groups, "sheet": sheet.title, "total": total, "blank_rows": blank_rows,
                 "states": states, "undated": undated, "fallback": fallback, "blank_specialty": blank_specialty,
                 "duplicate_tickets": sum(count - 1 for count in tickets.values()),

@@ -1,6 +1,7 @@
 """Rutas del reporte en el menú principal, con acceso a las tablas de hotelería."""
 
 from flask import Blueprint, current_app, make_response, render_template, request, send_file
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from gestion5s.user_reports import SOURCES, STATUS_ALIASES, STATUS_LABELS, build_user_report, parse_report_range
@@ -22,6 +23,12 @@ def load_report(include_details=False):
     from gestion5s import web
     start, end = parse_report_range(request.args)
     with web.SessionLocal() as db:
+        # Todas las categorías deben ver la misma carga aunque otro worker
+        # confirme una importación mientras se está generando este reporte.
+        if db.get_bind().dialect.name == "postgresql":
+            db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        elif db.get_bind().dialect.name == "sqlite":
+            db.execute(text("BEGIN"))
         return build_user_report(db, web.ENTITY_MODEL, start, end, include_details=include_details)
 
 

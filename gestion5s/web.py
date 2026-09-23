@@ -20,7 +20,7 @@ from gestion5s.editing import (
     edit_fields, list_fields, display_record_value, parse_edit_values, record_version,
 )
 from gestion5s.searching import clean_search_term, record_search_condition
-from gestion5s.orders import ORDER_ENTITIES, order_reference_column, order_reference_date
+from gestion5s.orders import ORDER_ENTITIES, ORDER_IMPORT_ENTITIES, order_reference_column, order_reference_date
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
@@ -778,6 +778,27 @@ class SamtechUsuarioEntry(Base):
     creado = Column(DateTime, nullable=False, default=now_utc)
 
 
+class SamtechQRUsuarioEntry(Base):
+    __tablename__ = "samtech_usuarios_qr"
+    id = Column(Integer, primary_key=True)
+    ticket = Column(String(100), nullable=True)
+    division = Column(String(200), nullable=True)
+    area = Column(String(200), nullable=True)
+    lugar = Column(String(200), nullable=True)
+    ubicacion = Column(String(200), nullable=True)
+    disciplina = Column(String(200), nullable=True)
+    especialidad = Column(String(200), nullable=True)
+    falla = Column(Text, nullable=True)
+    empresa = Column(String(200), nullable=True)
+    fecha_creacion = Column(Date, nullable=True, index=True)
+    fecha_inicio = Column(Date, nullable=True)
+    fecha_termino = Column(Date, nullable=True)
+    fecha_aprobacion = Column(Date, nullable=True)
+    estado = Column(String(100), nullable=True)
+    comentario = Column(Text, nullable=True)
+    creado = Column(DateTime, nullable=False, default=now_utc)
+
+
 class OrderImportBatch(Base):
     """Archivo validado temporal, compartido por los workers hasta confirmar."""
     __tablename__ = "hotel_order_import_batches"
@@ -961,8 +982,8 @@ def panel():
         "panel.html", tab=tab, entity=entity, entity_title=EDIT_CONFIG[entity][0],
         week_map=WEEK_MAP, current_tab=tab, form_fields=fields, field_errors=errors,
         optional_record=entity in OPTIONAL_RECORD_FIELDS, total_auto=total_auto,
-        order_import=entity in ORDER_ENTITIES,
-        order_csrf=session.setdefault("hotel_orders_csrf", secrets.token_hex(32)) if entity in ORDER_ENTITIES else None,
+        order_import=entity in ORDER_IMPORT_ENTITIES,
+        order_csrf=session.setdefault("hotel_orders_csrf", secrets.token_hex(32)) if entity in ORDER_IMPORT_ENTITIES else None,
     ), status
 
 
@@ -979,11 +1000,11 @@ def registros():
     db = SessionLocal()
     try:
         Model = ENTITY_MODEL[vista]
-        date_column = order_reference_column(Model) if vista == "solicitud_ot" else getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
+        date_column = order_reference_column(Model) if vista in ORDER_IMPORT_ENTITIES else getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
         date_order = date_column.desc().nullslast()
         query = hotel_records_query(db, vista, d_from, d_to, search)
         pagination = None
-        if vista in ORDER_ENTITIES:
+        if vista in ORDER_IMPORT_ENTITIES:
             record_count = query.count()
             pages = max(1, (record_count + 99) // 100)
             page = min(pages, max(1, request.args.get("page", 1, type=int)))
@@ -1011,7 +1032,7 @@ def registros():
             vista=vista, current_tab=None, **listing,
             record_count=record_count, pagination=pagination, entity_title=EDIT_CONFIG[vista][0],
             record_columns=list_fields(vista, Model()), current_records=rows,
-            record_date_label="Fecha creación (Fecha inicio si falta)" if vista == "solicitud_ot" else next(
+            record_date_label="Fecha creación (Fecha inicio si falta)" if vista in ORDER_IMPORT_ENTITIES else next(
                 field["label"] for field in edit_fields(vista, Model()) if field["name"] == date_column.key),
             bulk_csrf=session.setdefault("hotel_bulk_csrf", secrets.token_hex(32)),
         )
@@ -1315,6 +1336,7 @@ ENTITY_MODEL = {
     "ordenamiento": OrdenamientoEntry,
     "habitaciones_liberadas": HabitacionLiberadaEntry,
     "samtech_usuarios": SamtechUsuarioEntry,
+    "samtech_qr": SamtechQRUsuarioEntry,
 }
 
 ENTITY_LIST_KEY = {
@@ -1327,6 +1349,7 @@ ENTITY_LIST_KEY = {
     "habitaciones_bloqueadas": "habitaciones_bloqueadas",
     "ordenamiento": "ordenamiento", "habitaciones_liberadas": "habitaciones_liberadas",
     "samtech_usuarios": "samtech_usuarios",
+    "samtech_qr": "samtech_qr",
 }
 ENTITY_DATE_FIELD = {
     "encuestas": "fecha_hora", "onboarding": "fecha_hora",
@@ -1337,6 +1360,7 @@ ENTITY_DATE_FIELD = {
     "ordenamiento": "fecha_ejecucion",
     "habitaciones_liberadas": "fecha_devolucion",
     "samtech_usuarios": "fecha_creacion",
+    "samtech_qr": "fecha_creacion",
 }
 
 
@@ -1350,7 +1374,7 @@ def read_record_search(source):
 def hotel_records_query(db, entity, d_from=None, d_to=None, search=""):
     """Una sola regla de fechas y búsqueda para consultar, exportar y eliminar."""
     Model = ENTITY_MODEL[entity]
-    column = order_reference_column(Model) if entity == "solicitud_ot" else getattr(Model, ENTITY_DATE_FIELD.get(entity, "fecha"))
+    column = order_reference_column(Model) if entity in ORDER_IMPORT_ENTITIES else getattr(Model, ENTITY_DATE_FIELD.get(entity, "fecha"))
     query = db.query(Model)
     if isinstance(column.type, DateTime):
         if d_from:
@@ -1391,7 +1415,7 @@ def records_return_url(entity, target):
                 search = clean_search_term(query["q"][0])
                 if search:
                     filters["q"] = search
-            if entity in ORDER_ENTITIES and query.get("page") and query["page"][0].isdigit():
+            if entity in ORDER_IMPORT_ENTITIES and query.get("page") and query["page"][0].isdigit():
                 filters["page"] = max(1, int(query["page"][0]))
     except ValueError:
         pass
@@ -1687,6 +1711,7 @@ TEMPLATES = {
     "ordenamiento": [label for _, label in ORDERING_FIELDS],
     "habitaciones_liberadas": [label for _, label in RELEASED_ROOM_FIELDS],
     "samtech_usuarios": [label for _, label in SAMTECH_USER_FIELDS],
+    "samtech_qr": [label for _, label in SAMTECH_USER_FIELDS],
 }
 
 @app.get("/template/<string:entity>.xlsx")
@@ -1724,6 +1749,7 @@ def template_xlsx(entity):
             "ordenamiento": {1: "DD/MM/YYYY", 3: "@", 5: "@", 7: "@"},
             "habitaciones_liberadas": {1: "@", 4: "DD/MM/YYYY", 6: "DD/MM/YYYY"},
             "samtech_usuarios": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
+            "samtech_qr": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
             "miscelaneo": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
             "solicitud_ot": {1: "@", 10: "DD/MM/YYYY", 11: "DD/MM/YYYY", 12: "DD/MM/YYYY", 13: "DD/MM/YYYY"},
         }[entity]
@@ -1779,7 +1805,7 @@ def template_xlsx(entity):
 @app.post("/import/<string:entity>")
 def import_xlsx(entity):
     entity = entity.lower()
-    if entity in ORDER_ENTITIES:
+    if entity in ORDER_IMPORT_ENTITIES:
         from gestion5s.order_import_routes import preview_order_import
         return preview_order_import(entity)
     if entity not in TEMPLATES:
@@ -2123,6 +2149,7 @@ def dashboard():
                 "ordenamiento": 0,
                 "habitaciones_liberadas": 0,
                 "samtech_usuarios": 0,
+                "samtech_qr": 0,
             })
 
         # Censo
@@ -2172,11 +2199,13 @@ def dashboard():
 
         # Miscelaneo (filtrar por fecha de negocio)
         q = db.query(MiscelaneoEntry)
-        if d_from: q = q.filter(MiscelaneoEntry.fecha_creacion >= d_from)
-        if d_to:   q = q.filter(MiscelaneoEntry.fecha_creacion <= d_to)
+        reference_date = order_reference_column(MiscelaneoEntry)
+        if d_from: q = q.filter(reference_date >= d_from)
+        if d_to:   q = q.filter(reference_date <= d_to)
         for r in q.all():
-            if r.fecha_creacion:
-                bucket(r.fecha_creacion.isoformat())["miscelaneo"] += 1
+            key_date = order_reference_date(r)
+            if key_date:
+                bucket(key_date.isoformat())["miscelaneo"] += 1
 
 
         # Desviaciones
@@ -2246,6 +2275,7 @@ def dashboard():
             (OrdenamientoEntry, OrdenamientoEntry.fecha_ejecucion, "ordenamiento"),
             (HabitacionLiberadaEntry, HabitacionLiberadaEntry.fecha_devolucion, "habitaciones_liberadas"),
             (SamtechUsuarioEntry, SamtechUsuarioEntry.fecha_creacion, "samtech_usuarios"),
+            (SamtechQRUsuarioEntry, order_reference_column(SamtechQRUsuarioEntry), "samtech_qr"),
         ):
             q = db.query(column, func.count(Model.id)).filter(column.isnot(None))
             if d_from: q = q.filter(column >= d_from)
@@ -2280,6 +2310,7 @@ def dashboard():
             "ordenamiento": [],
             "habitaciones_liberadas": [],
             "samtech_usuarios": [],
+            "samtech_qr": [],
         }
 
         for k in ordered_days:
@@ -2304,6 +2335,7 @@ def dashboard():
             series_data["ordenamiento"].append(g["ordenamiento"])
             series_data["habitaciones_liberadas"].append(g["habitaciones_liberadas"])
             series_data["samtech_usuarios"].append(g["samtech_usuarios"])
+            series_data["samtech_qr"].append(g["samtech_qr"])
             
             prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
             series_data["atencion_min"].append(round(prom_s/60.0, 2))
@@ -2330,6 +2362,7 @@ def dashboard():
             "ordenamiento_total": sum(series_data["ordenamiento"]),
             "habitaciones_liberadas_total": sum(series_data["habitaciones_liberadas"]),
             "samtech_usuarios_total": sum(series_data["samtech_usuarios"]),
+            "samtech_qr_total": sum(series_data["samtech_qr"]),
             "atencion_tiempo_prom_global": (
                 seconds_to_mmss(int(mean([int(x*60) for x in series_data["atencion_min"] if x>0])))
                 if any(x>0 for x in series_data["atencion_min"]) else "00:00"
