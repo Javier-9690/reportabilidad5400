@@ -21,6 +21,7 @@ from gestion5s.editing import (
 )
 from gestion5s.searching import clean_search_term, record_search_condition
 from gestion5s.orders import ORDER_ENTITIES, ORDER_IMPORT_ENTITIES, order_reference_column, order_reference_date
+from gestion5s.alarm_times import format_alarm_hours, parse_alarm_hours
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 # ---------- BD ----------
@@ -34,6 +35,7 @@ from sqlalchemy.exc import SQLAlchemyError
 # Excel
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
+from openpyxl.comments import Comment
 from openpyxl.utils.datetime import from_excel
 
 
@@ -410,6 +412,10 @@ def record_excel_values(row, epoch, fields):
                 value = value.strip()
             if value is None or value == "":
                 values[name] = ""
+            elif field["kind"] == "hours_hms":
+                # Una celda con formato de hora llega como time/timedelta; los
+                # números sin ese formato conservan su unidad histórica: horas.
+                values[name] = str(parse_alarm_hours(value, allow_decimal=True))
             elif field["kind"] == "date":
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     value = from_excel(value, epoch=epoch)
@@ -1224,11 +1230,11 @@ def download_entity(entity):
                     "NOMBRE_RECEPCIONISTA": r.nombre_recepcionista or "",
                     "FECHA": r.fecha.isoformat(), "EMPRESA": r.empresa or "",
                     "ID": r.id_interno or "", "CO": r.co or "",
-                    "AVISO_MANTENCION_H": r.aviso_mantencion_h if r.aviso_mantencion_h is not None else "",
-                    "LLEGADA_MANTENCION_H": r.llegada_mantencion_h if r.llegada_mantencion_h is not None else "",
-                    "AVISO_LIDER_H": r.aviso_lider_h if r.aviso_lider_h is not None else "",
-                    "LLEGADA_LIDER_H": r.llegada_lider_h if r.llegada_lider_h is not None else "",
-                    "HORA_REPORTE_SALFA": r.hora_reporte_salfa.strftime("%H:%M") if r.hora_reporte_salfa else "",
+                    "AVISO_MANTENCION_H": format_alarm_hours(r.aviso_mantencion_h),
+                    "LLEGADA_MANTENCION_H": format_alarm_hours(r.llegada_mantencion_h),
+                    "AVISO_LIDER_H": format_alarm_hours(r.aviso_lider_h),
+                    "LLEGADA_LIDER_H": format_alarm_hours(r.llegada_lider_h),
+                    "HORA_REPORTE_SALFA": r.hora_reporte_salfa.isoformat() if r.hora_reporte_salfa is not None else "",
                     "TIPO_EVENTO": r.tipo_evento or "", "TIPO_ACTIVIDAD": r.tipo_actividad or "",
                     "FECHA_REPORTE": r.fecha_reporte.isoformat() if r.fecha_reporte else "",
                     "TURNO_RECEPCION_INGRESOS": r.turno_recepcion_ingresos or "",
@@ -1735,13 +1741,16 @@ def template_xlsx(entity):
     # Escribir los encabezados
     ws.append(headers)
 
-    if entity in OPTIONAL_RECORD_FIELDS or entity in ORDER_ENTITIES:
+    if entity in OPTIONAL_RECORD_FIELDS or entity in ORDER_ENTITIES or entity == "alarmas":
         ws.freeze_panes = "A2"
         for cell in ws[1]:
             cell.font = Font(bold=True)
             ws.column_dimensions[cell.column_letter].width = max(20, len(cell.value) + 3)
         # Formatos de las primeras filas para introducir fechas, horas e identificadores.
         formats = {
+            "alarmas": {1: "@", 2: "@", 4: "DD/MM/YYYY", 6: "@", 7: "@",
+                        8: "[hh]:mm:ss", 9: "[hh]:mm:ss", 10: "[hh]:mm:ss", 11: "[hh]:mm:ss",
+                        12: "hh:mm:ss", 15: "DD/MM/YYYY"},
             "entradas_salidas": {1: "DD/MM/YYYY", 2: "DD/MM/YYYY", 3: "HH:MM:SS", 4: "HH:MM:SS",
                                  6: "@", 8: "@", 10: "@", 11: "@", 15: "@"},
             "habitaciones_bloqueadas": {1: "DD/MM/YYYY", 2: "@", 3: "@", 5: "@",
@@ -1757,29 +1766,12 @@ def template_xlsx(entity):
             for column, number_format in formats.items():
                 ws.cell(row, column).number_format = number_format
     
-    # **CORRECCIÓN: Para alarmas, agregar una fila de ejemplo con el formato correcto**
     if entity == "alarmas":
-        # Fila de ejemplo con datos de muestra
-        example_row = [
-            "5",                    # MODULO
-            "Hall central",         # N_HABITACION  
-            "Marta Montenegro",     # NOMBRE_RECEPCIONISTA
-            "2025-10-15",           # FECHA (formato YYYY-MM-DD)
-            "Empresa Ejemplo",      # EMPRESA
-            "GC123456",             # ID
-            "CO123",                # CO
-            0.5,                    # AVISO_MANTENCION_H (formato decimal Excel)
-            0.75,                   # LLEGADA_MANTENCION_H (formato decimal Excel)
-            0.5,                    # AVISO_LIDER_H (formato decimal Excel)
-            0.75,                   # LLEGADA_LIDER_H (formato decimal Excel)
-            "15:30",                # HORA_REPORTE_SALFA (formato HH:MM)
-            "Polvo",                # TIPO_EVENTO
-            "Silenciar",            # TIPO_ACTIVIDAD
-            "2025-10-15",           # FECHA_REPORTE (formato YYYY-MM-DD)
-            "DIA",                  # TURNO_RECEPCION_INGRESOS
-            "Observación de ejemplo" # OBSERVACIONES
-        ]
-        ws.append(example_row)
+        for column in range(8, 13):
+            ws.cell(1, column).comment = Comment(
+                "Escribe horas:minutos:segundos, por ejemplo 08:15:30. También puedes dejar la celda vacía.",
+                "Reportabilidad 5400",
+            )
         
     if entity == "cumplimiento":
         ws.append([
@@ -2016,30 +2008,16 @@ def import_xlsx(entity):
 
                 # ---------------- NUEVOS 5 ----------------
                 elif entity == "alarmas":
-                    def ffloat(v):
-                        try:
-                            return float(v) if (v not in (None, "") ) else None
-                        except:
-                            return None
-                    db.add(ActivacionAlarmaEntry(
-                        modulo=str(row[0] or "").strip(),
-                        n_habitacion=str(row[1] or "").strip(),
-                        nombre_recepcionista=str(row[2] or "").strip(),
-                        fecha=safe_convert_date(row[3]),
-                        empresa=str(row[4] or "").strip(),
-                        id_interno=str(row[5] or "").strip(),
-                        co=str(row[6] or "").strip(),
-                        aviso_mantencion_h=ffloat(row[7]),
-                        llegada_mantencion_h=ffloat(row[8]),
-                        aviso_lider_h=ffloat(row[9]),
-                        llegada_lider_h=ffloat(row[10]),
-                        hora_reporte_salfa=safe_time_hhmm(row[11]),
-                        tipo_evento=str(row[12] or "").strip(),
-                        tipo_actividad=str(row[13] or "").strip(),
-                        fecha_reporte=safe_convert_date(row[14]),
-                        turno_recepcion_ingresos=str(row[15] or "").strip(),
-                        observaciones=str(row[16] or "").strip(),
-                    ))
+                    try:
+                        fields = edit_fields(entity, ActivacionAlarmaEntry())
+                        form = record_excel_values(row, wb.epoch, fields)
+                        values, errors = parse_edit_values(entity, fields, form)
+                        if errors:
+                            labels = {field["name"]: field["label"] for field in fields}
+                            raise ValueError("; ".join(f"{labels[name]}: {message}" for name, message in errors.items()))
+                        db.add(ActivacionAlarmaEntry(**values))
+                    except (ValueError, TypeError, OverflowError) as exc:
+                        raise ValueError(f"Fila {row_number}: {exc}") from exc
 
                 elif entity == "extensiones":
                     # Los nombres mantienen alineados los datos si cambia el orden de la plantilla.

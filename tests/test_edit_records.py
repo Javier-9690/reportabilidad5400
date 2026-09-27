@@ -79,7 +79,7 @@ class EditHotelRecordsTest(unittest.TestCase):
             "desviaciones": ("acciones", "Reparar y verificar el cierre.", "Reparar y verificar el cierre."),
             "solicitud_ot": ("tiempo_respuesta_sec", "00:00", 0),
             "reclamos": ("estatus", "Cerrado", "Cerrado"),
-            "alarmas": ("aviso_mantencion_h", "1.25", 1.25),
+            "alarmas": ("aviso_mantencion_h", "01:15:47", (3600 + 15 * 60 + 47) / 3600),
             "extensiones": ("cant_clientes", "0", 0),
             "onboarding": ("nombre", "Nombre corregido", "Nombre corregido"),
             "apertura": ("estado_chapa", "Reparada", "Reparada"),

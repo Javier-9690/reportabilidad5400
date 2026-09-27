@@ -148,6 +148,35 @@ las dependencias existentes del programa y no requiere migraciones ni nuevas tab
 
 ## Registros hotelería
 
+### Activación de alarmas: horas, minutos y segundos
+
+Los siguientes cinco campos permiten ingresar y consultar **HH:MM:SS**, por
+ejemplo `08:15:30`, tanto en el formulario de ingreso como en la edición:
+
+- Aviso a mantención.
+- Llegada de mantención.
+- Aviso al líder de emergencias.
+- Llegada del líder.
+- Hora de reporte a SALFA.
+
+El listado, buscador y exportación CSV conservan los segundos. Los cinco campos
+pueden quedar vacíos: un vacío sigue siendo un vacío y `00:00:00` se conserva
+como un valor distinto. También se admite `HH:MM` y se completa con segundos `00`.
+Minutos y segundos deben estar entre 00 y 59; SALFA es una hora del día de 00 a 23.
+
+La plantilla Excel aplica formato de hora a esas cinco columnas y conserva los
+encabezados anteriores. Incluye ayuda en los encabezados y queda vacía, para no
+importar accidentalmente una fila de ejemplo. Acepta texto `HH:MM:SS` y horas
+reales de Excel. Una hora inválida muestra la fila y cancela toda la importación;
+no se convierte silenciosamente en vacío ni en medianoche.
+
+Las cuatro columnas históricas de aviso/llegada siguen almacenadas en horas
+decimales, por lo que no se necesita migrar la base. Por ejemplo, `0.5` horas se
+muestra como `00:30:00` y `1.25` como `01:15:00`; se conservan también valores
+acumulados mayores de 24 horas. Editar otro campo no redondea el valor guardado.
+Los números de plantillas antiguas sin formato de hora mantienen esa unidad;
+las celdas con formato de hora Excel se interpretan como horas de Excel.
+
 ### Importación conjunta de órdenes: Misceláneos y Solicitudes OT
 
 Desde cualquiera de las dos categorías, selecciona el Excel de órdenes y pulsa

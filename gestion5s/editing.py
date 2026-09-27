@@ -7,6 +7,8 @@ import re
 from datetime import date, datetime, time
 
 from sqlalchemy import Date, DateTime, Float, Integer, Text, Time
+from gestion5s.alarm_times import (ALARM_HOUR_FIELDS, ALARM_TIME_FIELDS, format_alarm_hours,
+                                 parse_alarm_hours, parse_alarm_clock)
 
 
 EXTENSION_FIELDS = (
@@ -155,11 +157,11 @@ FIELD_LABELS = {
     "quien_informa": "Quién informa", "tiempo_respuesta_sec": "Tiempo de respuesta (mm:ss)",
     "satisfaccion_reclamo": "Satisfacción del reclamo", "observacion": "Observación",
     "n_habitacion": "N.º de habitación", "co": "C.O.",
-    "aviso_mantencion_h": "Aviso a mantención (horas)",
-    "llegada_mantencion_h": "Llegada de mantención (horas)",
-    "aviso_lider_h": "Aviso al líder de emergencias (horas)",
-    "llegada_lider_h": "Llegada del líder (horas)",
-    "hora_reporte_salfa": "Hora de reporte SALFA",
+    "aviso_mantencion_h": "Aviso a mantención (HH:MM:SS)",
+    "llegada_mantencion_h": "Llegada de mantención (HH:MM:SS)",
+    "aviso_lider_h": "Aviso al líder de emergencias (HH:MM:SS)",
+    "llegada_lider_h": "Llegada del líder (HH:MM:SS)",
+    "hora_reporte_salfa": "Hora de reporte a SALFA (HH:MM:SS)",
     "turno_recepcion_ingresos": "Turno de recepción / ingresos",
     "cant_clientes": "Cantidad de clientes", "archivo_pdf": "Archivo PDF (nombre)",
     "n_contrato": "N.º de contrato", "correo_electronico": "Correo electrónico",
@@ -198,7 +200,9 @@ def edit_fields(entity, record):
         column = record.__table__.columns[name]
         value = getattr(record, name)
         kind = "text"
-        if name in DURATION_FIELDS:
+        if entity == "alarmas" and name in ALARM_HOUR_FIELDS:
+            kind = "hours_hms"
+        elif name in DURATION_FIELDS:
             kind = "duration"
         elif isinstance(column.type, DateTime):
             kind = "datetime-local"
@@ -213,6 +217,8 @@ def edit_fields(entity, record):
 
         if value is None:
             display = ""
+        elif kind == "hours_hms":
+            display = format_alarm_hours(value)
         elif kind == "duration":
             minutes, seconds = divmod(value, 60)
             display = f"{minutes:02d}:{seconds:02d}"
@@ -224,6 +230,8 @@ def edit_fields(entity, record):
         fields.append({
             "name": name, "label": labels.get(name, name.replace("_", " ").capitalize()),
             "kind": kind, "value": display, "column": column,
+            "stored_value": value,
+            "seconds": entity == "alarmas" and name in ALARM_TIME_FIELDS,
             "required": not column.nullable and column.default is None,
             "maxlength": getattr(column.type, "length", None),
             "step": "1" if isinstance(column.type, Integer) else "any",
@@ -250,6 +258,8 @@ def display_record_value(value, kind="text"):
     if kind == "duration":
         minutes, seconds = divmod(value, 60)
         return f"{minutes:02d}:{seconds:02d}"
+    if kind == "hours_hms":
+        return format_alarm_hours(value)
     if isinstance(value, datetime):
         return value.isoformat(sep=" ")
     if isinstance(value, (date, time)):
@@ -270,6 +280,11 @@ def parse_edit_values(entity, fields, form):
                 if field["required"]:
                     raise ValueError("Completa este campo.")
                 value = None if column.nullable or name == "total" else 0
+            elif field["kind"] == "hours_hms":
+                value = parse_alarm_hours(raw, allow_decimal=True)
+                if raw == field["value"] and field["stored_value"] is not None:
+                    # Editar otra columna no redondea ni reescribe las horas antiguas.
+                    value = field["stored_value"]
             elif field["kind"] == "duration":
                 if not re.fullmatch(r"[0-9]+:[0-5][0-9]", raw):
                     raise ValueError("Usa minutos:segundos, por ejemplo 03:54. Los segundos van de 00 a 59.")
@@ -284,7 +299,7 @@ def parse_edit_values(entity, fields, form):
             elif isinstance(column.type, Date):
                 value = date.fromisoformat(raw)
             elif isinstance(column.type, Time):
-                value = time.fromisoformat(raw)
+                value = parse_alarm_clock(raw) if entity == "alarmas" else time.fromisoformat(raw)
                 if value.tzinfo is not None:
                     raise ValueError("Ingresa una hora local.")
             elif isinstance(column.type, Integer):
@@ -303,7 +318,9 @@ def parse_edit_values(entity, fields, form):
                     raise ValueError(f"Usa un máximo de {field['maxlength']} caracteres.")
             values[name] = value
         except (ValueError, OverflowError) as exc:
-            if isinstance(column.type, (Date, DateTime, Time)):
+            if field["kind"] == "hours_hms":
+                errors[name] = str(exc)
+            elif isinstance(column.type, (Date, DateTime, Time)):
                 errors[name] = "Ingresa una fecha u hora válida."
             elif isinstance(column.type, Float):
                 errors[name] = "Ingresa un número válido mayor o igual a cero."

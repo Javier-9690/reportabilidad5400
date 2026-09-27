@@ -1,133 +1,75 @@
-REPORTABILIDAD 5400 — SOLICITUDES DE USUARIOS SAMTECH QR
-Actualización del 23/09/2026
+REPORTABILIDAD 5400 — ACTIVACIÓN DE ALARMAS EN HH:MM:SS
+Actualización del 27/09/2026 — Versión 17
 
-Programa completo con las mejoras anteriores de esta conversación.
+Programa completo con todas las mejoras anteriores de esta conversación.
 Repositorio: https://github.com/Javier-9690/reportabilidad5400
 Base: f67683f33208d1917fd766649ef897df63ced824
 
-NUEVO REGISTRO QR
-Abre Registros hotelería > Ingresar registros > Solicitudes de usuarios Samtech QR.
-Incluye formulario, plantilla Excel, importación, Ver registros, exportación CSV,
-buscador por palabra o número, edición con lápiz, eliminación individual,
-selección múltiple, Eliminar todos y tarjeta/gráfico en el dashboard de registros.
+CAMBIO SOLICITADO
+Los cinco campos siguientes admiten horas, minutos y segundos, por ejemplo 08:15:30:
+- Aviso a mantención.
+- Llegada de mantención.
+- Aviso al líder de emergencias.
+- Llegada del líder.
+- Hora de reporte a SALFA.
 
-Conserva los 15 campos del formato Samtech:
-Ticket, División, Área, Lugar, Ubicación, Disciplina, Especialidad, Falla, Empresa,
-Fecha creación, Fecha inicio, Fecha término, Fecha aprobación, Estado y Comentario.
-Se admiten campos y fechas vacíos. Los identificadores conservan ceros iniciales.
-Los listados muestran todos los campos con barras de desplazamiento, 100 filas por
-página y textos completos. Buscar, exportar CSV y Eliminar todos abarcan todo el
-resultado filtrado. Las casillas seleccionan la página visible.
+Aplica al formulario de ingreso, edición, listado, plantilla/importación Excel,
+buscador y exportación CSV. SALFA ahora incluye los segundos al exportar.
+Los cinco campos pueden quedar vacíos; vacío y 00:00:00 se conservan como valores
+distintos. También se admite HH:MM y se completan los segundos con 00.
+Se rechazan minutos/segundos fuera de 00–59; SALFA es una hora del día entre 00 y 23.
 
-CARGA QR CON CONFIRMACIÓN
-1. Selecciona el archivo QR y pulsa Importar órdenes · Revisar.
-2. Revisa los registros actuales que se eliminarán, las solicitudes nuevas,
-   fechas, estados y la muestra de datos.
-3. Marca la confirmación y pulsa Confirmar y reemplazar solicitudes QR.
-   Cancelar conserva los registros existentes.
+PLANTILLA E IMPORTACIÓN
+Descarga nuevamente la plantilla de Activación de alarmas después de actualizar.
+Los cinco campos incluyen formato de hora y una nota de ayuda en sus encabezados.
+La plantilla está vacía: ya no incluye una fila de ejemplo que pueda importarse
+por accidente. Los encabezados anteriores se conservan para compatibilidad.
+Se aceptan horas reales de Excel y texto HH:MM:SS. Una hora inválida indica su
+fila y cancela la importación completa, sin guardar parcialmente ni cambiar
+silenciosamente una hora inválida por cero o por un vacío.
 
-La importación reemplaza exclusivamente los registros QR. Todas las especialidades,
-incluida CARPINTERIA MENOR, permanecen dentro del registro QR. No modifica
-Misceláneos, Solicitudes OT ni el antiguo Samtech usuarios.
-La importación general desde Misceláneos o Solicitudes OT sigue separando
-CARPINTERIA MENOR hacia Misceláneos y el resto hacia Solicitudes OT; tampoco
-modifica los registros QR. Ambas cargas tienen confirmaciones independientes.
-
-Una plantilla vacía o una fila inválida impide el reemplazo. Si falla el guardado,
-la transacción recupera los datos anteriores. Si los registros cambian después
-de la vista previa, hay que revisarla nuevamente. La confirmación pertenece a
-la sesión, vence en 30 minutos y no puede ejecutarse dos veces. Reimportar el
-mismo archivo reemplaza los datos sin acumular otra copia.
-Límites: 25 MB por archivo y 150.000 filas. Cada fila no vacía cuenta una vez;
-se informa si hay tickets repetidos sin deduplicarlos silenciosamente.
-
-NUEVAS FUENTES DE GESTIÓN DE USUARIOS
-- Solicitudes de usuarios: exclusivamente Solicitudes de usuarios Samtech QR.
-- Solicitudes totales Samtech: la carga general COMPLETA, Misceláneos + Solicitudes OT.
-  Sustituye la fila antes llamada Samtech usuarios.
-- Se conservan Doble asignación, Reclamos usuarios y Desviaciones clientes.
-
-El antiguo registro Samtech usuarios conserva sus datos y funciones, pero ya no
-alimenta este reporte. No se copian sus datos a QR automáticamente.
-Pantalla, conclusiones, gráficos y Excel utilizan los nuevos nombres y fuentes.
-El Excel sigue teniendo siete hojas; los nuevos detalles se llaman Solicitudes
-usuarios QR y Solicitudes totales Samtech. Este último identifica Registro de
-origen e incluye también los campos históricos de Solicitudes OT.
-
-Las solicitudes QR pueden estar también en la carga general. Como en la tabla
-original, el total suma las filas de las categorías y NO representa tickets únicos.
-Se explica en pantalla y Excel con Total registros (suma de categorías).
-Los estados de QR y de la carga general son independientes: importa ambos archivos
-actualizados para comparar el período.
-
-FECHAS Y ESTADOS
-QR, Misceláneos y Solicitudes OT se agrupan por Fecha creación; si está vacía,
-se usa Fecha inicio. Si ambas faltan, el registro se guarda y queda fuera de los
-reportes por fecha. Nunca se usa la fecha de importación como fecha del caso.
-Se conservan las fechas de término y aprobación originales. El Excel calcula
-Fecha para reporte con la misma regla para reproducir los conteos diarios.
-Aprobada/Aprobado y Completada se consideran cerradas; No Iniciada y En Progreso
-se consideran abiertas, junto a las equivalencias anteriores. Eliminado y
-Felicitaciones quedan Sin clasificar y fuera del denominador del porcentaje de cierre.
-Desviaciones no tiene campo de estado y conserva su tratamiento anterior.
-Los reportes mantienen una lectura coherente aunque se confirme otra carga
-mientras se están generando.
+CONSERVACIÓN DE LOS REGISTROS EXISTENTES
+Las cuatro columnas de aviso/llegada mantienen su almacenamiento histórico en
+horas decimales. El programa convierte la entrada y la visualización, sin migrar
+ni reemplazar datos: 0.5 horas se muestra 00:30:00 y 1.25 horas como 01:15:00.
+También se conservan valores acumulados superiores a 24 horas en esas columnas.
+Si se edita otro campo, se conserva exactamente el valor antiguo, aunque tuviera
+precisión menor a un segundo. El formato visible y el CSV muestran segundos.
+Los números sin formato horario de plantillas antiguas siguen siendo horas;
+las celdas con formato de hora de Excel se interpretan como horas de Excel.
+No es necesario borrar ni volver a importar los registros existentes.
 
 VERIFICACIÓN
-- 110 pruebas Python aprobadas, incluidas importación QR, aislamiento de las cargas,
-  rollback, edición concurrente, formulario, búsqueda, exportación y borrado.
-- Comprobaciones de interfaz JavaScript aprobadas.
-- Ambos archivos se importaron en una base TEMPORAL aislada:
-  28.408 órdenes generales = 6.690 Misceláneos + 21.718 Solicitudes OT.
-  2.661 solicitudes QR; las 398 con CARPINTERIA MENOR permanecen en QR.
-- Todas las 2.661 solicitudes QR aparecen también en la carga general.
-- Histórico: general 28.302 cerradas, 85 abiertas, 21 sin clasificar;
-  QR 2.644 cerradas, 9 abiertas, 8 sin clasificar.
-- Del 31/08/2026 al 23/09/2026: general 1.104 (1.026 cerradas, 78 abiertas);
-  QR 44 (36 cerradas, 8 abiertas). Conteos contrastados por cada día y estado.
-- Excel del 31/08/2026 al 12/09/2026: 973 fórmulas coinciden después de recalcular
-  en LibreOffice. Revisados visualmente nombres, tablas, gráficos y criterios.
-No se cargaron datos en producción. Los archivos adjuntos y los datos de validación
-no están incluidos en este ZIP.
+117 pruebas Python aprobadas y comprobaciones de interfaz JavaScript aprobadas.
+Se verificaron los cinco campos, segundos no nulos, medianoche, vacíos, edición,
+conservación de decimales históricos, plantilla vacía, horas y texto Excel,
+importación atómica ante errores, búsqueda por HH:MM:SS y borrado filtrado.
+Las pruebas se ejecutaron en bases temporales; no modificaron datos de producción.
 
-INSTALACIÓN
-1. Descomprime el ZIP y copia los archivos del programa en sus mismas carpetas.
-2. Guarda los cambios en la rama de GitHub utilizada por Render.
-3. Despliega el último commit o espera el despliegue automático.
-4. En Registros hotelería > Solicitudes de usuarios Samtech QR, carga el archivo QR
-   y confirma después de revisar la vista previa.
-5. Mantén la carga general actualizada desde Misceláneos o Solicitudes OT.
-6. En Reportes > Gestión de usuarios, selecciona el rango y genera el reporte/Excel.
-No subas el ZIP como sustituto de los archivos del programa.
-
-La tabla samtech_usuarios_qr se crea al iniciar el programa actualizado.
-No se mueven ni borran datos anteriores al iniciar. No hay dependencias nuevas.
-Los cambios están preparados en este paquete, NO publicados en GitHub ni
-desplegados en Render: la conexión al repositorio tiene permiso de lectura.
-
-SI YA INSTALASTE LA IMPORTACIÓN CONJUNTA (VERSIÓN 15)
-Reemplaza:
+INSTALACIÓN SI YA TIENES LA ENTREGA ANTERIOR (VERSIÓN 16, SAMTECH QR)
+Reemplaza estos archivos respetando sus carpetas:
 - README.md
 - gestion5s/editing.py
-- gestion5s/order_import_routes.py
-- gestion5s/orders.py
-- gestion5s/templates/dashboard.html
-- gestion5s/templates/list.html
-- gestion5s/templates/order_import_preview.html
-- gestion5s/templates/panel.html
-- gestion5s/user_report_excel.py
-- gestion5s/user_report_routes.py
-- gestion5s/user_reports.py
+- gestion5s/searching.py
+- gestion5s/templates/record_fields.html
 - gestion5s/web.py
-- templates/user_report.html
 - tests/test_edit_records.py
-- tests/test_integration.py
-- tests/test_order_import.py
-- tests/test_user_report_interface.cjs
-- tests/test_user_reports.py
+- tests/test_form_structure.py
 
-Añade:
-- tests/test_samtech_qr.py
+Añade estos archivos nuevos:
+- gestion5s/alarm_times.py
+- tests/test_alarm_times.py
+
+El ZIP incluye el programa completo y todas las mejoras anteriores.
+1. Descomprime el ZIP.
+2. Copia los archivos indicados en las mismas carpetas de tu repositorio.
+3. Guarda los cambios en la rama que usa Render y despliega la actualización.
+4. Abre Registros hotelería > Activación de alarmas.
+5. Descarga la nueva plantilla si vas a importar y usa HH:MM:SS en los cinco campos.
+No subas el ZIP como sustituto de los archivos del programa.
+
+Esta actualización no requiere migraciones ni dependencias nuevas.
+El código está preparado en este paquete; no se publicó ni se desplegó desde aquí.
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
@@ -158,6 +100,12 @@ El README detalla las columnas y el funcionamiento de cada módulo.
   su registro no tiene campo de estado; se explica como Sin clasificar.
 
 
+
+- Solicitudes de usuarios Samtech QR independiente, con carga confirmada y todas
+  las funciones de registros. La carga general conserva Misceláneos y Solicitudes OT.
+- Gestión de usuarios: Solicitudes de usuarios usa QR; Solicitudes totales Samtech
+  reúne la carga general. Excel y gráficos usan las mismas fuentes.
+
 ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
 Reemplaza:
 - README.md
@@ -173,6 +121,7 @@ Reemplaza:
 - tests/test_integration.py
 
 Añade:
+- gestion5s/alarm_times.py
 - gestion5s/editing.py
 - gestion5s/order_import_routes.py
 - gestion5s/orders.py
@@ -190,6 +139,7 @@ Añade:
 - static/js/registros.js
 - static/js/user_report.js
 - templates/user_report.html
+- tests/test_alarm_times.py
 - tests/test_blocked_rooms.py
 - tests/test_bulk_delete_records.py
 - tests/test_delete_records.py

@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from tests.test_integration import FORM_DATA, app
 from tests.test_edit_records import FormValues
 from gestion5s import web
+from gestion5s.alarm_times import ALARM_HOUR_FIELDS
 
 
 class PageStructure(HTMLParser):
@@ -67,7 +68,9 @@ def complete_form(entity):
         name = column.name
         if entity == "encuestas" and name in ("total", "promedio"):
             continue
-        if name in ("tiempo_promedio_sec", "tiempo_respuesta_sec"):
+        if entity == "alarmas" and name in ALARM_HOUR_FIELDS:
+            value = "08:15:43"
+        elif name in ("tiempo_promedio_sec", "tiempo_respuesta_sec"):
             value = "125:59"
         elif isinstance(column.type, DateTime):
             value = "2026-09-09T10:15:42"
@@ -157,7 +160,10 @@ class FormStructureTest(unittest.TestCase):
                 self.assertEqual(set(structure.cells), {column.name for column in active_columns(entity)})
                 for name, value in data.items():
                     stored = record[name]
-                    if name.endswith("_sec"):
+                    if entity == "alarmas" and name in ALARM_HOUR_FIELDS:
+                        self.assertAlmostEqual(stored, (8 * 3600 + 15 * 60 + 43) / 3600)
+                        self.assertEqual(structure.cells[name], value)
+                    elif name.endswith("_sec"):
                         self.assertEqual(stored, 7559)
                         self.assertEqual(structure.cells[name], "125:59")
                     elif isinstance(stored, datetime):
@@ -184,7 +190,8 @@ class FormStructureTest(unittest.TestCase):
                 self.assertEqual(editor.status_code, 200)
                 editor_values = FormValues(editor.get_data(as_text=True)).values
                 for name, value in data.items():
-                    expected = str(float(value)) if isinstance(record[name], float) else value
+                    expected = (value if entity == "alarmas" and name in ALARM_HOUR_FIELDS else
+                                str(float(value)) if isinstance(record[name], float) else value)
                     self.assertEqual(editor_values[name], expected)
 
     def test_missing_required_fields_return_errors_without_saving_in_every_module(self):
