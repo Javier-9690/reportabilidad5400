@@ -659,6 +659,37 @@ Después de cambiar `requirements.txt`, usar:
 Manual Deploy -> Clear build cache & deploy
 ```
 
+### Corrección de `ModuleNotFoundError: No module named 'psycopg'`
+
+SQLAlchemy 2.1 cambió el controlador predeterminado de PostgreSQL a **Psycopg 3**.
+Una instalación nueva puede seleccionar esa versión con la regla `SQLAlchemy>=2.0,<3`
+del proyecto, y solicitar `psycopg` incluso usando una URL `postgresql://`.
+La conexión explícita `postgresql+psycopg://` también requiere ese módulo.
+El paquete `psycopg2-binary` instala otro módulo y no cubre esas conexiones. `requirements.txt`
+incluye ahora ambos controladores: `psycopg[binary]>=3.2.10,<4` y
+`psycopg2-binary>=2.9.11,<3`. Estas versiones mínimas ya admiten Python 3.14,
+además del Python 3.12 configurado en `render.yaml`.
+
+Para aplicar la corrección al servicio existente:
+
+1. Subir el `requirements.txt` actualizado a la raíz del repositorio que usa Render.
+2. Comprobar que **Build Command** sea `pip install -r requirements.txt`.
+3. Ejecutar **Manual Deploy → Clear build cache & deploy** para instalar las dependencias.
+4. Revisar que la instalación incluya `psycopg` y `psycopg-binary`, y que el nuevo
+   despliegue finalice correctamente.
+
+Se conserva la `DATABASE_URL` existente y el comando de inicio. Esta corrección
+no modifica tablas ni registros y no requiere crear otra base de datos.
+Si se fija una versión de Python, Render utiliza `PYTHON_VERSION` o un archivo
+`.python-version`; `render.yaml` solo configura el servicio si se aplica como Blueprint.
+
+Referencias: [instalación de Psycopg](https://www.psycopg.org/psycopg3/docs/basic/install.html),
+[notas de Psycopg 3](https://www.psycopg.org/psycopg3/docs/news.html),
+[notas de Psycopg 2](https://www.psycopg.org/docs/news.html) y
+[versión de Python en Render](https://render.com/docs/python-version).
+El cambio de controlador está documentado en la
+[migración a SQLAlchemy 2.1](https://docs.sqlalchemy.org/en/21/changelog/migration_21.html).
+
 ## Nota sobre eliminación
 
 - Eliminar un censo borra sus registros asociados.

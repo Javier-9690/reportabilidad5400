@@ -1,75 +1,59 @@
-REPORTABILIDAD 5400 — ACTIVACIÓN DE ALARMAS EN HH:MM:SS
-Actualización del 27/09/2026 — Versión 17
+REPORTABILIDAD 5400 — CORRECCIÓN DEL ARRANQUE EN RENDER
+Actualización del 27/09/2026 — Versión 18
 
 Programa completo con todas las mejoras anteriores de esta conversación.
 Repositorio: https://github.com/Javier-9690/reportabilidad5400
 Base: f67683f33208d1917fd766649ef897df63ced824
 
-CAMBIO SOLICITADO
-Los cinco campos siguientes admiten horas, minutos y segundos, por ejemplo 08:15:30:
-- Aviso a mantención.
-- Llegada de mantención.
-- Aviso al líder de emergencias.
-- Llegada del líder.
-- Hora de reporte a SALFA.
+ERROR CORREGIDO
+ModuleNotFoundError: No module named 'psycopg'
 
-Aplica al formulario de ingreso, edición, listado, plantilla/importación Excel,
-buscador y exportación CSV. SALFA ahora incluye los segundos al exportar.
-Los cinco campos pueden quedar vacíos; vacío y 00:00:00 se conservan como valores
-distintos. También se admite HH:MM y se completan los segundos con 00.
-Se rechazan minutos/segundos fuera de 00–59; SALFA es una hora del día entre 00 y 23.
+SQLAlchemy 2.1 utiliza Psycopg 3 como controlador predeterminado para PostgreSQL.
+La regla SQLAlchemy>=2.0,<3 permitía instalar esa versión en un nuevo despliegue,
+pero requirements.txt solo incluía psycopg2-binary, que instala un módulo distinto.
+Ahora requirements.txt incluye ambos:
+- psycopg[binary]>=3.2.10,<4
+- psycopg2-binary>=2.9.11,<3
 
-PLANTILLA E IMPORTACIÓN
-Descarga nuevamente la plantilla de Activación de alarmas después de actualizar.
-Los cinco campos incluyen formato de hora y una nota de ayuda en sus encabezados.
-La plantilla está vacía: ya no incluye una fila de ejemplo que pueda importarse
-por accidente. Los encabezados anteriores se conservan para compatibilidad.
-Se aceptan horas reales de Excel y texto HH:MM:SS. Una hora inválida indica su
-fila y cancela la importación completa, sin guardar parcialmente ni cambiar
-silenciosamente una hora inválida por cero o por un vacío.
+Estas versiones mínimas admiten Python 3.14. El extra binary proporciona también
+las bibliotecas nativas del controlador. Se conservan la conexión DATABASE_URL,
+los comandos de arranque y los registros existentes; no hay cambios de tablas.
 
-CONSERVACIÓN DE LOS REGISTROS EXISTENTES
-Las cuatro columnas de aviso/llegada mantienen su almacenamiento histórico en
-horas decimales. El programa convierte la entrada y la visualización, sin migrar
-ni reemplazar datos: 0.5 horas se muestra 00:30:00 y 1.25 horas como 01:15:00.
-También se conservan valores acumulados superiores a 24 horas en esas columnas.
-Si se edita otro campo, se conserva exactamente el valor antiguo, aunque tuviera
-precisión menor a un segundo. El formato visible y el CSV muestran segundos.
-Los números sin formato horario de plantillas antiguas siguen siendo horas;
-las celdas con formato de hora de Excel se interpretan como horas de Excel.
-No es necesario borrar ni volver a importar los registros existentes.
+APLICACIÓN RÁPIDA SI YA TIENES LA VERSIÓN 17
+1. Descomprime este ZIP.
+2. Reemplaza requirements.txt en la raíz del repositorio que despliega Render.
+   README.md también está actualizado con las instrucciones y la explicación.
+3. Guarda los cambios en la rama usada por Render.
+4. En el servicio de Render, confirma Build Command:
+   pip install -r requirements.txt
+5. Ejecuta Manual Deploy > Clear build cache & deploy.
+6. Revisa el registro: deben instalarse psycopg y psycopg-binary y el despliegue
+   debe terminar correctamente.
 
-VERIFICACIÓN
-117 pruebas Python aprobadas y comprobaciones de interfaz JavaScript aprobadas.
-Se verificaron los cinco campos, segundos no nulos, medianoche, vacíos, edición,
-conservación de decimales históricos, plantilla vacía, horas y texto Excel,
-importación atómica ante errores, búsqueda por HH:MM:SS y borrado filtrado.
-Las pruebas se ejecutaron en bases temporales; no modificaron datos de producción.
+Mantén Start Command:
+gunicorn app:app --workers 1 --threads 2 --timeout 300 --graceful-timeout 300
 
-INSTALACIÓN SI YA TIENES LA ENTREGA ANTERIOR (VERSIÓN 16, SAMTECH QR)
-Reemplaza estos archivos respetando sus carpetas:
-- README.md
-- gestion5s/editing.py
-- gestion5s/searching.py
-- gestion5s/templates/record_fields.html
-- gestion5s/web.py
-- tests/test_edit_records.py
-- tests/test_form_structure.py
+No subas el ZIP como sustituto de los archivos del programa: sube su contenido.
+Esta entrega prepara la corrección; el despliegue de tu servicio queda pendiente
+de subir los archivos y ejecutar los pasos anteriores.
 
-Añade estos archivos nuevos:
-- gestion5s/alarm_times.py
-- tests/test_alarm_times.py
+VERIFICACIÓN DE ESTA ENTREGA
+- Instalación limpia de requirements.txt en Python 3.12.14 y Python 3.14.3.
+- 117 pruebas Python aprobadas en cada entorno, con SQLite temporal.
+- SQLAlchemy 2.1.1, psycopg 3.3.6, psycopg-binary 3.3.6 y psycopg2-binary 2.9.13.
+- Carga de los motores postgresql://, postgresql+psycopg:// y postgresql+psycopg2://.
+  Esta prueba verifica la carga de los controladores, sin conectarse a PostgreSQL.
+- Arranque real de Gunicorn en Python 3.14.3: salud, Importar, formulario de alarmas
+  y Gestión de usuarios respondieron HTTP 200 sobre una base temporal SQLite.
+- No se probó una conexión al PostgreSQL de Render ni se accedió a sus datos.
 
-El ZIP incluye el programa completo y todas las mejoras anteriores.
-1. Descomprime el ZIP.
-2. Copia los archivos indicados en las mismas carpetas de tu repositorio.
-3. Guarda los cambios en la rama que usa Render y despliega la actualización.
-4. Abre Registros hotelería > Activación de alarmas.
-5. Descarga la nueva plantilla si vas a importar y usa HH:MM:SS en los cinco campos.
-No subas el ZIP como sustituto de los archivos del programa.
-
-Esta actualización no requiere migraciones ni dependencias nuevas.
-El código está preparado en este paquete; no se publicó ni se desplegó desde aquí.
+ACTIVACIÓN DE ALARMAS: MEJORA ANTERIOR CONSERVADA
+Aviso a mantención, llegada de mantención, aviso al líder de emergencias,
+llegada del líder y hora de reporte a SALFA admiten HH:MM:SS.
+Se conservan segundos al ingresar, editar, consultar, importar, buscar y exportar.
+Los campos pueden quedar vacíos. Las cuatro columnas históricas en horas decimales
+conservan sus datos, incluidos valores superiores a 24 horas. SALFA mantiene su
+hora del día entre 00 y 23. La plantilla vacía incluye formatos y notas de ayuda.
 
 MEJORAS ANTERIORES INCLUIDAS
 - Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
@@ -115,6 +99,7 @@ Reemplaza:
 - gestion5s/templates/list.html
 - gestion5s/templates/panel.html
 - gestion5s/web.py
+- requirements.txt
 - static/css/gestion5s.css
 - templates/base.html
 - templates/dashboard.html
