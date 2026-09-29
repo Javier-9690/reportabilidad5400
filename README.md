@@ -148,6 +148,22 @@ las dependencias existentes del programa y no requiere migraciones ni nuevas tab
 
 ## Registros hotelería
 
+### Descarga CSV en columnas para Excel
+
+Los 21 tipos de registros descargan CSV con punto y coma (`;`) como separador,
+la indicación inicial `sep=;` para Excel y codificación UTF-8 con BOM para
+conservar tildes y eñes. Los campos quedan separados al abrir la descarga en
+Excel, incluso si la configuración regional del equipo utiliza otro separador.
+Las comas, puntos y coma, comillas y saltos de línea dentro de un campo se
+escapan como CSV y conservan su contenido en una sola celda. Los campos vacíos
+mantienen su posición. La búsqueda y los filtros de fecha siguen aplicándose
+a toda la descarga, sin limitarla a la página visible.
+
+Para procesar estas descargas con otra herramienta, omite la primera línea
+`sep=;`, usa `;` como delimitador y decodifica el archivo como `utf-8-sig`.
+Este ajuste se aplica a los archivos descargados después de actualizar el
+programa; los CSV descargados anteriormente deben generarse de nuevo.
+
 ### Activación de alarmas: horas, minutos y segundos
 
 Los siguientes cinco campos permiten ingresar y consultar **HH:MM:SS**, por

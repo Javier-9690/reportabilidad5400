@@ -1046,6 +1046,14 @@ def registros():
         db.close()
 
 
+def excel_csv_writer(buffer, fieldnames):
+    """Indica a Excel el separador, independientemente de la región del equipo."""
+    buffer.write("sep=;\r\n")
+    return csv.DictWriter(
+        buffer, fieldnames=fieldnames, delimiter=";", lineterminator="\r\n"
+    )
+
+
 @app.get("/download/<string:entity>.csv")
 def download_entity(entity):
     d_from, d_to, semana_sel = resolve_filters(request.args)
@@ -1056,14 +1064,14 @@ def download_entity(entity):
     search = read_record_search(request.args)
     db = SessionLocal()
     try:
-        buf = io.StringIO()
+        buf = io.StringIO(newline="")
         w = None
         query = hotel_records_query(db, entity, d_from, d_to, search)
 
         if entity == "censo":
             q = query
             rows = q.order_by(CensusEntry.fecha).all()
-            w = csv.DictWriter(buf, fieldnames=["fecha", "censo_dia", "censo_noche", "total"])
+            w = excel_csv_writer(buf, fieldnames=["fecha", "censo_dia", "censo_noche", "total"])
             w.writeheader()
             for r in rows:
                 w.writerow({"fecha": r.fecha.isoformat(), "censo_dia": r.censo_dia, "censo_noche": r.censo_noche, "total": r.total})
@@ -1071,7 +1079,7 @@ def download_entity(entity):
         elif entity == "eventos":
             q = query
             rows = q.order_by(EventSeguridad.fecha).all()
-            w = csv.DictWriter(buf, fieldnames=["fecha","horario","que_ocurrio","nombre_afectado","accion"])
+            w = excel_csv_writer(buf, fieldnames=["fecha","horario","que_ocurrio","nombre_afectado","accion"])
             w.writeheader()
             for r in rows:
                 w.writerow({"fecha": r.fecha.isoformat(), "horario": r.horario, "que_ocurrio": r.que_ocurrio,
@@ -1083,7 +1091,7 @@ def download_entity(entity):
             headers = ["semana","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
                        "pabellon","habitacion","ingresar_contacto","nombre_usuario","responsable","estatus",
                        "notificacion_usuario","plan_accion","fecha_cierre"]
-            w = csv.DictWriter(buf, fieldnames=headers)
+            w = excel_csv_writer(buf, fieldnames=headers)
             w.writeheader()
             for r in rows:
                 w.writerow({
@@ -1102,7 +1110,7 @@ def download_entity(entity):
             headers = ["fecha_hora","q1_respuesta","q1_puntaje","q2_respuesta","q2_puntaje",
                        "q3_respuesta","q3_puntaje","q4_respuesta","q4_puntaje","q5_respuesta","q5_puntaje",
                        "total","promedio","comentarios"]
-            w = csv.DictWriter(buf, fieldnames=headers)
+            w = excel_csv_writer(buf, fieldnames=headers)
             w.writeheader()
             for r in rows:
                 w.writerow({
@@ -1120,7 +1128,7 @@ def download_entity(entity):
         elif entity == "atencion":
             q = query
             rows = q.order_by(AtencionEntry.fecha).all()
-            w = csv.DictWriter(buf, fieldnames=["fecha","tiempo_promedio_mmss","cantidad"])
+            w = excel_csv_writer(buf, fieldnames=["fecha","tiempo_promedio_mmss","cantidad"])
             w.writeheader()
             for r in rows:
                 w.writerow({"fecha": r.fecha.isoformat(), "tiempo_promedio_mmss": seconds_to_mmss(r.tiempo_promedio_sec),
@@ -1132,7 +1140,7 @@ def download_entity(entity):
             rows = q.order_by(RoboHurtoEntry.fecha).all()
             headers = ["fecha","hora","modulo","habitacion","empresa","nombre_cliente","rut",
                        "medio_reclamo","especies","observaciones","recepciona"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "fecha": r.fecha.isoformat(),
@@ -1153,7 +1161,7 @@ def download_entity(entity):
             rows = q.order_by(MiscelaneoEntry.fecha_creacion, MiscelaneoEntry.id).all()
             headers = ["ot","division","area","lugar","ubicacion","disciplina","especialidad","falla",
                        "empresa","fecha_creacion","fecha_inicio","fecha_termino","fecha_aprobacion","estado","comentario"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "ot": r.ot or "", "division": r.division or "", "area": r.area or "",
@@ -1171,7 +1179,7 @@ def download_entity(entity):
             rows = q.order_by(DesviacionEntry.fecha).all()
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
                        "tipo_solicitud","pabellon","habitacion","via_solicitud","quien_informa","riesgo_material","correo_destino","acciones"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "n_solicitud": r.n_solicitud or "", "fecha": r.fecha.isoformat(),
@@ -1189,7 +1197,7 @@ def download_entity(entity):
             rows = q.order_by(order_reference_column(SolicitudOTEntry), SolicitudOTEntry.id).all()
             fields = list_fields(entity, SolicitudOTEntry())
             headers = ["tiempo_respuesta_mmss" if f["name"] == "tiempo_respuesta_sec" else f["name"] for f in fields]
-            w = csv.DictWriter(buf, fieldnames=headers)
+            w = excel_csv_writer(buf, fieldnames=headers)
             w.writeheader()
             for r in rows:
                 w.writerow({header: display_record_value(getattr(r, field["name"]), field["kind"])
@@ -1202,7 +1210,7 @@ def download_entity(entity):
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_solicitud",
                        "pabellon","habitacion","via_solicitud","ingresar_contacto","nombre_usuario","responsable",
                        "estatus","notificacion_usuario","plan_accion"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "n_solicitud": r.n_solicitud or "", "fecha": r.fecha.isoformat(),
@@ -1223,7 +1231,7 @@ def download_entity(entity):
                        "AVISO_MANTENCION_H","LLEGADA_MANTENCION_H","AVISO_LIDER_H","LLEGADA_LIDER_H",
                        "HORA_REPORTE_SALFA","TIPO_EVENTO","TIPO_ACTIVIDAD","FECHA_REPORTE",
                        "TURNO_RECEPCION_INGRESOS","OBSERVACIONES"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "MODULO": r.modulo or "", "N_HABITACION": r.n_habitacion or "",
@@ -1245,7 +1253,7 @@ def download_entity(entity):
             q = query
             rows = q.order_by(ExtensionExcepcionEntry.fecha_solicitud).all()
             headers = [label for _, label in EXTENSION_FIELDS]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     label: getattr(r, name) if getattr(r, name) is not None else ""
@@ -1256,7 +1264,7 @@ def download_entity(entity):
             q = query
             rows = q.order_by(OnboardingEntry.fecha_hora).all()
             headers = ["FECHA_HORA","NOMBRE","RUT","EMPRESA","ID","ARCHIVO_PDF"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "FECHA_HORA": r.fecha_hora.isoformat(timespec="minutes"),
@@ -1268,7 +1276,7 @@ def download_entity(entity):
             q = query
             rows = q.order_by(AperturaHabitacionEntry.fecha).all()
             headers = ["FECHA","HABITACION","HORA","RESPONSABLE","ESTADO_CHAPA"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "FECHA": r.fecha.isoformat(),
@@ -1282,7 +1290,7 @@ def download_entity(entity):
             q = query
             rows = q.order_by(CumplimientoEECCEntry.fecha, CumplimientoEECCEntry.id).all()
             headers = ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"]
-            w = csv.DictWriter(buf, fieldnames=headers); w.writeheader()
+            w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
                 w.writerow({
                     "FECHA": r.fecha.isoformat() if r.fecha else "",
@@ -1300,7 +1308,7 @@ def download_entity(entity):
             rows = query.order_by(
                 getattr(Model, ENTITY_DATE_FIELD[entity]), Model.id
             ).all()
-            w = csv.DictWriter(buf, fieldnames=[label for _, label in columns])
+            w = excel_csv_writer(buf, fieldnames=[label for _, label in columns])
             w.writeheader()
             for r in rows:
                 w.writerow({label: getattr(r, name) if getattr(r, name) is not None else ""

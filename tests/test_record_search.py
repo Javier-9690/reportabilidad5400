@@ -1,11 +1,9 @@
-import csv
 import html
 import re
 import time
 import unicodedata
 import unittest
 from datetime import timedelta
-from io import StringIO
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -13,6 +11,7 @@ from sqlalchemy import String, create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import sessionmaker
 
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import FORM_DATA, app
 from tests.test_edit_records import FormValues
 from tests.test_form_structure import PageStructure
@@ -60,7 +59,7 @@ class RecordSearchTest(unittest.TestCase):
     def exported(self, entity, q="", **filters):
         response = self.client.get(f"/gestion-5s/download/{entity}.csv", query_string={"q": q, **filters})
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
-        reader = csv.DictReader(StringIO(response.data.decode("utf-8-sig")))
+        reader = excel_csv_reader(response.data)
         self.assertTrue(reader.fieldnames)
         return list(reader)
 

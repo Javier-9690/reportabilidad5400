@@ -1,6 +1,5 @@
-import csv
 from datetime import date, time, timedelta
-from io import BytesIO, StringIO
+from io import BytesIO
 import unittest
 from unittest.mock import patch
 
@@ -8,6 +7,7 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import app
 from tests.test_edit_records import FormValues
 from tests.test_form_structure import PageStructure
@@ -44,7 +44,7 @@ class AlarmTimesTest(unittest.TestCase):
     def exported(self, **filters):
         response = self.client.get("/gestion-5s/download/alarmas.csv", query_string=filters)
         self.assertEqual(response.status_code, 200)
-        return list(csv.DictReader(StringIO(response.data.decode("utf-8-sig"))))
+        return list(excel_csv_reader(response.data))
 
     def upload(self, workbook):
         output = BytesIO()

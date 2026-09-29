@@ -1,6 +1,5 @@
-import csv
 from datetime import date, datetime, timedelta
-from io import BytesIO, StringIO
+from io import BytesIO
 import json
 import unittest
 from unittest.mock import patch
@@ -11,6 +10,7 @@ from sqlalchemy import Column, MetaData, Table, create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import app, FORM_DATA
 from tests.test_edit_records import FormValues
 from tests.test_form_structure import PageStructure
@@ -193,7 +193,7 @@ class OrderImportTest(unittest.TestCase):
         next_page = next(link for link in links if "page=2" in link and "/registros?" in link)
         self.assertIn("q=PAGE", next_page)
         exported = self.client.get("/gestion-5s/download/solicitud_ot.csv?" + query + "&page=2")
-        self.assertEqual(len(list(csv.DictReader(StringIO(exported.data.decode("utf-8-sig"))))), 105)
+        self.assertEqual(len(list(excel_csv_reader(exported.data))), 105)
         with web.app.test_request_context(environ_base={"SCRIPT_NAME": "/gestion-5s"}):
             returned = web.records_return_url("solicitud_ot", "/registros?" + query + "&page=2")
             self.assertIn("page=2", returned)
@@ -293,7 +293,7 @@ class OrderImportTest(unittest.TestCase):
         listing = self.client.get(url).get_data(as_text=True)
         self.assertIn("Fecha creación (Fecha inicio si falta)", listing)
         download = self.client.get("/gestion-5s/download/solicitud_ot.csv?from=2026-08-31&to=2026-09-12")
-        exported = list(csv.DictReader(StringIO(download.data.decode("utf-8-sig"))))
+        exported = list(excel_csv_reader(download.data))
         self.assertEqual({row["ot"] for row in exported}, {"A", "B", "C", "D", "E", "F"})
         self.assertIn("especialidad", exported[0])
         self.assertIn("comentario", exported[0])

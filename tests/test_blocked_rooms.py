@@ -1,10 +1,9 @@
-import csv
 import html
 import json
 import re
 import unittest
 from datetime import date, datetime
-from io import BytesIO, StringIO
+from io import BytesIO
 from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
@@ -12,6 +11,7 @@ from openpyxl.utils.datetime import CALENDAR_MAC_1904, to_excel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import app
 from tests.test_edit_records import FormValues
 from gestion5s import web
@@ -70,7 +70,7 @@ class BlockedRoomsTest(unittest.TestCase):
     def exported(self, **filters):
         response = self.client.get("/gestion-5s/download/habitaciones_bloqueadas.csv", query_string=filters)
         self.assertEqual(response.status_code, 200)
-        reader = csv.DictReader(StringIO(response.data.decode("utf-8-sig")))
+        reader = excel_csv_reader(response.data)
         self.assertEqual(reader.fieldnames, HEADERS)
         return list(reader)
 

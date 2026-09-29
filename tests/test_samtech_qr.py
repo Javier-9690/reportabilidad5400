@@ -1,12 +1,11 @@
 """Aislamiento de las cargas QR y general, y trazabilidad del reporte."""
 
-import csv
 import json
 import re
 import tempfile
 import unittest
 from datetime import date
-from io import BytesIO, StringIO
+from io import BytesIO
 from unittest.mock import patch
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
 from tests import test_order_import as helpers
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import FORM_DATA
 from tests.test_edit_records import FormValues
 from tests.test_form_structure import PageStructure
@@ -144,7 +144,7 @@ class SamtechQRTest(unittest.TestCase):
         self.assertIn("Revisión &lt;urgente&gt;", page)
         self.assertIn("Fecha creación (Fecha inicio si falta)", page)
         exported = self.client.get("/gestion-5s/download/samtech_qr.csv", query_string=query)
-        rows = list(csv.DictReader(StringIO(exported.data.decode("utf-8-sig"))))
+        rows = list(excel_csv_reader(exported.data))
         self.assertEqual([row["Ticket"] for row in rows], ["001"])
         self.assertEqual(rows[0]["Fecha creación"], "")
         self.assertEqual(rows[0]["Fecha inicio"], "2026-09-12")
@@ -201,7 +201,7 @@ class SamtechQRTest(unittest.TestCase):
         self.assertIn("101–105 de 105", page)
         self.assertIn("Eliminar todos (105)", page)
         csv_data = self.client.get("/gestion-5s/download/samtech_qr.csv", query_string=query)
-        self.assertEqual(len(list(csv.DictReader(StringIO(csv_data.data.decode("utf-8-sig"))))), 105)
+        self.assertEqual(len(list(excel_csv_reader(csv_data.data))), 105)
         preview = self.client.post("/gestion-5s/delete/samtech_qr/bulk/confirm", data={
             "csrf_token": FormValues(page).values["csrf_token"], "mode": "all", "q": "PAGE",
         })

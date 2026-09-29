@@ -1,11 +1,11 @@
-import csv
 import html
 import unittest
-from io import BytesIO, StringIO
+from io import BytesIO
 
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine, inspect, text
 
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import app
 from tests.test_edit_records import FormValues
 from gestion5s.web import DesviacionEntry, SessionLocal, ensure_deviation_actions_column
@@ -56,7 +56,7 @@ class DeviationActionsTest(unittest.TestCase):
         self.assertIn("<th>Opciones</th>", listing)
         self.assertIn(html.escape(actions), listing)
         download = self.client.get("/gestion-5s/download/desviaciones.csv")
-        rows = csv.DictReader(StringIO(download.data.decode("utf-8-sig")))
+        rows = excel_csv_reader(download.data)
         exported = next(row for row in rows if row["n_solicitud"] == number)
         self.assertEqual(exported["acciones"], actions)
 

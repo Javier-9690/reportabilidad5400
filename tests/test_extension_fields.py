@@ -1,15 +1,15 @@
-import csv
 import html
 import re
 import unittest
 from datetime import date, datetime
-from io import BytesIO, StringIO
+from io import BytesIO
 from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from tests.csv_helpers import excel_csv_reader
 from tests.test_integration import app
 from tests.test_edit_records import FormValues
 from gestion5s import web
@@ -82,7 +82,7 @@ class ExtensionFieldsTest(unittest.TestCase):
 
         response = self.client.get("/gestion-5s/download/extensiones.csv")
         self.assertEqual(response.status_code, 200)
-        reader = csv.DictReader(StringIO(response.data.decode("utf-8-sig")))
+        reader = excel_csv_reader(response.data)
         self.assertEqual(reader.fieldnames, HEADERS)
         self.assertEqual(list(reader), [dict(zip(HEADERS, (expected[name] for name in NAMES)))])
 

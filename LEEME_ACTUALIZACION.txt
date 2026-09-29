@@ -1,143 +1,60 @@
-REPORTABILIDAD 5400 — CORRECCIÓN DEL ARRANQUE EN RENDER
-Actualización del 27/09/2026 — Versión 18
+REPORTABILIDAD 5400 — APLICACIÓN COMPLETA
+Actualización: 29 de septiembre de 2026
 
-Programa completo con todas las mejoras anteriores de esta conversación.
-Repositorio: https://github.com/Javier-9690/reportabilidad5400
-Base: f67683f33208d1917fd766649ef897df63ced824
+Este ZIP contiene el programa completo: app.py, todos los módulos de registros,
+plantillas HTML, estilos, JavaScript, logos, reportes, dependencias, configuración
+de arranque, documentación y pruebas. Incluye la corrección de exportación CSV.
 
-ERROR CORREGIDO
-ModuleNotFoundError: No module named 'psycopg'
+EXPORTACIÓN CSV CORREGIDA
+Los 21 tipos de registros hoteleros usan punto y coma como delimitador, una
+indicación inicial sep=; para Excel y UTF-8 con BOM. Esto permite separar los
+campos en columnas y conservar tildes, eñes, celdas vacías y textos con comas,
+puntos y coma, comillas o saltos de línea.
+Los filtros de fecha y búsqueda siguen aplicándose a toda la descarga.
+Vuelve a descargar los CSV después de instalar esta versión.
 
-SQLAlchemy 2.1 utiliza Psycopg 3 como controlador predeterminado para PostgreSQL.
-La regla SQLAlchemy>=2.0,<3 permitía instalar esa versión en un nuevo despliegue,
-pero requirements.txt solo incluía psycopg2-binary, que instala un módulo distinto.
-Ahora requirements.txt incluye ambos:
-- psycopg[binary]>=3.2.10,<4
-- psycopg2-binary>=2.9.11,<3
-
-Estas versiones mínimas admiten Python 3.14. El extra binary proporciona también
-las bibliotecas nativas del controlador. Se conservan la conexión DATABASE_URL,
-los comandos de arranque y los registros existentes; no hay cambios de tablas.
-
-APLICACIÓN RÁPIDA SI YA TIENES LA VERSIÓN 17
+ACTUALIZAR EL PROGRAMA COMPLETO
 1. Descomprime este ZIP.
-2. Reemplaza requirements.txt en la raíz del repositorio que despliega Render.
-   README.md también está actualizado con las instrucciones y la explicación.
-3. Guarda los cambios en la rama usada por Render.
-4. En el servicio de Render, confirma Build Command:
-   pip install -r requirements.txt
-5. Ejecuta Manual Deploy > Clear build cache & deploy.
-6. Revisa el registro: deben instalarse psycopg y psycopg-binary y el despliegue
-   debe terminar correctamente.
+2. Sube su contenido al repositorio Javier-9690/reportabilidad5400, manteniendo
+   las carpetas. app.py y requirements.txt deben quedar en la raíz del repositorio;
+   gestion5s, templates, static, scripts y tests deben quedar a su lado.
+   Sube los archivos extraídos, no el ZIP.
+3. Guarda los cambios en la rama que utiliza tu servicio de Render.
+4. Espera el despliegue automático o ejecuta Manual Deploy > Deploy latest commit.
+5. En Ver registros, descarga nuevamente un CSV y abre el nuevo archivo en Excel.
 
-Mantén Start Command:
+CONFIGURACIÓN DE ARRANQUE INCLUIDA
+Build Command:
+pip install -r requirements.txt
+
+Start Command:
 gunicorn app:app --workers 1 --threads 2 --timeout 300 --graceful-timeout 300
 
-No subas el ZIP como sustituto de los archivos del programa: sube su contenido.
-Esta entrega prepara la corrección; el despliegue de tu servicio queda pendiente
-de subir los archivos y ejecutar los pasos anteriores.
+Mantén las variables de entorno del servicio existente, en particular DATABASE_URL
+y SECRET_KEY, para continuar usando la misma base y configuración.
+El paquete no incluye la base de datos de producción ni cambia sus registros.
+Esta corrección de CSV no requiere migraciones de tablas.
+requirements.txt conserva psycopg[binary] y psycopg2-binary, incorporados en la
+corrección anterior del arranque de Render.
 
-VERIFICACIÓN DE ESTA ENTREGA
-- Instalación limpia de requirements.txt en Python 3.12.14 y Python 3.14.3.
-- 117 pruebas Python aprobadas en cada entorno, con SQLite temporal.
-- SQLAlchemy 2.1.1, psycopg 3.3.6, psycopg-binary 3.3.6 y psycopg2-binary 2.9.13.
-- Carga de los motores postgresql://, postgresql+psycopg:// y postgresql+psycopg2://.
-  Esta prueba verifica la carga de los controladores, sin conectarse a PostgreSQL.
-- Arranque real de Gunicorn en Python 3.14.3: salud, Importar, formulario de alarmas
-  y Gestión de usuarios respondieron HTTP 200 sobre una base temporal SQLite.
-- No se probó una conexión al PostgreSQL de Render ni se accedió a sus datos.
+FUNCIONES CONSERVADAS
+- Importación de censos y curva, Sin Match, Nuevo ID y reportes de dotación,
+  ocupabilidad, EGP, F&A y gestión de usuarios.
+- Los 21 tipos de registros hoteleros con formularios, plantillas, importación,
+  consulta, edición, búsqueda, eliminación individual y múltiple y descarga.
+- Importación general de órdenes en Misceláneos y Solicitudes OT, e importación
+  independiente de Solicitudes de usuarios Samtech QR, ambas con confirmación.
+- Dashboards, reporte de gestión de usuarios y exportación a Excel.
+- Horas, minutos y segundos en los cinco campos de activación de alarmas.
+El README contiene el detalle de cada módulo y sus campos.
 
-ACTIVACIÓN DE ALARMAS: MEJORA ANTERIOR CONSERVADA
-Aviso a mantención, llegada de mantención, aviso al líder de emergencias,
-llegada del líder y hora de reporte a SALFA admiten HH:MM:SS.
-Se conservan segundos al ingresar, editar, consultar, importar, buscar y exportar.
-Los campos pueden quedar vacíos. Las cuatro columnas históricas en horas decimales
-conservan sus datos, incluidos valores superiores a 24 horas. SALFA mantiene su
-hora del día entre 00 y 23. La plantilla vacía incluye formatos y notas de ayuda.
+VALIDACIÓN
+La corrección de CSV superó 76 pruebas automatizadas, incluyendo todas las
+categorías, campos especiales, fechas opcionales, segundos, filtros y paginación.
+Se validaron los archivos mediante el cliente de pruebas de Flask y un lector
+CSV; no se ejecutó Microsoft Excel de escritorio en este entorno.
 
-MEJORAS ANTERIORES INCLUIDAS
-- Menú: Importar, Censos, Sin Match, Curva, Nuevo ID, Reportes y Registros hotelería.
-- Reportes conserva Dotación, Ocupabilidad, EGP y F&A y añade Gestión de usuarios.
-- Los 21 módulos tienen Ver registros, todos sus campos y textos completos,
-  barras horizontales sincronizadas y desplazamiento vertical.
-- Ingreso, plantillas Excel, importación, exportación CSV, edición con lápiz,
-  eliminación individual, selección múltiple y Eliminar todos con confirmación.
-- Buscador por palabra o número en las 21 categorías, con coincidencias parciales,
-  sin distinguir mayúsculas ni tildes; respeta la categoría, fechas y semana.
-- El buscador se conserva al editar, eliminar y exportar; el borrado múltiple
-  utiliza exactamente la selección confirmada y detecta cambios concurrentes.
-- Corrección del error Not Found después de eliminar un registro.
-- Acciones en desviaciones en formulario, plantilla, listado, edición y CSV.
-- Extensiones y excepciones con sus 12 campos actualizados.
-- Entradas y salidas con 16 campos opcionales. Entrada a habitaciones en el
-  dashboard cuenta únicamente FECHA INGRESO.
-- Habitaciones bloqueadas, Ordenamiento y Habitaciones liberadas completos.
-- Samtech usuarios con sus 15 campos, formulario, plantilla, importación,
-  listado, edición, exportación, eliminación y gráfico por Fecha creación.
-- Campos y fechas vacíos admitidos en los seis registros nuevos de la conversación.
-El README detalla las columnas y el funcionamiento de cada módulo.
-
-
-- Reporte de Gestión de usuarios con las cinco categorías, conclusiones,
-  ambos gráficos y Excel de siete hojas, incluyendo Desviaciones y Doble asignación.
-- Desviaciones aporta al total y queda fuera del porcentaje de cierre porque
-  su registro no tiene campo de estado; se explica como Sin clasificar.
-
-
-
-- Solicitudes de usuarios Samtech QR independiente, con carga confirmada y todas
-  las funciones de registros. La carga general conserva Misceláneos y Solicitudes OT.
-- Gestión de usuarios: Solicitudes de usuarios usa QR; Solicitudes totales Samtech
-  reúne la carga general. Excel y gráficos usan las mismas fuentes.
-
-ACTUALIZACIÓN COMPLETA DESDE EL REPOSITORIO ORIGINAL
-Reemplaza:
-- README.md
-- app.py
-- gestion5s/templates/base.html
-- gestion5s/templates/dashboard.html
-- gestion5s/templates/list.html
-- gestion5s/templates/panel.html
-- gestion5s/web.py
-- requirements.txt
-- static/css/gestion5s.css
-- templates/base.html
-- templates/dashboard.html
-- tests/test_integration.py
-
-Añade:
-- gestion5s/alarm_times.py
-- gestion5s/editing.py
-- gestion5s/order_import_routes.py
-- gestion5s/orders.py
-- gestion5s/searching.py
-- gestion5s/templates/bulk_delete_confirm.html
-- gestion5s/templates/edit.html
-- gestion5s/templates/order_import_error.html
-- gestion5s/templates/order_import_preview.html
-- gestion5s/templates/record_fields.html
-- gestion5s/user_report_excel.py
-- gestion5s/user_report_routes.py
-- gestion5s/user_reports.py
-- static/css/user_report.css
-- static/js/hotel_forms.js
-- static/js/registros.js
-- static/js/user_report.js
-- templates/user_report.html
-- tests/test_alarm_times.py
-- tests/test_blocked_rooms.py
-- tests/test_bulk_delete_records.py
-- tests/test_delete_records.py
-- tests/test_deviation_actions.py
-- tests/test_edit_records.py
-- tests/test_entry_exit_records.py
-- tests/test_extension_fields.py
-- tests/test_form_structure.py
-- tests/test_hotel_interface.cjs
-- tests/test_order_import.py
-- tests/test_record_search.py
-- tests/test_room_operations.py
-- tests/test_samtech_qr.py
-- tests/test_samtech_users.py
-- tests/test_user_report_interface.cjs
-- tests/test_user_reports.py
+Repositorio base: https://github.com/Javier-9690/reportabilidad5400
+Commit base: bb00f6c09eb85d7d76f401d3d82aaa8e0bf3f177.
+Esta entrega contiene los archivos listos para subir; no despliega por sí sola
+el servicio de Render.
