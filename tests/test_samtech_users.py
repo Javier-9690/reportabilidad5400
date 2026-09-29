@@ -160,12 +160,13 @@ class SamtechUsersTest(unittest.TestCase):
                 self.assertIn("Error importando samtech_usuarios: Fila 3:", self.upload(workbook))
                 self.assertEqual(self.records(), [before])
 
-    def test_dashboard_counts_only_creation_dates_and_keeps_samtech_separate(self):
+    def test_legacy_records_remain_exportable_but_do_not_count_in_dashboard(self):
         self.create({"ticket": "Sin creación", "fecha_inicio": "2026-09-09", "fecha_aprobacion": "2026-09-10"})
         self.assertNotIn("const series =", self.client.get("/gestion-5s/dashboard").get_data(as_text=True))
         for day in ("2026-08-31", "2026-09-09", "2026-09-09", "2026-09-10"):
             self.create({"ticket": "000007", "fecha_creacion": day, "fecha_inicio": "2026-09-09",
                          "fecha_termino": "2026-09-15", "fecha_aprobacion": "2026-09-16"})
+        self.assertNotIn("const series =", self.client.get("/gestion-5s/dashboard").get_data(as_text=True))
         self.assertEqual(self.client.post("/gestion-5s/panel?tab=miscelaneo", data={
             "ot": "000007", "fecha_creacion": "2026-09-09",
         }).status_code, 302)
@@ -176,12 +177,13 @@ class SamtechUsersTest(unittest.TestCase):
                 page = response.get_data(as_text=True)
                 labels = json.loads(re.search(r"const labels = (.*?);", page).group(1))
                 series = json.loads(re.search(r"const series = (.*?);", page).group(1))
-                self.assertEqual(labels, ["2026-09-09", "2026-09-10"])
-                self.assertEqual(series["samtech_usuarios"], [2, 1])
-                self.assertEqual(series["miscelaneo"], [1, 0])
+                self.assertEqual(labels, ["2026-09-09"])
+                self.assertNotIn("samtech_usuarios", series)
+                self.assertEqual(series["samtech_qr"], [0])
+                self.assertEqual(series["miscelaneo"], [1])
                 self.assertNotIn("salidas", series)
-                self.assertIn('id="samtechUsuariosChart"', page)
-                self.assertRegex(page, r'<div class="number[^\"]*">3</div>\s*<div class="label">Samtech usuarios</div>')
+                self.assertNotIn('samtechUsuariosChart', page)
+                self.assertNotIn('Samtech usuarios', page)
                 self.assertEqual(len(self.exported(**filters)), 3)
                 self.assertEqual(len(self.exported()), 5)
 

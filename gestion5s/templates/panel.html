@@ -69,9 +69,6 @@
           <a href="{{ url_for('panel', tab='habitaciones_liberadas') }}" class="list-group-item list-group-item-action {% if tab=='habitaciones_liberadas' %}active{% endif %}">
             <i class="fas fa-door-open me-2"></i>Habitaciones liberadas
           </a>
-          <a href="{{ url_for('panel', tab='samtech_usuarios') }}" class="list-group-item list-group-item-action {% if tab=='samtech_usuarios' %}active{% endif %}">
-            <i class="fas fa-ticket-alt me-2"></i>Samtech usuarios
-          </a>
           <a href="{{ url_for('panel', tab='samtech_qr') }}" class="list-group-item list-group-item-action {% if tab=='samtech_qr' %}active{% endif %}">
             <i class="fas fa-qrcode me-2"></i>Solicitudes de usuarios Samtech QR
           </a>
@@ -116,7 +113,7 @@
           </div>
           {% endif %}
           {% if entity == 'samtech_usuarios' %}
-          <p class="alert alert-info">Este registro conserva los datos anteriores de Samtech usuarios. Para Gestión de usuarios, carga las solicitudes QR en <a href="{{ url_for('panel', tab='samtech_qr') }}">Solicitudes de usuarios Samtech QR</a> y el total general desde <a href="{{ url_for('panel', tab='solicitud_ot') }}">Solicitudes OT</a> o Misceláneos.</p>
+          <p class="alert alert-info">Estás consultando el registro histórico Samtech usuarios, retirado del menú y del dashboard. Para las nuevas solicitudes, utiliza <a href="{{ url_for('panel', tab='samtech_qr') }}">Solicitudes de usuarios Samtech QR</a>, donde puedes importar la plantilla y confirmar la carga.</p>
           {% endif %}
           {% if optional_record %}
           <p class="small text-muted">Puedes dejar campos vacíos y completarlos después desde Editar. Las filas totalmente vacías de la plantilla se omiten.</p>

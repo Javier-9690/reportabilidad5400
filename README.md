@@ -150,7 +150,7 @@ las dependencias existentes del programa y no requiere migraciones ni nuevas tab
 
 ### Descarga CSV en columnas para Excel
 
-Los 21 tipos de registros descargan CSV con punto y coma (`;`) como separador,
+Todos los registros, incluido el histórico, descargan CSV con punto y coma (`;`) como separador,
 la indicación inicial `sep=;` para Excel y codificación UTF-8 con BOM para
 conservar tildes y eñes. Los campos quedan separados al abrir la descarga en
 Excel, incluso si la configuración regional del equipo utiliza otro separador.
@@ -300,7 +300,8 @@ corregirse antes de guardar; este campo no almacena el contenido del documento.
 
 En **Consultar registros / Ver registros**, elige la **Categoría**, escribe una
 palabra o número en **Buscar dentro de esta categoría** y pulsa **Buscar** o
-Enter. Funciona en los 21 tipos de registros, incluidos Samtech usuarios y las solicitudes QR.
+Enter. Funciona en los 20 tipos de registros visibles, incluidas las solicitudes QR.
+La búsqueda del histórico Samtech usuarios sigue disponible mediante su enlace anterior.
 Encuentra coincidencias parciales en cualquiera de los campos vigentes de esa
 categoría, incluidos observaciones, acciones, ID, RUT, habitación y ticket.
 No distingue mayúsculas ni tildes: `mantencion` encuentra `Mantención`.
@@ -559,51 +560,26 @@ Los registros sin ambas fechas quedan guardados y fuera de los filtros por fecha
 La tabla `samtech_usuarios_qr` se crea al iniciar la aplicación actualizada, sin
 mover ni borrar datos anteriores y sin nuevas dependencias.
 
-### Samtech usuarios
+### Samtech usuarios: histórico conservado
 
-Este registro anterior conserva su histórico. Gestión de usuarios ahora utiliza
-la carga QR y la carga general descritas arriba; ya no consulta esta tabla.
+**Solicitudes de usuarios Samtech QR** es la única opción visible para esta carga
+de solicitudes. Conserva el formulario, la plantilla, la importación directa
+con vista previa y confirmación, la consulta, edición, búsqueda y exportación.
+Alimenta **Solicitudes de usuarios** en Gestión de usuarios.
 
-Disponible en **Registros hotelería > Ingresar registros > Samtech usuarios**
-y en el selector de **Consultar registros**. El formulario, la edición, la
-plantilla Excel, el listado y la exportación CSV utilizan estos 15 campos,
-en el orden solicitado:
+El antiguo **Samtech usuarios** se retiró del menú de ingreso, del selector de
+categorías habitual y de las tarjetas y gráficos del dashboard. Sus filas tampoco
+crean días vacíos en los gráficos ni se suman a los indicadores de QR.
 
-1. Ticket
-2. División
-3. Área
-4. Lugar
-5. Ubicación
-6. Disciplina
-7. Especialidad
-8. Falla
-9. Empresa
-10. Fecha creación
-11. Fecha inicio
-12. Fecha término
-13. Fecha aprobación
-14. Estado
-15. Comentario
+La tabla `samtech_usuarios` y sus registros se conservan. Por compatibilidad, los
+enlaces anteriores permiten acceder al histórico y descargarlo, por ejemplo
+`/gestion-5s/registros?vista=samtech_usuarios`. Al abrirlo directamente se
+identifica como histórico y se ofrece un enlace al registro QR. No se realiza una
+migración automática de esas filas a QR, porque no se puede asumir que todas
+provengan de solicitudes de usuarios por QR.
 
-Todos los campos son opcionales, incluidas las cuatro fechas. Basta un dato
-para guardar o importar una fila; las filas totalmente vacías se omiten.
-**Ticket** se guarda como texto para conservar los ceros iniciales. Falla y
-Comentario admiten varias líneas y se muestran completos. Estado es texto libre.
-La plantilla admite fechas de Excel y texto `DD/MM/AAAA` o `AAAA-MM-DD`.
-Se validan los datos informados; una fila inválida cancela la importación
-completa e indica su número para corregirla.
-
-Incluye **Ver registros**, barras horizontales sincronizadas, exportación CSV,
-edición con el lápiz, eliminación individual, selección múltiple y **Eliminar todos**.
-La tarjeta y el gráfico **Samtech usuarios** cuentan registros por **Fecha creación**.
-Los filtros del listado, exportación y borrado utilizan esa misma fecha. Las fechas
-de inicio, término y aprobación se conservan por separado y no añaden conteos al gráfico.
-Los registros sin fecha de creación pueden consultarse y exportarse sin filtros,
-y completarse posteriormente desde Editar. El conteo representa registros.
-
-La tabla `samtech_usuarios` se crea automáticamente al iniciar la aplicación,
-conservando las tablas y registros existentes. Este módulo guarda sus datos
-por separado de Misceláneo.
+La carga general de **Misceláneos + Solicitudes OT** sigue alimentando
+**Solicitudes totales Samtech**, como se describe arriba.
 
 Reportabilidad y Registros hotelería utilizan la misma variable `DATABASE_URL`. Las tablas existentes de
 los dos proyectos conservan sus nombres, por lo que el despliegue no elimina ni

@@ -2134,7 +2134,6 @@ def dashboard():
                 "habitaciones_bloqueadas": 0,
                 "ordenamiento": 0,
                 "habitaciones_liberadas": 0,
-                "samtech_usuarios": 0,
                 "samtech_qr": 0,
             })
 
@@ -2260,7 +2259,6 @@ def dashboard():
             (HabitacionBloqueadaEntry, HabitacionBloqueadaEntry.fecha_bloqueo, "habitaciones_bloqueadas"),
             (OrdenamientoEntry, OrdenamientoEntry.fecha_ejecucion, "ordenamiento"),
             (HabitacionLiberadaEntry, HabitacionLiberadaEntry.fecha_devolucion, "habitaciones_liberadas"),
-            (SamtechUsuarioEntry, SamtechUsuarioEntry.fecha_creacion, "samtech_usuarios"),
             (SamtechQRUsuarioEntry, order_reference_column(SamtechQRUsuarioEntry), "samtech_qr"),
         ):
             q = db.query(column, func.count(Model.id)).filter(column.isnot(None))
@@ -2295,7 +2293,6 @@ def dashboard():
             "habitaciones_bloqueadas": [],
             "ordenamiento": [],
             "habitaciones_liberadas": [],
-            "samtech_usuarios": [],
             "samtech_qr": [],
         }
 
@@ -2320,7 +2317,6 @@ def dashboard():
             series_data["habitaciones_bloqueadas"].append(g["habitaciones_bloqueadas"])
             series_data["ordenamiento"].append(g["ordenamiento"])
             series_data["habitaciones_liberadas"].append(g["habitaciones_liberadas"])
-            series_data["samtech_usuarios"].append(g["samtech_usuarios"])
             series_data["samtech_qr"].append(g["samtech_qr"])
             
             prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
@@ -2347,7 +2343,6 @@ def dashboard():
             "habitaciones_bloqueadas_total": sum(series_data["habitaciones_bloqueadas"]),
             "ordenamiento_total": sum(series_data["ordenamiento"]),
             "habitaciones_liberadas_total": sum(series_data["habitaciones_liberadas"]),
-            "samtech_usuarios_total": sum(series_data["samtech_usuarios"]),
             "samtech_qr_total": sum(series_data["samtech_qr"]),
             "atencion_tiempo_prom_global": (
                 seconds_to_mmss(int(mean([int(x*60) for x in series_data["atencion_min"] if x>0])))

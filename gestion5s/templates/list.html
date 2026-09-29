@@ -50,10 +50,12 @@
             ('habitaciones_bloqueadas', 'Habitaciones bloqueadas'),
             ('ordenamiento', 'Ordenamiento'),
             ('habitaciones_liberadas', 'Habitaciones liberadas'),
-            ('samtech_usuarios', 'Samtech usuarios'),
             ('samtech_qr', 'Solicitudes de usuarios Samtech QR')
           ] %}
           <select id="recordCategory" name="vista" class="form-select" onchange="this.form.submit()">
+            {% if vista == 'samtech_usuarios' %}
+              <option value="samtech_usuarios" selected>Samtech usuarios (histórico)</option>
+            {% endif %}
             {% for v, label in opciones %}
               <option value="{{ v }}" {{ 'selected' if vista==v }}>{{ label }}</option>
             {% endfor %}
@@ -131,6 +133,9 @@
 
   <!-- Sección de datos -->
   <div class="mt-4">
+    {% if vista == 'samtech_usuarios' %}
+    <p class="alert alert-info">Este es el histórico de Samtech usuarios. Para las nuevas solicitudes utiliza <a href="{{ url_for('panel', tab='samtech_qr') }}">Solicitudes de usuarios Samtech QR</a>. El histórico no se suma al dashboard ni al reporte de gestión.</p>
+    {% endif %}
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
       <h4>{{ entity_title }}</h4>
       <a class="btn btn-primary-custom" href="{{ url_for('download_entity', entity=vista, **request.args) }}">

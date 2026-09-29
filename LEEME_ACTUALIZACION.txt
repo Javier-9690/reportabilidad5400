@@ -3,10 +3,17 @@ Actualización: 29 de septiembre de 2026
 
 Este ZIP contiene el programa completo: app.py, todos los módulos de registros,
 plantillas HTML, estilos, JavaScript, logos, reportes, dependencias, configuración
-de arranque, documentación y pruebas. Incluye la corrección de exportación CSV.
+de arranque, documentación y pruebas. Incluye la corrección de exportación CSV y el menú simplificado de Samtech.
+
+SAMTECH: UNA SOLA OPCIÓN VISIBLE PARA LAS SOLICITUDES QR
+Se mantiene Solicitudes de usuarios Samtech QR, con formulario, importación de
+plantilla, vista previa, confirmación, consulta, edición, búsqueda y exportación.
+Samtech usuarios se retiró del menú, selector habitual de categorías y dashboard.
+Los datos antiguos se conservan como histórico y no se mezclan con los QR.
+Los enlaces anteriores del histórico siguen disponibles por compatibilidad.
 
 EXPORTACIÓN CSV CORREGIDA
-Los 21 tipos de registros hoteleros usan punto y coma como delimitador, una
+Todos los registros, incluido el histórico, usan punto y coma como delimitador, una
 indicación inicial sep=; para Excel y UTF-8 con BOM. Esto permite separar los
 campos en columnas y conservar tildes, eñes, celdas vacías y textos con comas,
 puntos y coma, comillas o saltos de línea.
@@ -40,7 +47,7 @@ corrección anterior del arranque de Render.
 FUNCIONES CONSERVADAS
 - Importación de censos y curva, Sin Match, Nuevo ID y reportes de dotación,
   ocupabilidad, EGP, F&A y gestión de usuarios.
-- Los 21 tipos de registros hoteleros con formularios, plantillas, importación,
+- Los 20 tipos de registros visibles con formularios, plantillas, importación,
   consulta, edición, búsqueda, eliminación individual y múltiple y descarga.
 - Importación general de órdenes en Misceláneos y Solicitudes OT, e importación
   independiente de Solicitudes de usuarios Samtech QR, ambas con confirmación.
@@ -49,12 +56,18 @@ FUNCIONES CONSERVADAS
 El README contiene el detalle de cada módulo y sus campos.
 
 VALIDACIÓN
+Se verificó que la navegación solo ofrece la opción QR, que el dashboard y el
+reporte no cuentan el histórico, que las solicitudes QR con fecha alternativa
+se contabilizan correctamente y que las filas antiguas permanecen guardadas.
+Se comprobaron también importación QR, separación de cargas, reportes, formularios
+y CSV mediante las pruebas automatizadas incluidas.
+
 La corrección de CSV superó 76 pruebas automatizadas, incluyendo todas las
 categorías, campos especiales, fechas opcionales, segundos, filtros y paginación.
 Se validaron los archivos mediante el cliente de pruebas de Flask y un lector
 CSV; no se ejecutó Microsoft Excel de escritorio en este entorno.
 
 Repositorio base: https://github.com/Javier-9690/reportabilidad5400
-Commit base: bb00f6c09eb85d7d76f401d3d82aaa8e0bf3f177.
+Base: main del repositorio al 29 de septiembre de 2026, con la corrección CSV ya integrada.
 Esta entrega contiene los archivos listos para subir; no despliega por sí sola
 el servicio de Render.
