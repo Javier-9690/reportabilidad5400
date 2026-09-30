@@ -1,5 +1,6 @@
 """Informe de casos de usuarios, agrupados por su fecha y estado actual."""
 
+from heapq import merge
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 import re
@@ -90,14 +91,25 @@ def percent_text(value):
     return f"{value * 100:.1f}%".replace(".", ",")
 
 
-def build_user_report(db, models, start, end, include_details=False):
+def _details(db, model, scope, date_column, source, fields, entity, combined):
+    for record in db.query(model).filter(*scope).order_by(date_column, model.id).yield_per(500):
+        detail = {field["name"]: getattr(record, field["name"], None) for field in fields}
+        if source.get("report_date_field"):
+            detail[source["report_date_field"]] = order_reference_date(record)
+        if combined:
+            detail["_origen"] = ORDER_TITLES[entity]
+        yield detail
+
+
+def build_user_report(db, models, start, end, include_details=False, details_factory=list):
     days = [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
     day_index = {day: index for index, day in enumerate(days)}
     categories = []
     for source in SOURCES:
         entities = source.get("entities", (source["entity"],))
         fields = list_fields(source["entity"], models[source["entity"]]())
-        details = []
+        details = details_factory() if include_details else []
+        detail_streams = []
         groups, undated = [], 0
         for entity in entities:
             model = models[entity]
@@ -106,28 +118,18 @@ def build_user_report(db, models, start, end, include_details=False):
             scope = (date_column >= start, date_column <= end)
             undated += db.query(func.count(model.id)).filter(date_column.is_(None)).scalar()
             if include_details:
-                grouped = Counter()
-                for record in db.query(model).filter(*scope).order_by(date_column, model.id).yield_per(1000):
-                    state = getattr(record, source["status"]) if source["status"] else None
-                    day = order_reference_date(record) if source.get("date_fallback") else getattr(record, source["date"])
-                    grouped[(day, state)] += 1
-                    # La carga general conserva también las columnas históricas de OT.
-                    detail = {field["name"]: getattr(record, field["name"], None) for field in fields}
-                    if source.get("report_date_field"):
-                        detail[source["report_date_field"]] = day
-                    if len(entities) > 1:
-                        detail["_origen"] = ORDER_TITLES[entity]
-                    details.append(detail)
-                groups.extend((day, state, count) for (day, state), count in grouped.items())
-            elif status_column is not None:
+                detail_streams.append(_details(db, model, scope, date_column, source, fields, entity, len(entities) > 1))
+            if status_column is not None:
                 groups.extend(db.query(date_column, status_column, func.count(model.id)).filter(*scope).group_by(
                     date_column, status_column,
                 ).all())
             else:
                 groups.extend((day, None, count) for day, count in db.query(date_column, func.count(model.id))
                               .filter(*scope).group_by(date_column).all())
-        if include_details and len(entities) > 1:
-            details.sort(key=lambda record: record[source.get("report_date_field", source["date"])])
+        if include_details:
+            date_field = source.get("report_date_field", source["date"])
+            for detail in merge(*detail_streams, key=lambda row: row[date_field]):
+                details.append(detail)
         series = {key: [0] * len(days) for key in STATUS_LABELS}
         unknown = Counter()
         for day, state, count in groups:

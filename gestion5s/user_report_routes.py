@@ -1,6 +1,9 @@
 """Rutas del reporte en el menú principal, con acceso a las tablas de hotelería."""
 
-from flask import Blueprint, current_app, make_response, render_template, request, send_file
+from contextlib import ExitStack
+from memory_utils import DiskRows, memory_limited, send_disk_file
+
+from flask import Blueprint, current_app, make_response, render_template, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -18,7 +21,7 @@ def report_context():
     }
 
 
-def load_report(include_details=False):
+def load_report(include_details=False, details_factory=list):
     # Importación diferida: conserva la instancia y conexión del módulo montado.
     from gestion5s import web
     start, end = parse_report_range(request.args)
@@ -29,7 +32,7 @@ def load_report(include_details=False):
             db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
         elif db.get_bind().dialect.name == "sqlite":
             db.execute(text("BEGIN"))
-        return build_user_report(db, web.ENTITY_MODEL, start, end, include_details=include_details)
+        return build_user_report(db, web.ENTITY_MODEL, start, end, include_details=include_details, details_factory=details_factory)
 
 
 @bp.get("/reports/usuarios")
@@ -49,11 +52,13 @@ def report_page():
 
 
 @bp.get("/reports/usuarios.xlsx")
+@memory_limited()
 def export_excel():
     from gestion5s.user_report_excel import export_user_report
     try:
-        report = load_report(include_details=True)
-        content = export_user_report(report)
+        with ExitStack() as resources:
+            report = load_report(include_details=True, details_factory=lambda: resources.enter_context(DiskRows()))
+            content = export_user_report(report)
     except (ValueError, SQLAlchemyError) as exc:
         context = report_context()
         if isinstance(exc, ValueError):
@@ -62,7 +67,7 @@ def export_excel():
             current_app.logger.exception("Error al exportar el reporte de usuarios")
             context["error"], status = "No se pudo exportar el reporte. Inténtalo nuevamente.", 503
         return render_template("user_report.html", **context), status
-    response = send_file(content, as_attachment=True,
+    response = send_disk_file(content, as_attachment=True,
                          download_name=f"reporte_usuarios_{report['start']}_{report['end']}.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response.headers["Cache-Control"] = "no-store"

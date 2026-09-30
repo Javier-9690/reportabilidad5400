@@ -2,6 +2,8 @@ import os
 import io
 import csv
 import re
+from tempfile import TemporaryFile
+from memory_utils import memory_limited, send_disk_file
 import secrets
 import hashlib
 from urllib.parse import parse_qs, urlsplit
@@ -1009,22 +1011,17 @@ def registros():
         date_column = order_reference_column(Model) if vista in ORDER_IMPORT_ENTITIES else getattr(Model, ENTITY_DATE_FIELD.get(vista, "fecha"))
         date_order = date_column.desc().nullslast()
         query = hotel_records_query(db, vista, d_from, d_to, search)
-        pagination = None
-        if vista in ORDER_IMPORT_ENTITIES:
-            record_count = query.count()
-            pages = max(1, (record_count + 99) // 100)
-            page = min(pages, max(1, request.args.get("page", 1, type=int)))
-            rows = query.order_by(date_order, Model.id.desc()).offset((page - 1) * 100).limit(100).all()
-            filters = {name: request.args[name] for name in ("from", "to", "semana", "q") if request.args.get(name)}
-            pagination = {"page": page, "pages": pages, "start": (page - 1) * 100 + 1 if record_count else 0,
-                          "end": min(page * 100, record_count),
-                          "previous": url_for("registros", vista=vista, page=max(1, page - 1), **filters),
-                          "next": url_for("registros", vista=vista, page=min(pages, page + 1), **filters),
-                          "first": url_for("registros", vista=vista, page=1, **filters),
-                          "last": url_for("registros", vista=vista, page=pages, **filters)}
-        else:
-            rows = query.order_by(date_order, Model.id.desc()).all()
-            record_count = len(rows)
+        record_count = query.count()
+        pages = max(1, (record_count + 99) // 100)
+        page = min(pages, max(1, request.args.get("page", 1, type=int)))
+        rows = query.order_by(date_order, Model.id.desc()).offset((page - 1) * 100).limit(100).all()
+        filters = {name: request.args[name] for name in ("from", "to", "semana", "q") if request.args.get(name)}
+        pagination = {"page": page, "pages": pages, "start": (page - 1) * 100 + 1 if record_count else 0,
+                      "end": min(page * 100, record_count),
+                      "previous": url_for("registros", vista=vista, page=max(1, page - 1), **filters),
+                      "next": url_for("registros", vista=vista, page=min(pages, page + 1), **filters),
+                      "first": url_for("registros", vista=vista, page=1, **filters),
+                      "last": url_for("registros", vista=vista, page=pages, **filters)}
         listing = {key: [] for key in ENTITY_LIST_KEY.values()}
         listing[ENTITY_LIST_KEY[vista]] = rows
         return render_template(
@@ -1055,6 +1052,7 @@ def excel_csv_writer(buffer, fieldnames):
 
 
 @app.get("/download/<string:entity>.csv")
+@memory_limited()
 def download_entity(entity):
     d_from, d_to, semana_sel = resolve_filters(request.args)
     if semana_sel: d_from, d_to = week_range(semana_sel)
@@ -1063,14 +1061,16 @@ def download_entity(entity):
         return redirect(url_for("registros"))
     search = read_record_search(request.args)
     db = SessionLocal()
+    output = TemporaryFile(mode="w+b")
+    buf = io.TextIOWrapper(output, encoding="utf-8-sig", newline="")
+    handed_off = False
     try:
-        buf = io.StringIO(newline="")
         w = None
         query = hotel_records_query(db, entity, d_from, d_to, search)
 
         if entity == "censo":
             q = query
-            rows = q.order_by(CensusEntry.fecha).all()
+            rows = q.order_by(CensusEntry.fecha).yield_per(500)
             w = excel_csv_writer(buf, fieldnames=["fecha", "censo_dia", "censo_noche", "total"])
             w.writeheader()
             for r in rows:
@@ -1078,7 +1078,7 @@ def download_entity(entity):
 
         elif entity == "eventos":
             q = query
-            rows = q.order_by(EventSeguridad.fecha).all()
+            rows = q.order_by(EventSeguridad.fecha).yield_per(500)
             w = excel_csv_writer(buf, fieldnames=["fecha","horario","que_ocurrio","nombre_afectado","accion"])
             w.writeheader()
             for r in rows:
@@ -1087,7 +1087,7 @@ def download_entity(entity):
 
         elif entity == "duplicidades":
             q = query
-            rows = q.order_by(DuplicidadEntry.fecha).all()
+            rows = q.order_by(DuplicidadEntry.fecha).yield_per(500)
             headers = ["semana","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
                        "pabellon","habitacion","ingresar_contacto","nombre_usuario","responsable","estatus",
                        "notificacion_usuario","plan_accion","fecha_cierre"]
@@ -1106,7 +1106,7 @@ def download_entity(entity):
 
         elif entity == "encuestas":
             q = query
-            rows = q.order_by(EncuestaEntry.fecha_hora).all()
+            rows = q.order_by(EncuestaEntry.fecha_hora).yield_per(500)
             headers = ["fecha_hora","q1_respuesta","q1_puntaje","q2_respuesta","q2_puntaje",
                        "q3_respuesta","q3_puntaje","q4_respuesta","q4_puntaje","q5_respuesta","q5_puntaje",
                        "total","promedio","comentarios"]
@@ -1127,7 +1127,7 @@ def download_entity(entity):
 
         elif entity == "atencion":
             q = query
-            rows = q.order_by(AtencionEntry.fecha).all()
+            rows = q.order_by(AtencionEntry.fecha).yield_per(500)
             w = excel_csv_writer(buf, fieldnames=["fecha","tiempo_promedio_mmss","cantidad"])
             w.writeheader()
             for r in rows:
@@ -1137,7 +1137,7 @@ def download_entity(entity):
         # ---------------- CSV de módulos previos ----------------
         elif entity == "robos":
             q = query
-            rows = q.order_by(RoboHurtoEntry.fecha).all()
+            rows = q.order_by(RoboHurtoEntry.fecha).yield_per(500)
             headers = ["fecha","hora","modulo","habitacion","empresa","nombre_cliente","rut",
                        "medio_reclamo","especies","observaciones","recepciona"]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
@@ -1158,7 +1158,7 @@ def download_entity(entity):
 
         elif entity == "miscelaneo":
             q = query
-            rows = q.order_by(MiscelaneoEntry.fecha_creacion, MiscelaneoEntry.id).all()
+            rows = q.order_by(MiscelaneoEntry.fecha_creacion, MiscelaneoEntry.id).yield_per(500)
             headers = ["ot","division","area","lugar","ubicacion","disciplina","especialidad","falla",
                        "empresa","fecha_creacion","fecha_inicio","fecha_termino","fecha_aprobacion","estado","comentario"]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
@@ -1176,7 +1176,7 @@ def download_entity(entity):
 
         elif entity == "desviaciones":
             q = query
-            rows = q.order_by(DesviacionEntry.fecha).all()
+            rows = q.order_by(DesviacionEntry.fecha).yield_per(500)
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_riesgo",
                        "tipo_solicitud","pabellon","habitacion","via_solicitud","quien_informa","riesgo_material","correo_destino","acciones"]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
@@ -1194,7 +1194,7 @@ def download_entity(entity):
 
         elif entity == "solicitud_ot":
             q = query
-            rows = q.order_by(order_reference_column(SolicitudOTEntry), SolicitudOTEntry.id).all()
+            rows = q.order_by(order_reference_column(SolicitudOTEntry), SolicitudOTEntry.id).yield_per(500)
             fields = list_fields(entity, SolicitudOTEntry())
             headers = ["tiempo_respuesta_mmss" if f["name"] == "tiempo_respuesta_sec" else f["name"] for f in fields]
             w = excel_csv_writer(buf, fieldnames=headers)
@@ -1206,7 +1206,7 @@ def download_entity(entity):
 
         elif entity == "reclamos":
             q = query
-            rows = q.order_by(ReclamoUsuarioEntry.fecha).all()
+            rows = q.order_by(ReclamoUsuarioEntry.fecha).yield_per(500)
             headers = ["n_solicitud","fecha","id","empresa_contratista","descripcion_problema","tipo_solicitud",
                        "pabellon","habitacion","via_solicitud","ingresar_contacto","nombre_usuario","responsable",
                        "estatus","notificacion_usuario","plan_accion"]
@@ -1226,7 +1226,7 @@ def download_entity(entity):
         # --------- CSV NUEVOS 5 ----------
         elif entity == "alarmas":
             q = query
-            rows = q.order_by(ActivacionAlarmaEntry.fecha).all()
+            rows = q.order_by(ActivacionAlarmaEntry.fecha).yield_per(500)
             headers = ["MODULO","N_HABITACION","NOMBRE_RECEPCIONISTA","FECHA","EMPRESA","ID","CO",
                        "AVISO_MANTENCION_H","LLEGADA_MANTENCION_H","AVISO_LIDER_H","LLEGADA_LIDER_H",
                        "HORA_REPORTE_SALFA","TIPO_EVENTO","TIPO_ACTIVIDAD","FECHA_REPORTE",
@@ -1251,7 +1251,7 @@ def download_entity(entity):
 
         elif entity == "extensiones":
             q = query
-            rows = q.order_by(ExtensionExcepcionEntry.fecha_solicitud).all()
+            rows = q.order_by(ExtensionExcepcionEntry.fecha_solicitud).yield_per(500)
             headers = [label for _, label in EXTENSION_FIELDS]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
@@ -1262,7 +1262,7 @@ def download_entity(entity):
 
         elif entity == "onboarding":
             q = query
-            rows = q.order_by(OnboardingEntry.fecha_hora).all()
+            rows = q.order_by(OnboardingEntry.fecha_hora).yield_per(500)
             headers = ["FECHA_HORA","NOMBRE","RUT","EMPRESA","ID","ARCHIVO_PDF"]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
@@ -1274,7 +1274,7 @@ def download_entity(entity):
 
         elif entity == "apertura":
             q = query
-            rows = q.order_by(AperturaHabitacionEntry.fecha).all()
+            rows = q.order_by(AperturaHabitacionEntry.fecha).yield_per(500)
             headers = ["FECHA","HABITACION","HORA","RESPONSABLE","ESTADO_CHAPA"]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
@@ -1288,7 +1288,7 @@ def download_entity(entity):
 
         elif entity == "cumplimiento":
             q = query
-            rows = q.order_by(CumplimientoEECCEntry.fecha, CumplimientoEECCEntry.id).all()
+            rows = q.order_by(CumplimientoEECCEntry.fecha, CumplimientoEECCEntry.id).yield_per(500)
             headers = ["FECHA","EMPRESA","N_CONTRATO","CO","CORREO_ELECTRONICO","ID","TURNO"]
             w = excel_csv_writer(buf, fieldnames=headers); w.writeheader()
             for r in rows:
@@ -1307,7 +1307,7 @@ def download_entity(entity):
             columns = OPTIONAL_RECORD_FIELDS[entity]
             rows = query.order_by(
                 getattr(Model, ENTITY_DATE_FIELD[entity]), Model.id
-            ).all()
+            ).yield_per(500)
             w = excel_csv_writer(buf, fieldnames=[label for _, label in columns])
             w.writeheader()
             for r in rows:
@@ -1318,14 +1318,24 @@ def download_entity(entity):
             flash("Entidad no válida.")
             return redirect(url_for("registros"))
 
-        return send_file(
-            io.BytesIO(buf.getvalue().encode("utf-8-sig")),
+        buf.flush()
+        buf.detach()
+        buf = None
+        output.seek(0)
+        response = send_disk_file(
+            output,
             mimetype="text/csv",
             as_attachment=True,
             download_name=f"{entity}.csv"
         )
+        handed_off = True
+        return response
     finally:
         db.close()
+        if buf is not None:
+            buf.close()
+        if not handed_off:
+            output.close()
         
 # --- Mapa entidad → Modelo para editar y eliminar ---
 ENTITY_MODEL = {
@@ -1803,6 +1813,7 @@ def template_xlsx(entity):
     )
 
 @app.post("/import/<string:entity>")
+@memory_limited()
 def import_xlsx(entity):
     entity = entity.lower()
     if entity in ORDER_IMPORT_ENTITIES:
@@ -1817,8 +1828,9 @@ def import_xlsx(entity):
         flash("Sube un archivo .xlsx.")
         return redirect(url_for("panel", tab=entity if entity != "eventos" else "eventos"))
 
+    wb = None
     try:
-        wb = load_workbook(filename=io.BytesIO(f.read()), data_only=True)
+        wb = load_workbook(filename=f.stream, read_only=True, data_only=True, keep_links=False)
         ws = wb.active
         
         # **CORRECCIÓN: Normalizar encabezados para manejar tildes y caracteres especiales**
@@ -2086,6 +2098,8 @@ def import_xlsx(entity):
                         raise ValueError(f"Fila {row_number}: {exc}") from exc
 
                 inserted += 1
+                if inserted % 500 == 0:
+                    db.flush()  # Un solo commit: un error posterior revierte todos los lotes.
 
             db.commit()
             flash(f"Importación de {entity} OK: {inserted} filas.")
@@ -2097,6 +2111,9 @@ def import_xlsx(entity):
 
     except Exception as e:
         flash(f"No se pudo leer el Excel: {e}")
+    finally:
+        if wb is not None:
+            wb.close()
 
     tab = "eventos" if entity == "eventos" else entity
     return redirect(url_for("panel", tab=tab))
@@ -2119,7 +2136,8 @@ def dashboard():
                 "duplicidades": 0,
                 "encuestas": 0,
                 "atencion_cant": 0,
-                "atencion_tiempos": [],
+                "atencion_segundos": 0,
+                "atencion_muestras": 0,
                 "robos": 0,
                 "miscelaneo": 0,
                 "desviaciones": 0,
@@ -2141,7 +2159,7 @@ def dashboard():
         q = db.query(CensusEntry)
         if d_from: q = q.filter(CensusEntry.fecha >= d_from)
         if d_to:   q = q.filter(CensusEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             b = bucket(r.fecha.isoformat())
             b["censo"] += (r.total or (r.censo_dia + r.censo_noche))
 
@@ -2149,37 +2167,38 @@ def dashboard():
         q = db.query(EventSeguridad)
         if d_from: q = q.filter(EventSeguridad.fecha >= d_from)
         if d_to:   q = q.filter(EventSeguridad.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["eventos"] += 1
 
         # Duplicidades
         q = db.query(DuplicidadEntry)
         if d_from: q = q.filter(DuplicidadEntry.fecha >= d_from)
         if d_to:   q = q.filter(DuplicidadEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["duplicidades"] += 1
 
         # Encuestas
         q = db.query(EncuestaEntry)
         if d_from: q = q.filter(EncuestaEntry.fecha_hora >= datetime.combine(d_from, time.min))
         if d_to:   q = q.filter(EncuestaEntry.fecha_hora <= datetime.combine(d_to, time.max))
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha_hora.date().isoformat())["encuestas"] += 1
 
         # Atención
         q = db.query(AtencionEntry)
         if d_from: q = q.filter(AtencionEntry.fecha >= d_from)
         if d_to:   q = q.filter(AtencionEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             b = bucket(r.fecha.isoformat())
             b["atencion_cant"] += r.cantidad
-            b["atencion_tiempos"].append(r.tiempo_promedio_sec)
+            b["atencion_segundos"] += r.tiempo_promedio_sec
+            b["atencion_muestras"] += 1
 
         # Robos
         q = db.query(RoboHurtoEntry)
         if d_from: q = q.filter(RoboHurtoEntry.fecha >= d_from)
         if d_to:   q = q.filter(RoboHurtoEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["robos"] += 1
 
         # Miscelaneo (filtrar por fecha de negocio)
@@ -2187,7 +2206,7 @@ def dashboard():
         reference_date = order_reference_column(MiscelaneoEntry)
         if d_from: q = q.filter(reference_date >= d_from)
         if d_to:   q = q.filter(reference_date <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             key_date = order_reference_date(r)
             if key_date:
                 bucket(key_date.isoformat())["miscelaneo"] += 1
@@ -2197,7 +2216,7 @@ def dashboard():
         q = db.query(DesviacionEntry)
         if d_from: q = q.filter(DesviacionEntry.fecha >= d_from)
         if d_to:   q = q.filter(DesviacionEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["desviaciones"] += 1
 
         # Solicitudes OT: misma fecha de referencia que el listado y el reporte.
@@ -2205,7 +2224,7 @@ def dashboard():
         reference_date = order_reference_column(SolicitudOTEntry)
         if d_from: q = q.filter(reference_date >= d_from)
         if d_to:   q = q.filter(reference_date <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             key_date = order_reference_date(r)
             if key_date:
                 bucket(key_date.isoformat())["solicitudes_ot"] += 1
@@ -2215,42 +2234,42 @@ def dashboard():
         q = db.query(ReclamoUsuarioEntry)
         if d_from: q = q.filter(ReclamoUsuarioEntry.fecha >= d_from)
         if d_to:   q = q.filter(ReclamoUsuarioEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["reclamos"] += 1
 
         # Alarmas
         q = db.query(ActivacionAlarmaEntry)
         if d_from: q = q.filter(ActivacionAlarmaEntry.fecha >= d_from)
         if d_to:   q = q.filter(ActivacionAlarmaEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["alarmas"] += 1
 
         # Extensiones
         q = db.query(ExtensionExcepcionEntry)
         if d_from: q = q.filter(ExtensionExcepcionEntry.fecha_solicitud >= d_from)
         if d_to:   q = q.filter(ExtensionExcepcionEntry.fecha_solicitud <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha_solicitud.isoformat())["extensiones"] += 1
 
         # Onboarding
         q = db.query(OnboardingEntry)
         if d_from: q = q.filter(OnboardingEntry.fecha_hora >= datetime.combine(d_from, time.min))
         if d_to:   q = q.filter(OnboardingEntry.fecha_hora <= datetime.combine(d_to, time.max))
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha_hora.date().isoformat())["onboarding"] += 1
 
         # Apertura
         q = db.query(AperturaHabitacionEntry)
         if d_from: q = q.filter(AperturaHabitacionEntry.fecha >= d_from)
         if d_to:   q = q.filter(AperturaHabitacionEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["apertura"] += 1
 
         # Cumplimiento
         q = db.query(CumplimientoEECCEntry)
         if d_from: q = q.filter(CumplimientoEECCEntry.fecha >= d_from)
         if d_to:   q = q.filter(CumplimientoEECCEntry.fecha <= d_to)
-        for r in q.all():
+        for r in q.yield_per(500):
             bucket(r.fecha.isoformat())["cumplimiento"] += 1
 
         # Cada módulo se cuenta por su fecha de negocio, sin asignar fechas a los vacíos.
@@ -2264,7 +2283,7 @@ def dashboard():
             q = db.query(column, func.count(Model.id)).filter(column.isnot(None))
             if d_from: q = q.filter(column >= d_from)
             if d_to: q = q.filter(column <= d_to)
-            for day, count in q.group_by(column).all():
+            for day, count in q.group_by(column).yield_per(500):
                 bucket(day.isoformat())[key] = count
 
         if not per_day:
@@ -2319,7 +2338,7 @@ def dashboard():
             series_data["habitaciones_liberadas"].append(g["habitaciones_liberadas"])
             series_data["samtech_qr"].append(g["samtech_qr"])
             
-            prom_s = int(mean(g["atencion_tiempos"])) if g["atencion_tiempos"] else 0
+            prom_s = int(g["atencion_segundos"] / g["atencion_muestras"]) if g["atencion_muestras"] else 0
             series_data["atencion_min"].append(round(prom_s/60.0, 2))
 
         # Calcular totales para las tarjetas

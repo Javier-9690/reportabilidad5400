@@ -1,10 +1,9 @@
 """Exportación del informe desde Flask con las dependencias del programa."""
 
 from datetime import date, datetime, time
-from io import BytesIO
+from memory_utils import disk_workbook
 import math
 
-import xlsxwriter
 from xlsxwriter.utility import xl_col_to_name, xl_rowcol_to_cell
 from openpyxl.utils.datetime import to_excel
 
@@ -17,7 +16,8 @@ def count_axis_step(maximum):
     return next(multiplier * base for multiplier in (1, 2, 5, 10) if multiplier * base >= target)
 
 
-def export_user_report(report):
+@disk_workbook
+def export_user_report(report, book):
     for category in report["categories"]:
         if len(category["details"]) + 5 > 1048576:
             raise ValueError("El detalle supera las filas disponibles en Excel. Selecciona un período más corto.")
@@ -25,8 +25,6 @@ def export_user_report(report):
             if any(isinstance(value, str) and len(value) > 32767 for value in record.values()):
                 raise ValueError(f"Un texto de {category['label']} supera los 32.767 caracteres admitidos por celda de Excel.")
 
-    output = BytesIO()
-    book = xlsxwriter.Workbook(output, {"in_memory": True, "strings_to_formulas": False, "strings_to_urls": False})
     book.set_properties({"title": "Gestión de usuarios — Reportabilidad 5400", "author": "Reportabilidad 5400"})
     book.set_calc_mode("auto")
     base = {"font_name": "Calibri", "font_size": 11, "valign": "vcenter"}
@@ -227,15 +225,15 @@ def export_user_report(report):
     cards = [("records", "Registros (suma de categorías)", "total_records"), ("open", "Abiertos", "total_open"),
              ("closed", "Cerrados", "total_closed"), ("unclassified", "Sin clasificar", "total_unclassified"),
              ("rate", "% cerrado", "closure_rate")]
-    for index, (key, label, source_key) in enumerate(cards):
-        first, last = index * 4, index * 4 + 2
-        merged_value(4, first, last, label, formats["card_label"])
-        formula = "=" + daily_ref(source_key) if source_key in row_index else "=0"
-        merged_value(5, first, last, formula, formats["card_rate"] if key == "rate" else formats["card_value"],
-                     cached=report["totals"][key], end_row=6)
     dashboard.set_row(4, 28)
-    dashboard.set_row(5, 26)
-    dashboard.set_row(6, 20)
+    for index, (key, label, source_key) in enumerate(cards):
+        merged_value(4, index * 4, index * 4 + 2, label, formats["card_label"])
+    dashboard.set_row(5, 46)
+    for index, (key, label, source_key) in enumerate(cards):
+        formula = "=" + daily_ref(source_key) if source_key in row_index else "=0"
+        merged_value(5, index * 4, index * 4 + 2, formula,
+                     formats["card_rate"] if key == "rate" else formats["card_value"],
+                     cached=report["totals"][key])
     dashboard.merge_range("A9:S9", "Resumen por categoría", formats["section"])
     summary_columns = [(0, 5, "Categoría"), (6, 7, "Registros"), (8, 9, "Abiertos"),
                        (10, 11, "Cerrados"), (12, 14, "Sin clasificar"), (15, 18, "% cerrado")]
@@ -271,6 +269,8 @@ def export_user_report(report):
         trend.add_series({"name": category["label"], "categories": ["Reporte diario", first_header, 1, first_header, total_column - 1],
                           "values": ["Reporte diario", row_index[category["entity"] + "_records"], 1,
                                      row_index[category["entity"] + "_records"], total_column - 1],
+                          "categories_data": [to_excel(day) for day in report["days"]],
+                          "values_data": category["counts"]["records"],
                           "line": {"color": category["color"], "width": 2}, "smooth": False})
     trend.set_title({"name": "Registros por día"})
     trend.set_x_axis({"date_axis": True, "num_format": "[$-340A]d-mmm"})
@@ -283,6 +283,8 @@ def export_user_report(report):
     for label, column, color in (("Abiertos", 8, "#CA8100"), ("Cerrados", 10, "#198754"), ("Sin clasificar", 12, "#777F87")):
         status.add_series({"name": label, "categories": ["Conclusiones", 10, 0, summary_last_row, 0],
                            "values": ["Conclusiones", 10, column, summary_last_row, column],
+                           "categories_data": [c["label"] for c in report["categories"]],
+                           "values_data": [c["totals"][{8: "open", 10: "closed", 12: "unclassified"}[column]] for c in report["categories"]],
                            "fill": {"color": color}, "border": {"none": True}})
     status.set_title({"name": "Estado actual por categoría"})
     status.set_x_axis({"min": 0, "num_format": "0", "major_unit": count_axis_step(max(c["totals"]["records"] for c in report["categories"]))})
@@ -312,6 +314,3 @@ def export_user_report(report):
     dashboard.print_area(0, 0, note_row + len(notes), 18)
     dashboard.set_footer("&LReportabilidad 5400&R&P / &N")
     daily.activate()
-    book.close()
-    output.seek(0)
-    return output

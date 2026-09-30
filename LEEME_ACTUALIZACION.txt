@@ -1,6 +1,63 @@
 REPORTABILIDAD 5400 — APLICACIÓN COMPLETA
 Actualización: 30 de septiembre de 2026
 
+CORRECCIÓN: CONSUMO DE MEMORIA EN RENDER
+Se redujo la memoria utilizada al generar reportes y procesar archivos grandes:
+- Los reportes Excel de Gestión de usuarios y de Desviaciones, solicitudes y
+  reclamos se generan por filas con temporales en disco. Conservan todas las
+  hojas, columnas, fórmulas, resultados y gráficos.
+- Las descargas CSV recorren los registros por lotes y conservan el separador
+  de Excel, acentos y ceros iniciales. Las descargas incluyen todo lo filtrado.
+- Ver registros muestra 100 filas por página en todas las categorías. El
+  reporte de desviaciones mantiene sus 50 filas por página. La búsqueda,
+  los filtros y el desplazamiento horizontal siguen disponibles.
+- El historial de importaciones y el seguimiento de exportaciones no cargan
+  el contenido binario de los archivos hasta que se necesita.
+- Las importaciones de registros leen el Excel sin cargar todas sus celdas.
+  Los registros se guardan en lotes dentro de una sola transacción: si una
+  fila falla, se revierte la importación completa.
+- La carga Samtech y QR conserva la vista previa, confirmación y separación
+  de bases. Sus filas se preparan en temporales y se insertan por lotes.
+- Los censos y curvas dejan de retener filas vacías que solo tienen formato
+  y estructuras XML ya procesadas; los censos también se guardan por lotes.
+- Los Excel en segundo plano se generan uno a la vez. Si se solicita una
+  importación o descarga directa mientras otra operación pesada está activa,
+  se informa que debe esperarse y volver a intentar; esa solicitud no cambia datos.
+- Los temporales se cierran y eliminan al finalizar o interrumpir la descarga.
+
+RESULTADOS DE VERIFICACIÓN (ENTORNO LOCAL)
+Reporte general, 30.000 solicitudes sintéticas, comentarios extensos, septiembre:
+  Antes: máximo de memoria residente del proceso = 374,5 MiB.
+  Ahora: máximo de memoria residente del proceso = 125,4 MiB (aprox. 67% menos).
+  Se verificaron las 30.000 filas en el archivo generado.
+Con 90.000 registros, el máximo fue 148,1 MiB y se verificaron las 90.000 filas.
+Estas mediciones usan Python 3.12, SQLite y procesos separados. No representan
+el total de memoria de una instancia Render, que también puede incluir cachés
+ni garantizan el mismo consumo con otros datos o conexiones simultáneas.
+Se aprobaron 139 pruebas de Python y tres controles de interfaz JavaScript.
+Se comprobaron fórmulas, valores de gráficos, importaciones, búsquedas, edición,
+eliminación, paginación, descargas y reversión completa ante errores entre lotes.
+
+CÓMO ACTUALIZAR EL SERVICIO EXISTENTE
+1. Descomprime este ZIP y sube TODO su contenido a la raíz de reportabilidad5400
+   en GitHub, reemplazando los archivos correspondientes. No subas el ZIP como
+   único archivo ni crees otra carpeta entre app.py y la raíz del repositorio.
+2. Conserva la DATABASE_URL y SECRET_KEY que ya utiliza Render.
+3. Build Command: pip install -r requirements.txt
+4. Mantén el Start Command (un solo proceso):
+   gunicorn app:app --workers 1 --threads 2 --timeout 300 --graceful-timeout 300
+5. Ejecuta Manual Deploy > Deploy latest commit, si no se despliega automáticamente.
+6. Prueba la importación habitual y ambos reportes, y revisa Metrics > Memory
+   durante la operación. Compara también la hora del pico con los Logs.
+
+La corrección no requiere migraciones ni cambiar el plan de Render para instalarse.
+No modifica las bases de datos guardadas. El aviso recibido confirma un exceso
+de memoria, pero no identifica por sí solo qué operación disparó el reinicio.
+No se accedió a los logs privados ni se realizó un despliegue desde este entorno.
+Si el problema persiste después de actualizar, hacen falta los logs del minuto
+del reinicio, la memoria del plan y la operación que se estaba ejecutando para
+decidir el siguiente ajuste.
+
 NUEVO: REPORTE DE DESVIACIONES, SOLICITUDES Y RECLAMOS
 Abre Reportes > Reporte de desviaciones, solicitudes y reclamos.
 

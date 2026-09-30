@@ -105,7 +105,7 @@ def _rate(totals):
     return totals["closed"] / denominator if denominator else None
 
 
-def build_operations_report(db, models, filters, export=None):
+def build_operations_report(db, models, filters, export=None, details_factory=list):
     """export='general' incluye todos los detalles; un entity incluye solo ese detalle."""
     if export is not None and export not in ("general", *SOURCE_MAP):
         raise ValueError("La pestaña solicitada no existe.")
@@ -153,7 +153,7 @@ def build_operations_report(db, models, filters, export=None):
             totals["untracked"] = totals["records"] - totals["tracked"]
         page_count = max(1, (totals["records"] + PAGE_SIZE - 1) // PAGE_SIZE)
         page = min(filters["page"], page_count)
-        records = []
+        records = details_factory() if export is not None else []
         if export is not None or filters["tab"] == entity:
             query = db.query(model).filter(*scope).order_by(date_column.is_(None), date_column.desc(), model.id.desc())
             if export is None:

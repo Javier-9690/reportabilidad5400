@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import re
-import threading
+from memory_utils import export_executor, memory_limited
 import tempfile
 import unicodedata
 from collections import defaultdict
@@ -46,7 +46,7 @@ class UploadedFile(db.Model):
     file_type = db.Column(db.String(20), nullable=False)  # curva | censo
     size_bytes = db.Column(db.Integer, nullable=False, default=0)
     sha256 = db.Column(db.String(64), nullable=False, index=True)
-    content = db.Column(db.LargeBinary, nullable=False)
+    content = db.deferred(db.Column(db.LargeBinary, nullable=False))
     uploaded_at = db.Column(db.DateTime, nullable=False, default=now_utc)
 
 
@@ -131,7 +131,7 @@ class ExportJob(db.Model):
     params_json = db.Column(db.Text, default="{}")
     filename = db.Column(db.String(255), default="")
     content_type = db.Column(db.String(160), default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    content = db.Column(db.LargeBinary, nullable=True)
+    content = db.deferred(db.Column(db.LargeBinary, nullable=True))
     created_at = db.Column(db.DateTime, nullable=False, default=now_utc)
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
@@ -378,16 +378,19 @@ def column_index_from_cell_ref(cell_ref):
 def read_xlsx_shared_strings(zf):
     import xml.etree.ElementTree as ET
     try:
-        data = zf.read("xl/sharedStrings.xml")
+        stream = zf.open("xl/sharedStrings.xml")
     except KeyError:
         return []
-
-    ns = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    root = ET.fromstring(data)
+    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
     values = []
-    for si in root.findall("a:si", ns):
-        texts = [node.text or "" for node in si.findall(".//a:t", ns)]
-        values.append("".join(texts))
+    with stream:
+        events = ET.iterparse(stream, events=("start", "end"))
+        _, root = next(events)
+        for event, element in events:
+            if event == "end" and element.tag == f"{ns}si":
+                values.append("".join(node.text or "" for node in element.iter(f"{ns}t")))
+                root.remove(element)
+                element.clear()
     return values
 
 
@@ -438,21 +441,34 @@ def read_xlsx_sheet_df(content, sheet_name, header=None, nrows=None):
         shared_strings = read_xlsx_shared_strings(zf)
         sheet_path = sheet_map[sheet_name]
         with zf.open(sheet_path) as fh:
-            context = ET.iterparse(fh, events=("end",))
+            context = ET.iterparse(fh, events=("start", "end"))
             ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-            for _, elem in context:
-                if elem.tag != f"{ns}row":
+            sheet_data = None
+            source_row = 0
+            for event, elem in context:
+                if event == "start" and elem.tag == f"{ns}sheetData":
+                    sheet_data = elem
+                if event != "end" or elem.tag != f"{ns}row":
                     continue
                 row_values = []
                 for cell in elem.findall(f"{ns}c"):
+                    value = parse_xlsx_cell(cell, shared_strings)
+                    if value is None or value == "":
+                        continue  # No extender filas por celdas que solo tienen formato.
                     col_idx = column_index_from_cell_ref(cell.attrib.get("r"))
                     while len(row_values) <= col_idx:
                         row_values.append("")
-                    row_values[col_idx] = parse_xlsx_cell(cell, shared_strings)
-                max_cols = max(max_cols, len(row_values))
-                rows.append(row_values)
+                    row_values[col_idx] = value
+                # Conservar posiciones al detectar encabezados. Después, omitir
+                # filas vacías formateadas que Excel puede extender hasta 1 millón.
+                if row_values or header is None or source_row <= int(header):
+                    max_cols = max(max_cols, len(row_values))
+                    rows.append(row_values)
+                source_row += 1
+                if sheet_data is not None:
+                    sheet_data.remove(elem)
                 elem.clear()
-                if nrows is not None and len(rows) >= nrows:
+                if nrows is not None and source_row >= nrows:
                     break
 
     if not rows:
@@ -594,6 +610,7 @@ def rebuild_censo_from_dataframe(censo, df, preserved_matches=None):
     _, item_map = lookup_active_curve_items()
     preserved_matches = preserved_matches or {}
 
+    CensoRecord.query.filter_by(censo_id=censo.id).delete(synchronize_session=False)
     records = []
     matched = 0
     unmatched = 0
@@ -630,12 +647,13 @@ def rebuild_censo_from_dataframe(censo, df, preserved_matches=None):
             rut=clean(row.get(cm.get("rut"))) if cm.get("rut") else "",
             estado=clean(row.get(cm.get("estado"))) if cm.get("estado") else "",
         ))
-
-    CensoRecord.query.filter_by(censo_id=censo.id).delete(synchronize_session=False)
+        if len(records) >= 500:
+            db.session.bulk_save_objects(records)
+            records.clear()
     if records:
         db.session.bulk_save_objects(records)
 
-    censo.total_records = len(records)  # Reservas
+    censo.total_records = matched + unmatched  # Reservas
     censo.total_occupied = occupied_total  # Ocupación
     censo.matched_count = matched
     censo.unmatched_count = unmatched
@@ -2549,6 +2567,7 @@ def ensure_binary_content(content):
     return content
 
 
+@memory_limited(wait=True)
 def build_report_export_job(app, job_id):
     """Genera exportaciones Excel en segundo plano."""
     with app.app_context():
@@ -2957,6 +2976,7 @@ def register_routes(app):
         return render_template('imports.html', files=UploadedFile.query.order_by(UploadedFile.uploaded_at.desc()).all(), curves=CurvaVersion.query.order_by(CurvaVersion.uploaded_at.desc()).all())
 
     @app.post('/api/import/curva')
+    @memory_limited()
     def upload_curva():
         f=request.files.get('file')
         if not f or not f.filename: flash('Selecciona un archivo de curva.', 'danger'); return redirect(url_for('imports_page'))
@@ -2968,6 +2988,7 @@ def register_routes(app):
         return redirect(url_for('imports_page'))
 
     @app.post('/api/import/censo')
+    @memory_limited()
     def upload_censo():
         f=request.files.get('file')
         if not f or not f.filename: flash('Selecciona un archivo de censo.', 'danger'); return redirect(url_for('imports_page'))
@@ -3190,7 +3211,7 @@ def register_routes(app):
             filename=format_area_report_filename(kind),
         )
         db.session.add(job); db.session.commit()
-        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True); thread.start()
+        export_executor.submit(build_report_export_job, app, job.id)
         return jsonify({'ok': True, 'job_id': job.id, 'status_url': url_for('export_job_status', job_id=job.id), 'download_url': url_for('export_job_download', job_id=job.id), 'page_url': url_for('export_job_page', job_id=job.id)}), 202
 
     @app.route('/api/reports/<kind>/export')
@@ -3218,7 +3239,7 @@ def register_routes(app):
             filename=format_area_report_filename(kind),
         )
         db.session.add(job); db.session.commit()
-        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True); thread.start()
+        export_executor.submit(build_report_export_job, app, job.id)
         return redirect(url_for('export_job_page', job_id=job.id))
 
     @app.route('/reports/ocupabilidad')
@@ -3256,8 +3277,7 @@ def register_routes(app):
         )
         db.session.add(job)
         db.session.commit()
-        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
-        thread.start()
+        export_executor.submit(build_report_export_job, app, job.id)
         return jsonify({
             'ok': True,
             'job_id': job.id,
@@ -3277,8 +3297,7 @@ def register_routes(app):
         )
         db.session.add(job)
         db.session.commit()
-        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
-        thread.start()
+        export_executor.submit(build_report_export_job, app, job.id)
         return redirect(url_for('export_job_page', job_id=job.id), code=303)
 
     @app.route('/reports/dotacion-gerencia')
@@ -3309,8 +3328,7 @@ def register_routes(app):
         db.session.add(job)
         db.session.commit()
 
-        thread = threading.Thread(target=build_report_export_job, args=(app, job.id), daemon=True)
-        thread.start()
+        export_executor.submit(build_report_export_job, app, job.id)
         return job
 
     @app.post('/api/reports/dotacion-gerencia/export/start')

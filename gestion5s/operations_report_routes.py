@@ -1,8 +1,11 @@
 """Pantalla y descargas del reporte de desviaciones, solicitudes y reclamos."""
 
+from contextlib import ExitStack
+from memory_utils import DiskRows, memory_limited, send_disk_file
+
 from datetime import date
 
-from flask import Blueprint, current_app, make_response, render_template, request, send_file
+from flask import Blueprint, current_app, make_response, render_template, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -14,14 +17,14 @@ bp = Blueprint("operations_reports", __name__)
 BASE_PATH = "/reports/desviaciones-solicitudes-reclamos"
 
 
-def load_report(filters, export=None):
+def load_report(filters, export=None, details_factory=list):
     from gestion5s import web
     with web.SessionLocal() as db:
         if db.get_bind().dialect.name == "postgresql":
             db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
         elif db.get_bind().dialect.name == "sqlite":
             db.execute(text("BEGIN"))
-        return build_operations_report(db, web.ENTITY_MODEL, filters, export=export)
+        return build_operations_report(db, web.ENTITY_MODEL, filters, export=export, details_factory=details_factory)
 
 
 def page_context():
@@ -62,6 +65,7 @@ def report_page():
 
 @bp.get(BASE_PATH + ".xlsx", defaults={"category": "general"})
 @bp.get(BASE_PATH + "/<category>.xlsx")
+@memory_limited()
 def export_excel(category):
     from gestion5s.operations_report_excel import export_operations_report
     context = page_context()
@@ -70,8 +74,9 @@ def export_excel(category):
         return html_response(context, 404)
     try:
         filters = parse_filters(request.args)
-        report = load_report(filters, export=category)
-        content = export_operations_report(report)
+        with ExitStack() as resources:
+            report = load_report(filters, export=category, details_factory=lambda: resources.enter_context(DiskRows()))
+            content = export_operations_report(report)
     except (ValueError, SQLAlchemyError) as exc:
         if isinstance(exc, ValueError):
             context["error"], status = str(exc), 400
@@ -79,7 +84,7 @@ def export_excel(category):
             current_app.logger.exception("Error al exportar el reporte de desviaciones, solicitudes y reclamos")
             context["error"], status = "No se pudo exportar el reporte. Inténtalo nuevamente.", 503
         return html_response(context, status)
-    response = send_file(content, as_attachment=True,
+    response = send_disk_file(content, as_attachment=True,
                          download_name=f"reporte_desviaciones_solicitudes_reclamos_{category}_{report['start']}_{report['end']}.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response.headers["Cache-Control"] = "no-store"

@@ -102,7 +102,7 @@ def _text(cell, identifier=False):
     return str(value).strip()
 
 
-def parse_orders(content, entity="solicitud_ot"):
+def parse_orders(content, entity="solicitud_ot", details_factory=list):
     """No escribe en BD. Si una fila es inválida, se rechaza el archivo completo."""
     if not content or len(content) > MAX_UPLOAD_BYTES:
         raise ValueError("Sube un archivo .xlsx de hasta 25 MB.")
@@ -129,11 +129,12 @@ def parse_orders(content, entity="solicitud_ot"):
         sheet, columns = candidates[0]
         targets = order_import_targets(entity)
         qr = entity == "samtech_qr"
-        groups = {key: [] for key in targets}
+        groups = {key: details_factory() for key in targets}
         states = {key: Counter() for key in targets}
         undated = dict.fromkeys(targets, 0)
         fallback = dict.fromkeys(targets, 0)
-        dates, tickets = [], Counter()
+        first_day = last_day = None
+        tickets = Counter()
         blank_rows = blank_specialty = total = 0
         for row_number, row in enumerate(sheet.iter_rows(min_row=2), 2):
             if all(_blank(cell.value) for cell in row):
@@ -166,7 +167,8 @@ def parse_orders(content, entity="solicitud_ot"):
                 blank_specialty += 1
             day = values["fecha_creacion"] or values["fecha_inicio"]
             if day:
-                dates.append(day)
+                first_day = min(first_day, day) if first_day else day
+                last_day = max(last_day, day) if last_day else day
                 if not values["fecha_creacion"]:
                     fallback[destination] += 1
             else:
@@ -181,6 +183,6 @@ def parse_orders(content, entity="solicitud_ot"):
         return {"groups": groups, "sheet": sheet.title, "total": total, "blank_rows": blank_rows,
                 "states": states, "undated": undated, "fallback": fallback, "blank_specialty": blank_specialty,
                 "duplicate_tickets": sum(count - 1 for count in tickets.values()),
-                "start": min(dates) if dates else None, "end": max(dates) if dates else None}
+                "start": first_day, "end": last_day}
     finally:
         book.close()

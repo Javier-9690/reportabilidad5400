@@ -777,3 +777,41 @@ En la exportación Excel, la pestaña **Detalle Censos** conserva el formato bas
 
 ## Corrección filtros EGP/F&A
 Se corrigió el parseo de fechas HTML (`YYYY-MM-DD`) para evitar inversión de día/mes en rangos como junio 2026.
+
+
+## Corrección de picos de memoria (30-09-2026)
+
+Las exportaciones Excel de registros y CSV recorren los datos por lotes y usan
+archivos temporales; las hojas, fórmulas y gráficos se conservan. Las listas de
+registros tienen 100 filas por página y sus descargas incluyen todos los resultados.
+Los binarios originales y los Excel terminados se cargan de la base de datos
+solo cuando se necesita su contenido, no en consultas de estado o de historial.
+
+Las importaciones de registros usan lectura de Excel por filas y lotes dentro de
+una única transacción. La carga confirmada Samtech/QR también prepara las filas
+en disco. Los lectores de censos y curvas descartan XML procesado y filas que
+solo tienen formato. Los censos insertan lotes sin acumular todos los modelos.
+
+`memory_utils.py` comparte un límite de una operación pesada por proceso entre
+las importaciones y exportaciones. Los trabajos en segundo plano usan una cola
+con un trabajador; las operaciones HTTP directas reciben 503 con `Retry-After`
+si el servicio está ocupado y deben volver a intentarse. No se aceptan cambios de
+datos en ese caso. Mantener `--workers 1 --threads 2`: aumentar procesos multiplica
+la memoria y cada proceso tendría su propio límite. La cola vive en el proceso;
+si hay un reinicio durante una exportación pendiente, debe solicitarse de nuevo.
+
+Prueba local con 30.000 solicitudes en el reporte general: pico RSS del proceso
+374,5 MiB antes y 125,4 MiB después (aproximadamente 67% menos). Con 90.000 filas,
+148,1 MiB. Se comprobó que las descargas contienen todas las filas. Son mediciones
+con datos sintéticos, Python 3.12 y SQLite, no métricas del servicio en producción
+ni una garantía de memoria máxima. Los archivos temporales también requieren
+espacio de disco; la lectura de XLSX puede conservar su tabla de textos/estilos.
+
+Ver `LEEME_ACTUALIZACION.txt` para aplicar la actualización y comprobar las métricas.
+La causa exacta del reinicio requiere los logs privados y su correlación con el
+pico de memoria; no puede deducirse solamente del aviso de Render.
+
+Referencias técnicas:
+[Excel por filas](https://xlsxwriter.readthedocs.io/working_with_memory.html),
+[consultas por lotes](https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#fetching-large-result-sets-with-yield-per),
+[métricas de Render](https://render.com/docs/service-metrics).

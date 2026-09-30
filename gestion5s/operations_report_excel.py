@@ -1,16 +1,17 @@
 """Descarga del reporte desde Flask, con el motor Excel ya instalado en la app."""
 
 from datetime import date, datetime, time
-from io import BytesIO
+from memory_utils import disk_workbook
 
-import xlsxwriter
 from xlsxwriter.utility import xl_col_to_name
+from openpyxl.utils.datetime import to_excel
 
 from gestion5s.operations_reports import STATE_LABELS
 from gestion5s.user_report_excel import count_axis_step
 
 
-def export_operations_report(report):
+@disk_workbook
+def export_operations_report(report, book):
     categories = report["categories"]
     for category in categories:
         if len(category["details"]) != category["totals"]["records"]:
@@ -20,8 +21,6 @@ def export_operations_report(report):
         if any(isinstance(value, str) and len(value) > 32767
                for record in category["details"] for value in record.values()):
             raise ValueError(f"Un texto de {category['label']} supera los 32.767 caracteres que admite Excel por celda.")
-    output = BytesIO()
-    book = xlsxwriter.Workbook(output, {"in_memory": True, "strings_to_formulas": False, "strings_to_urls": False})
     book.set_properties({"title": report["title"], "author": "Reportabilidad 5400",
                          "comments": "Generado desde los registros del sistema con los filtros indicados."})
     base = {"font_name": "Calibri", "font_size": 11, "valign": "vcenter"}
@@ -218,6 +217,8 @@ def export_operations_report(report):
     for col, (key, label) in enumerate(STATE_LABELS.items(), 2):
         states.add_series({"name": label, "categories": [summary_name, 8, 0, total_row - 1, 0],
                            "values": [summary_name, 8, col, total_row - 1, col],
+                           "categories_data": [c["label"] for c in categories],
+                           "values_data": [c["totals"][key] for c in categories],
                            "fill": {"color": {"open":"#CF973C","closed":"#278269","unknown":"#8290A0","not_applicable":"#C5CDD7"}[key]},
                            "line": {"none": True}})
     states.set_title({"name": "Estado actual por categoría"})
@@ -229,6 +230,8 @@ def export_operations_report(report):
     trend = book.add_chart({"type": "line"})
     for col, category in enumerate(categories, 1):
         trend.add_series({"name": category["label"], "categories": ["Evolución diaria", 6, 0, last_dated, 0],
+                          "categories_data": [to_excel(day) for day in report["days"]],
+                          "values_data": category["daily"],
                           "values": ["Evolución diaria", 6, col, last_dated, col], "line": {"color": category["color"], "width": 1.5}})
     trend.set_title({"name": "Evolución diaria"})
     trend.set_x_axis({"date_axis": True, "num_format": "dd/mm/yyyy"})
@@ -253,6 +256,3 @@ def export_operations_report(report):
     summary.set_h_pagebreaks([chart_row, notes_row])
     summary.repeat_rows(0, 2)
     summary.print_area(0, 0, notes_row + len(notes), 10)
-    book.close()
-    output.seek(0)
-    return output
