@@ -1,5 +1,48 @@
 REPORTABILIDAD 5400 — APLICACIÓN COMPLETA
-Actualización: 29 de septiembre de 2026
+Actualización: 30 de septiembre de 2026
+
+NUEVO: REPORTE DE DESVIACIONES, SOLICITUDES Y RECLAMOS
+Abre Reportes > Reporte de desviaciones, solicitudes y reclamos.
+
+Incluye las siete categorías del Excel de referencia:
+Misceláneos, Solicitudes y OT de usuario, Reclamos de usuarios, Robos y hurtos,
+Doble asignación, Habitaciones bloqueadas y Desviaciones.
+
+1. Selecciona el rango de fechas y, si lo necesitas, una palabra o número.
+2. Activa Incluir también registros sin fecha para incorporar esas filas.
+3. Pulsa Aplicar filtros para actualizar datos, estadísticas y descargas.
+4. Consulta el resumen, gráficos y conclusiones, o abre una categoría.
+5. Descargar esta pestaña genera el Excel de esa categoría con resumen y detalle.
+6. Descargar reporte general genera el resumen, gráficos, evolución diaria y
+   las siete hojas de registros en un mismo Excel.
+
+Las tablas muestran todos los campos con barras de desplazamiento. En pantalla
+se consultan 50 filas por página; los Excel contienen TODOS los resultados.
+Si cambias un filtro, vuelve a aplicarlo antes de descargar.
+
+El reporte consulta las bases actuales del sistema, sin importar automáticamente
+el Excel de referencia ni cambiar registros. Incluye todos los campos disponibles
+en el programa, incluidas las columnas históricas de Solicitudes OT.
+Desplegables es un catálogo auxiliar, no una base de registros.
+Misceláneos y Solicitudes OT usan la carga general Samtech existente.
+Gestión de usuarios conserva el seguimiento separado de solicitudes QR.
+
+Los estados son los actuales de los registros originados en el período.
+Porcentaje de cierre = cerrados / (abiertos + cerrados).
+Robos y hurtos, Desviaciones y Habitaciones bloqueadas no tienen campo de estado
+en el programa: se muestran aparte y no participan en esa tasa.
+Una fecha de liberación de un área no confirma la liberación final de la habitación.
+Las filas sin fecha pueden incluirse explícitamente en los totales y descargas.
+La suma es de registros, no de personas ni tickets únicos.
+
+Este cambio no requiere migraciones ni dependencias nuevas. Se verificaron las
+siete fuentes, límites de fecha, estados, acciones, fechas opcionales, búsquedas,
+paginación, exportaciones completas, fórmulas y tipos de celda, además de la
+compatibilidad con Gestión de usuarios, navegación, QR y CSV.
+Las fórmulas del Excel general se recalcularon en LibreOffice y conservaron
+los totales sin errores. Las pantallas y controles se validaron con Flask y
+JavaScript; no se pudo ejecutar la revisión visual en un navegador real en
+este entorno. El diseño incluye adaptación a computador y móvil.
 
 Este ZIP contiene el programa completo: app.py, todos los módulos de registros,
 plantillas HTML, estilos, JavaScript, logos, reportes, dependencias, configuración
@@ -28,7 +71,7 @@ ACTUALIZAR EL PROGRAMA COMPLETO
    Sube los archivos extraídos, no el ZIP.
 3. Guarda los cambios en la rama que utiliza tu servicio de Render.
 4. Espera el despliegue automático o ejecuta Manual Deploy > Deploy latest commit.
-5. En Ver registros, descarga nuevamente un CSV y abre el nuevo archivo en Excel.
+5. Abre Reportes > Reporte de desviaciones, solicitudes y reclamos.
 
 CONFIGURACIÓN DE ARRANQUE INCLUIDA
 Build Command:
@@ -68,6 +111,6 @@ Se validaron los archivos mediante el cliente de pruebas de Flask y un lector
 CSV; no se ejecutó Microsoft Excel de escritorio en este entorno.
 
 Repositorio base: https://github.com/Javier-9690/reportabilidad5400
-Base: main del repositorio al 29 de septiembre de 2026, con la corrección CSV ya integrada.
+Base: main del repositorio al 29 de septiembre de 2026, commit ff54085, con CSV y menú QR integrados.
 Esta entrega contiene los archivos listos para subir; no despliega por sí sola
 el servicio de Render.

@@ -21,10 +21,74 @@ Aplicación Flask preparada para Render.com + PostgreSQL.
 
 Importar · Censos · Sin Match · Curva · Nuevo ID · Reportes · Registros hotelería.
 
-- **Reportes**: Dotación, Ocupabilidad, EGP, F&A y Gestión de usuarios.
+- **Reportes**: Dotación, Ocupabilidad, EGP, F&A, Gestión de usuarios y Reporte de desviaciones, solicitudes y reclamos.
 - **Registros hotelería**: Ingresar registros, Consultar registros y Dashboard KPI.
 
 El Dashboard general no figura en el menú; sigue disponible desde el encabezado.
+
+## Reporte de desviaciones, solicitudes y reclamos
+
+Disponible en **Reportes > Reporte de desviaciones, solicitudes y reclamos**
+(`/reports/desviaciones-solicitudes-reclamos`). Añade una vista basada en las
+siete pestañas de registros del archivo de referencia `reporte.xlsx`:
+
+| Pestaña | Base consultada | Fecha utilizada |
+| --- | --- | --- |
+| Misceláneos | Misceláneos | Fecha creación; Fecha inicio si falta |
+| Solicitudes y OT de usuario | Solicitudes OT, carga general Samtech | Fecha creación; Fecha inicio si falta |
+| Reclamos de usuarios | Reclamos de usuarios | Fecha |
+| Robos y hurtos | Robos y hurtos | Fecha |
+| Doble asignación | Duplicidades | Fecha |
+| Habitaciones bloqueadas | Habitaciones bloqueadas | Fecha de bloqueo |
+| Desviaciones | Desviaciones | Fecha |
+
+Selecciona **Desde** y **Hasta**, escribe opcionalmente una palabra o número y
+pulsa **Aplicar filtros**. Inicialmente muestra el mes actual hasta hoy. La
+búsqueda usa todos los campos y admite tildes y mayúsculas.
+**Incluir también registros sin fecha** permite consultar y descargar esas filas
+sin asignarles una fecha ficticia; se separan de la tendencia diaria.
+
+- Resumen con cantidad de registros, abiertos, cerrados, porcentaje de cierre,
+  estados por revisar, evolución, estados por categoría y conclusiones calculadas.
+- Una pestaña por categoría, indicadores, principales empresas, distribución por
+  módulo o habitación y todos los campos disponibles. La tabla tiene desplazamiento
+  horizontal y vertical, y páginas de 50 registros.
+- Seguimiento de acciones en Desviaciones, receptor de denuncia en Robos y hurtos
+  y fechas de liberación por área en Habitaciones bloqueadas.
+- **Descargar esta pestaña**: Excel con resumen, evolución diaria y el detalle
+  completo de la categoría. También se descarga desde el resumen general.
+- **Descargar reporte general**: Excel con resumen, gráficos, evolución diaria y
+  siete hojas de detalle. Ambas descargas incluyen todos los resultados de los
+  filtros, independientemente de la página consultada.
+
+Los identificadores se conservan como texto y las fechas/horas como valores de
+Excel. Las hojas tienen encabezados, filtros y paneles inmovilizados. El resumen
+y la evolución usan fórmulas sobre los detalles exportados.
+
+El cierre se calcula como cerrados / (abiertos + cerrados), usando el estado
+actual y la fecha de origen. Las categorías sin campo de estado (Desviaciones,
+Robos y hurtos y Habitaciones bloqueadas) no participan en esa tasa. Un comentario
+o una fecha de liberación de un área no implica cierre ni liberación final de la
+habitación. Los estados desconocidos permanecen separados. El total suma filas
+de las siete bases, no personas ni tickets únicos.
+
+El reporte usa las tablas vigentes, sin cargar automáticamente el Excel de
+referencia ni modificar registros. Muestra todos los campos que almacena el
+sistema, incluidas las columnas históricas de Solicitudes OT. La hoja auxiliar
+oculta `Desplegables` contiene listas de validación, no una base de registros.
+No requiere migraciones, nuevas dependencias ni cambios de configuración.
+La consulta usa una única transacción para que resúmenes y detalles no mezclen
+dos cargas si se confirma una importación simultánea.
+
+**Gestión de usuarios** conserva sus fuentes y el seguimiento de Solicitudes de
+usuarios Samtech QR, separado de la carga general.
+
+Pruebas del nuevo reporte:
+
+```bash
+python -m unittest tests.test_operations_reports -q
+node tests/test_operations_report_interface.cjs
+```
 
 ## Reporte Gestión de usuarios
 

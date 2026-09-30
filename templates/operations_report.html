@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} | Reportabilidad 5400{% endblock %}
+{% block head %}<link href="{{ url_for('static', filename='css/operations_report.css') }}" rel="stylesheet">{% endblock %}
+{% macro number(value) %}{{ '{:,}'.format(value).replace(',', '.') }}{% endmacro %}
+{% macro rate(value) %}{% if value is not none %}{{ ('%.1f'|format(value * 100))|replace('.', ',') }}%{% else %}—{% endif %}{% endmacro %}
+{% macro kpi(label, value, note, kind='neutral') %}
+<article class="op-kpi op-kpi-{{ kind }}"><h3>{{ label }}</h3><div class="op-kpi-value">{{ value }}</div><p>{{ note }}</p></article>
+{% endmacro %}
+{% block content %}
+<div class="op-report">
+  <header class="op-heading">
+    <div><p class="op-eyebrow">Reportes / Hotelería</p><h1>{{ title }}</h1><p class="op-lead">Seguimiento de requerimientos, incidencias y acciones del servicio.</p></div>
+    {% if report %}<a class="btn btn-success op-export" data-report-link href="{{ url_for('operations_reports.export_excel', **params) }}"><i class="bi bi-file-earmark-excel" aria-hidden="true"></i> Descargar reporte general<span>Resumen, evolución y las 7 categorías</span></a>{% endif %}
+  </header>
+
+  <form id="operationsFilters" class="op-filters op-surface" method="get" action="{{ url_for('operations_reports.report_page') }}">
+    <input type="hidden" name="tab" value="{{ active_tab if active_tab in ['general'] + sources|map(attribute='entity')|list else 'general' }}">
+    <div><label for="opStart">Desde</label><input id="opStart" class="form-control" type="date" name="start_date" value="{{ start_value }}" min="1900-01-01" required></div>
+    <div><label for="opEnd">Hasta</label><input id="opEnd" class="form-control" type="date" name="end_date" value="{{ end_value }}" min="1900-01-01" required></div>
+    <div class="op-search"><label for="opSearch">Buscar en los registros</label><input id="opSearch" class="form-control" type="search" name="q" maxlength="200" value="{{ search_value }}" placeholder="Palabra, ticket, empresa o habitación"></div>
+    <button class="btn btn-danger" type="submit"><i class="bi bi-funnel" aria-hidden="true"></i> Aplicar filtros</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('operations_reports.report_page') }}">Restablecer</a>
+    <label class="op-undated"><input class="form-check-input" type="checkbox" name="include_undated" value="1" {% if include_undated %}checked{% endif %}> Incluir también registros sin fecha</label>
+    <p id="operationsFiltersChanged" class="op-filter-notice" role="status" hidden>Los filtros cambiaron. Pulsa Aplicar filtros para actualizar las estadísticas y las descargas.</p>
+  </form>
+  {% if error %}<div class="alert alert-danger mt-3" role="alert">{{ error }}</div>{% endif %}
+  {% if report %}
+  <nav class="op-tabs" aria-label="Pestañas del reporte">
+    <a data-report-link class="{% if active_tab == 'general' %}active{% endif %}" {% if active_tab == 'general' %}aria-current="page"{% endif %} href="{{ url_for('operations_reports.report_page', tab='general', **params) }}">Resumen general</a>
+    {% for category in report.categories %}<a data-report-link class="{% if active_tab == category.entity %}active{% endif %}" {% if active_tab == category.entity %}aria-current="page"{% endif %} href="{{ url_for('operations_reports.report_page', tab=category.entity, **params) }}">{{ category.label }} <span>{{ number(category.totals.records) }}</span></a>{% endfor %}
+  </nav>
+
+  <div class="op-section-heading"><div><h2>{{ selected.label if selected else 'Resumen general' }}</h2><p>{{ report.start.strftime('%d/%m/%Y') }} al {{ report.end.strftime('%d/%m/%Y') }}{% if report.filters.search %} · Búsqueda: «{{ report.filters.search }}»{% endif %}</p></div>
+    {% if selected %}<a data-report-link class="btn btn-outline-success" id="exportCategory" href="{{ url_for('operations_reports.export_excel', category=selected.entity, **params) }}"><i class="bi bi-download" aria-hidden="true"></i> Descargar esta pestaña</a>{% endif %}
+  </div>
+  {% set totals = selected.totals if selected else report.totals %}
+  <section class="op-kpis" aria-label="Indicadores del reporte">
+    {{ kpi('Registros', number(totals.records), 'Coinciden con los filtros', 'total') }}
+    {% if not selected or selected.status %}
+    {{ kpi('Abiertos', number(totals.open), 'Incluye pendientes y en progreso', 'open') }}
+    {{ kpi('Cerrados', number(totals.closed), 'Según su estado actual', 'closed') }}
+    {{ kpi('Porcentaje de cierre', rate(totals.rate), number(totals.open + totals.closed) ~ ' registros con estado reconocido', 'rate') }}
+    {{ kpi('Estado por revisar', number(totals.unknown), 'Estado vacío o no reconocido') }}
+    {% else %}
+    {{ kpi('Empresas', number(totals.companies), 'Con nombre registrado') }}
+    {{ kpi(selected.tracking_label, number(totals.tracked), 'Dato informado en el registro', 'closed') }}
+    {{ kpi(selected.missing_label, number(totals.untracked), 'Para revisión de información', 'open') }}
+    {% endif %}
+  </section>
+  {% set available = selected.undated_available if selected else report.totals.undated_available %}
+  {% if available %}<p class="op-data-note"><i class="bi bi-calendar-event" aria-hidden="true"></i> {% if report.filters.include_undated %}Se incluyen {{ number(totals.undated) }} registros sin fecha. Figuran en los totales, el detalle y Excel; se separan de la evolución por fecha.{% else %}Hay {{ number(available) }} registros sin fecha{% if report.filters.search %} que coinciden con la búsqueda{% endif %}. Activa «Incluir también registros sin fecha» para consultarlos y descargarlos.{% endif %}</p>{% endif %}
+  {% if selected and not selected.status %}<p class="op-data-note">Este registro no tiene un campo de estado. {% if selected.entity == 'habitaciones_bloqueadas' %}Una fecha de liberación de un área no confirma por sí sola la liberación final de la habitación.{% else %}No se calcula porcentaje de cierre.{% endif %}</p>{% elif not selected %}<p class="op-data-note">{{ number(totals.not_applicable) }} registros pertenecen a categorías sin campo de estado y se muestran aparte de abiertos y cerrados.</p>{% endif %}
+
+  {% if totals.records %}
+  <div class="op-charts">
+    <section class="op-surface"><div class="op-card-heading"><h3>Evolución {{ 'mensual' if charts.monthly else 'diaria' }}</h3><p>Fecha de origen de los registros{% if charts.monthly %} · meses limitados al rango seleccionado{% endif %}</p></div><div class="op-chart"><canvas id="operationsTrend" role="img" aria-label="Evolución de registros por fecha. Valores en la tabla de evolución."></canvas></div></section>
+    <section class="op-surface"><div class="op-card-heading"><h3>{{ 'Empresas con más registros' if selected else 'Estado por categoría' }}</h3><p>{{ 'Las primeras siete empresas según el filtro' if selected else 'Abiertos, cerrados y registros sin clasificación de estado' }}</p></div><div class="op-chart"><canvas id="operationsDistribution" role="img" aria-label="{{ 'Registros por empresa' if selected else 'Estados por categoría' }}. Valores en las tablas del reporte."></canvas></div></section>
+  </div>
+  <p id="operationsChartsUnavailable" class="op-data-note" hidden>No se pudieron cargar los gráficos. Las estadísticas, las tablas y las descargas siguen disponibles.</p>
+  {% else %}<div class="op-empty op-surface"><i class="bi bi-inbox" aria-hidden="true"></i><h3>No hay registros para estos filtros</h3><p>Prueba otro período o ajusta la búsqueda. Puedes descargar la estructura del reporte en Excel.</p></div>{% endif %}
+
+  {% if not selected %}
+  <section class="op-surface op-conclusions"><div class="op-card-heading"><h3>Conclusiones del período</h3><p>Calculadas con los filtros aplicados</p></div><ul>{% for note in report.conclusions %}<li>{{ note }}</li>{% endfor %}</ul></section>
+  <section class="op-surface"><div class="op-card-heading"><h3>Resumen de las siete categorías</h3><p>Abre una pestaña para consultar sus registros o descarga su Excel individual.</p></div>
+    <div class="op-table-scroll" role="region" aria-label="Resumen por categoría" tabindex="0"><table class="op-table op-summary">
+      <thead><tr><th>Categoría</th><th>Registros</th><th>Abiertos</th><th>Cerrados</th><th>Por revisar</th><th>Sin campo de estado</th><th>Cierre</th><th>Excel</th></tr></thead>
+      <tbody>{% for category in report.categories %}<tr><th><a data-report-link href="{{ url_for('operations_reports.report_page', tab=category.entity, **params) }}"><span class="op-dot" style="--category-color:{{ category.color }}"></span>{{ category.label }}</a></th><td>{{ number(category.totals.records) }}</td><td>{{ number(category.totals.open) if category.status else '—' }}</td><td>{{ number(category.totals.closed) if category.status else '—' }}</td><td>{{ number(category.totals.unknown) if category.status else '—' }}</td><td>{{ number(category.totals.not_applicable) }}</td><td>{{ rate(category.totals.rate) }}</td><td><a data-report-link class="op-download" aria-label="Descargar Excel de {{ category.label }}" href="{{ url_for('operations_reports.export_excel', category=category.entity, **params) }}"><i class="bi bi-download" aria-hidden="true"></i> Descargar</a></td></tr>{% endfor %}</tbody>
+      <tfoot><tr><th>Total de registros</th><td>{{ number(totals.records) }}</td><td>{{ number(totals.open) }}</td><td>{{ number(totals.closed) }}</td><td>{{ number(totals.unknown) }}</td><td>{{ number(totals.not_applicable) }}</td><td>{{ rate(totals.rate) }}</td><td></td></tr></tfoot>
+    </table></div>
+  </section>
+  {% else %}
+  <div class="op-ranks">
+    {% for heading, ranks in [('Registros por empresa', selected.companies), ('Registros por habitación' if selected.entity == 'habitaciones_bloqueadas' else 'Registros por módulo / pabellón', selected.locations)] %}
+    <details class="op-surface"><summary>{{ heading }} <span>{{ ranks|length }} grupos</span></summary><div class="op-table-scroll op-rank-scroll" tabindex="0" role="region" aria-label="{{ heading }}"><table class="op-table"><thead><tr><th>{{ 'Empresa' if loop.first else 'Ubicación' }}</th><th>Registros</th></tr></thead><tbody>{% for row in ranks %}<tr><td>{{ row.label }}</td><td>{{ number(row.count) }}</td></tr>{% else %}<tr><td colspan="2">Sin datos.</td></tr>{% endfor %}</tbody></table></div></details>
+    {% endfor %}
+  </div>
+  <section class="op-surface op-details"><div class="op-card-heading"><h3>Detalle de {{ selected.label|lower }}</h3><p>{{ number(selected.totals.records) }} registros · Mostrando {{ selected.first_row }}–{{ selected.last_row }}. Desplaza la tabla horizontalmente para ver todos los campos.</p><p>Fecha utilizada: {{ selected.date_label }}. La descarga incluye todos los resultados del filtro.</p></div>
+    <div class="op-table-scroll op-detail-scroll" tabindex="0" role="region" aria-label="Todos los campos de {{ selected.label }}"><table class="op-table op-detail-table">
+      <thead><tr>{% for field in selected.fields %}<th scope="col">{{ field.label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for record in selected.details %}<tr>{% for field in selected.fields %}<td class="{% if field.kind == 'textarea' %}op-long-text{% endif %}">{{ display_value(record[field.name], field.kind) }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="{{ selected.fields|length }}">No hay registros que coincidan con los filtros.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <nav class="op-pagination" aria-label="Páginas del detalle">
+      {% if selected.page > 1 %}<a data-report-link class="btn btn-outline-secondary btn-sm" href="{{ url_for('operations_reports.report_page', tab=selected.entity, page=selected.page-1, **params) }}">Anterior</a>{% endif %}
+      <span>Página {{ selected.page }} de {{ selected.pages }}</span>
+      {% if selected.page < selected.pages %}<a data-report-link class="btn btn-outline-secondary btn-sm" href="{{ url_for('operations_reports.report_page', tab=selected.entity, page=selected.page+1, **params) }}">Siguiente</a>{% endif %}
+    </nav>
+  </section>
+  {% endif %}
+
+  <details class="op-surface op-evolution"><summary>Ver evolución por fecha <span>{{ report.days|length }} días</span></summary>
+    <div class="op-table-scroll op-rank-scroll" tabindex="0" role="region" aria-label="Registros por fecha"><table class="op-table"><thead><tr><th>Fecha</th>{% for category in ([selected] if selected else report.categories) %}<th>{{ category.label }}</th>{% endfor %}{% if not selected %}<th>Total</th>{% endif %}</tr></thead><tbody>
+      {% for day in report.days %}{% set i=loop.index0 %}<tr><th>{{ day.strftime('%d/%m/%Y') }}</th>{% for category in ([selected] if selected else report.categories) %}<td>{{ number(category.daily[i]) }}</td>{% endfor %}{% if not selected %}<td>{{ number(report.daily[i]) }}</td>{% endif %}</tr>{% endfor %}
+      {% if report.filters.include_undated %}<tr><th>Sin fecha</th>{% for category in ([selected] if selected else report.categories) %}<td>{{ number(category.totals.undated) }}</td>{% endfor %}{% if not selected %}<td>{{ number(report.totals.undated) }}</td>{% endif %}</tr>{% endif %}
+    </tbody></table></div>
+  </details>
+  <details class="op-method"><summary>Fuentes y criterios de cálculo</summary><p>{{ report.method_note }}</p><p>{{ report.rate_note }}</p><p>En Misceláneos y Solicitudes OT, Aprobada y Completada se consideran cerradas. Abierto, No iniciada, En progreso y Pendiente se consideran abiertos. Otros estados se presentan como «Por revisar».</p><p>{{ report.source_note }}</p><p>Se exportan todos los campos disponibles en los registros actuales, incluidas las columnas históricas de Solicitudes OT. El catálogo auxiliar «Desplegables» del archivo de referencia no es una base de registros.</p><p>Las fechas de liberación por área se muestran como datos de seguimiento; no se infiere la liberación final de una habitación.</p><ul>{% for category in report.categories %}<li><strong>{{ category.label }}:</strong> {{ category.date_label }}.</li>{% endfor %}</ul></details>
+  <p class="op-stamp">Consulta: {{ report.generated_at.strftime('%d/%m/%Y %H:%M') }} UTC. Los Excel reflejan los datos disponibles al descargarlos.</p>
+  <script id="operationsChartData" type="application/json">{{ charts|tojson }}</script>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/operations_report.js') }}"></script>
+{% endblock %}
