@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Chequeo - {{ building }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="mb-0">
+            <i class="bi bi-building"></i> Sector {{ building }}
+            <small class="text-muted">({{ rooms|length }} hab.)</small>
+        </h5>
+        <small class="text-muted d-block">
+            <i class="bi bi-person"></i> {{ receptionist.name }} &middot;
+            <span id="currentTime"></span>
+        </small>
+        <small class="text-muted d-block mt-1">
+            <i class="bi bi-door-open"></i> Habitación seleccionada:
+            <span id="activeRoomLabel" class="fw-semibold">Ninguna</span>
+        </small>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap justify-content-end">
+        <button id="btnSelectAll" class="btn btn-sm btn-outline-success" title="Marcar solo la habitación seleccionada" disabled>
+            <i class="bi bi-check-all"></i> Todo OK (seleccionada)
+        </button>
+        <button id="btnSave" class="btn btn-sm btn-primary" disabled>
+            <i class="bi bi-save"></i> Guardar
+        </button>
+    </div>
+</div>
+
+<div class="checklist-container">
+    {% for room in rooms %}
+    <div class="card room-card mb-2" data-room-id="{{ room.id }}" data-room-code="{{ room.code }}">
+        <div class="card-header room-header py-1 px-2" data-bs-toggle="collapse" data-bs-target="#room{{ room.id }}">
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="fw-bold room-code">{{ room.code }}</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary room-status">Sin llenar</span>
+                    <i class="bi bi-chevron-down chevron-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div id="room{{ room.id }}" class="collapse">
+            <div class="card-body p-2">
+                <table class="table table-sm table-borderless checklist-table mb-1">
+                    <tbody>
+                        <tr>
+                            <td class="field-label">Cupos</td>
+                            <td class="field-options">
+                                <div class="btn-group btn-group-sm w-100" role="group">
+                                    <input type="radio" class="btn-check" name="cupos_{{ room.id }}" id="cupos_p_{{ room.id }}" value="p">
+                                    <label class="btn btn-outline-info" for="cupos_p_{{ room.id }}">P</label>
+                                    <input type="radio" class="btn-check" name="cupos_{{ room.id }}" id="cupos_v_{{ room.id }}" value="v">
+                                    <label class="btn btn-outline-info" for="cupos_v_{{ room.id }}">V</label>
+                                    <input type="radio" class="btn-check" name="cupos_{{ room.id }}" id="cupos_v1_{{ room.id }}" value="v1">
+                                    <label class="btn btn-outline-info" for="cupos_v1_{{ room.id }}">V1</label>
+                                    <input type="radio" class="btn-check" name="cupos_{{ room.id }}" id="cupos_todos_{{ room.id }}" value="todos">
+                                    <label class="btn btn-outline-info" for="cupos_todos_{{ room.id }}">Todos</label>
+                                </div>
+                            </td>
+                        </tr>
+                        {% set okx_fields = [
+                            ('limpieza', 'Limpieza Gral'),
+                            ('banos', 'Baños'),
+                            ('insumos', 'Insumos'),
+                            ('iluminacion', 'Iluminación'),
+                            ('agua', 'Agua'),
+                            ('ventanas', 'Ventanas'),
+                            ('cortinas', 'Cortinas'),
+                            ('estufas', 'Estufas'),
+                            ('mobiliario', 'Mobiliario'),
+                            ('chapas', 'Chapas'),
+                            ('puertas_modulo', 'Puertas acceso módulo'),
+                            ('sabanas', 'Cambio Sábanas')
+                        ] %}
+                        {% for field, label in okx_fields %}
+                        <tr>
+                            <td class="field-label">{{ label }}</td>
+                            <td class="field-options">
+                                <div class="btn-group btn-group-sm w-100" role="group">
+                                    <input type="radio" class="btn-check okx-input" name="{{ field }}_{{ room.id }}" id="{{ field }}_ok_{{ room.id }}" value="ok">
+                                    <label class="btn btn-outline-success" for="{{ field }}_ok_{{ room.id }}">OK</label>
+                                    <input type="radio" class="btn-check okx-input" name="{{ field }}_{{ room.id }}" id="{{ field }}_x_{{ room.id }}" value="x">
+                                    <label class="btn btn-outline-danger" for="{{ field }}_x_{{ room.id }}">X</label>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                            <td class="field-label">Casilleros</td>
+                            <td class="field-options">
+                                <div class="btn-group btn-group-sm w-100" role="group">
+                                    <input type="radio" class="btn-check" name="casilleros_{{ room.id }}" id="cas_p_{{ room.id }}" value="p">
+                                    <label class="btn btn-outline-info" for="cas_p_{{ room.id }}">P</label>
+                                    <input type="radio" class="btn-check" name="casilleros_{{ room.id }}" id="cas_v_{{ room.id }}" value="v">
+                                    <label class="btn btn-outline-info" for="cas_v_{{ room.id }}">V</label>
+                                    <input type="radio" class="btn-check" name="casilleros_{{ room.id }}" id="cas_ambos_{{ room.id }}" value="ambos">
+                                    <label class="btn btn-outline-info" for="cas_ambos_{{ room.id }}">Ambos</label>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <textarea class="form-control form-control-sm obs-input" name="obs_{{ room.id }}"
+                                    rows="1" placeholder="Observaciones..."></textarea>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1090">
+    <div id="toast" class="toast" role="alert">
+        <div class="toast-body fw-semibold" id="toastMsg"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const RECEPTIONIST_ID = {{ receptionist.id }};
+const FIELD_MAP = {
+    'cupos': 'disponibilidad_cupos',
+    'limpieza': 'limpieza_general',
+    'banos': 'limpieza_banos',
+    'insumos': 'insumos_basicos',
+    'iluminacion': 'iluminacion',
+    'agua': 'agua',
+    'ventanas': 'ventanas',
+    'cortinas': 'cortinas',
+    'estufas': 'estufas',
+    'mobiliario': 'mobiliario',
+    'chapas': 'chapas',
+    'puertas_modulo': 'puertas_acceso_modulo',
+    'sabanas': 'cambio_sabanas',
+    'casilleros': 'casilleros'
+};
+
+const OKX_FIELDS = ['limpieza', 'banos', 'insumos', 'iluminacion', 'agua', 'ventanas', 'cortinas', 'estufas', 'mobiliario', 'chapas', 'puertas_modulo', 'sabanas'];
+let activeRoomCard = null;
+
+function updateTime() {
+    document.getElementById('currentTime').textContent = new Date().toLocaleString('es-CL');
+}
+updateTime();
+setInterval(updateTime, 1000);
+
+function setActiveRoom(card) {
+    document.querySelectorAll('.room-card').forEach(item => item.classList.remove('room-card-active'));
+    activeRoomCard = card || null;
+
+    const btnSelectAll = document.getElementById('btnSelectAll');
+    const activeRoomLabel = document.getElementById('activeRoomLabel');
+
+    if (activeRoomCard) {
+        activeRoomCard.classList.add('room-card-active');
+        const roomCode = activeRoomCard.dataset.roomCode || 'Ninguna';
+        activeRoomLabel.textContent = roomCode;
+        btnSelectAll.disabled = false;
+        btnSelectAll.innerHTML = `<i class="bi bi-check-all"></i> Todo OK (${roomCode})`;
+    } else {
+        activeRoomLabel.textContent = 'Ninguna';
+        btnSelectAll.disabled = true;
+        btnSelectAll.innerHTML = '<i class="bi bi-check-all"></i> Todo OK (seleccionada)';
+    }
+}
+
+function updateRoomStatus(card) {
+    const radios = card.querySelectorAll('input[type=radio]:checked');
+    const total = 14;
+    const filled = radios.length;
+    const badge = card.querySelector('.room-status');
+
+    if (filled === 0) {
+        badge.className = 'badge bg-secondary room-status';
+        badge.textContent = 'Sin llenar';
+    } else if (filled < total) {
+        badge.className = 'badge bg-warning room-status';
+        badge.textContent = `${filled}/${total}`;
+    } else {
+        const hasIssue = Array.from(radios).some(r => r.classList.contains('okx-input') && r.value === 'x');
+        if (hasIssue) {
+            badge.className = 'badge bg-danger room-status';
+            badge.textContent = 'Con novedad';
+        } else {
+            badge.className = 'badge bg-success room-status';
+            badge.textContent = 'Completo';
+        }
+    }
+
+    const anyFilled = document.querySelectorAll('.room-card input[type=radio]:checked').length > 0;
+    document.getElementById('btnSave').disabled = !anyFilled;
+}
+
+document.querySelectorAll('.room-card').forEach(card => {
+    const header = card.querySelector('.room-header');
+    const collapseEl = card.querySelector('.collapse');
+
+    header.addEventListener('click', () => setActiveRoom(card));
+    collapseEl.addEventListener('show.bs.collapse', () => setActiveRoom(card));
+
+    card.querySelectorAll('input[type=radio], textarea').forEach(input => {
+        input.addEventListener('focus', () => setActiveRoom(card));
+        input.addEventListener('change', () => {
+            setActiveRoom(card);
+            updateRoomStatus(card);
+        });
+    });
+});
+
+document.getElementById('btnSelectAll').addEventListener('click', () => {
+    if (!activeRoomCard) {
+        showToast('Seleccione una habitación primero', 'warning');
+        return;
+    }
+
+    const roomId = activeRoomCard.dataset.roomId;
+    OKX_FIELDS.forEach(field => {
+        const okRadio = document.getElementById(`${field}_ok_${roomId}`);
+        if (okRadio && !okRadio.checked) okRadio.checked = true;
+    });
+    updateRoomStatus(activeRoomCard);
+    showToast(`Todo OK aplicado a ${activeRoomCard.dataset.roomCode}`, 'success');
+});
+
+document.getElementById('btnSave').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSave');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando...';
+
+    const items = [];
+    document.querySelectorAll('.room-card').forEach(card => {
+        const roomId = card.dataset.roomId;
+        const checkedRadios = card.querySelectorAll('input[type=radio]:checked');
+        if (checkedRadios.length === 0) return;
+
+        const item = { room_id: parseInt(roomId, 10) };
+        for (const [shortName, apiName] of Object.entries(FIELD_MAP)) {
+            const checked = card.querySelector(`input[name="${shortName}_${roomId}"]:checked`);
+            item[apiName] = checked ? checked.value : '';
+        }
+        item.observaciones = card.querySelector(`textarea[name="obs_${roomId}"]`).value;
+        items.push(item);
+    });
+
+    if (items.length === 0) {
+        showToast('No hay datos para guardar', 'warning');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save"></i> Guardar';
+        return;
+    }
+
+    try {
+        const resp = await fetch('{{ request.script_root }}/api/checklist/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items, receptionist_id: RECEPTIONIST_ID })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(`${data.saved} habitaciones guardadas correctamente`, 'success');
+            setTimeout(() => window.location.href = '{{ request.script_root }}/', 1500);
+        } else {
+            showToast(data.error || 'Error al guardar', 'danger');
+        }
+    } catch (e) {
+        showToast('Error de conexión', 'danger');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-save"></i> Guardar';
+});
+
+function showToast(msg, type) {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+    toast.className = `toast bg-${type} text-white`;
+    toastMsg.textContent = msg;
+    new bootstrap.Toast(toast, { delay: 3000 }).show();
+}
+</script>
+{% endblock %}

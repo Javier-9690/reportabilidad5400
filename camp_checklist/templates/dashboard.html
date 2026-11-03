@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0 text-primary"><i class="bi bi-graph-up"></i> Dashboard</h4>
+        <small class="text-muted" id="dashboardScope">Mostrando: últimos 7 días</small>
+    </div>
+    <div class="d-flex gap-2 align-items-end flex-wrap justify-content-end">
+        <div>
+            <label class="form-label mb-1 d-block">Filtro rápido</label>
+            <select id="daysFilter" class="form-select form-select-sm">
+                <option value="1">Hoy</option>
+                <option value="7" selected>Últimos 7 días</option>
+                <option value="15">Últimos 15 días</option>
+                <option value="30">Últimos 30 días</option>
+                <option value="60">Últimos 60 días</option>
+                <option value="90">Últimos 90 días</option>
+            </select>
+        </div>
+        <div>
+            <label class="form-label mb-1 d-block">Desde</label>
+            <input type="date" id="dateFrom" class="form-control form-control-sm">
+        </div>
+        <div>
+            <label class="form-label mb-1 d-block">Hasta</label>
+            <input type="date" id="dateTo" class="form-control form-control-sm">
+        </div>
+        <div class="d-flex gap-2">
+            <button id="btnApplyRange" class="btn btn-sm btn-primary">Aplicar</button>
+            <button id="btnClearRange" class="btn btn-sm btn-outline-secondary">Limpiar</button>
+        </div>
+    </div>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="card text-center border-primary">
+            <div class="card-body py-2">
+                <div class="text-muted small">Total Chequeos</div>
+                <div class="fs-3 fw-bold text-primary" id="kpiTotal">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center border-success">
+            <div class="card-body py-2">
+                <div class="text-muted small">Hab. Revisadas</div>
+                <div class="fs-3 fw-bold text-success" id="kpiRooms">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center border-info">
+            <div class="card-body py-2">
+                <div class="text-muted small">Total Habitaciones</div>
+                <div class="fs-3 fw-bold text-info" id="kpiTotalRooms">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center border-warning">
+            <div class="card-body py-2">
+                <div class="text-muted small">Cobertura</div>
+                <div class="fs-3 fw-bold text-warning" id="kpiCoverage">-</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header py-2 fw-semibold">Chequeos por Día</div>
+            <div class="card-body p-2 d-flex align-items-center justify-content-center">
+                <div class="chart-wrapper">
+                    <canvas id="chartDaily"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header py-2 fw-semibold">Chequeos por Recepcionista</div>
+            <div class="card-body p-2 d-flex align-items-center justify-content-center">
+                <div class="chart-wrapper">
+                    <canvas id="chartReceptionist"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header py-2 fw-semibold d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <span>Novedades por Categoría</span>
+                <small id="issuesEmpty" class="text-muted d-none">Sin novedades en el rango seleccionado</small>
+            </div>
+            <div class="card-body p-2 d-flex align-items-center justify-content-center">
+                <div class="chart-wrapper">
+                    <canvas id="chartIssues"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header py-2 fw-semibold">Chequeos por Sector</div>
+            <div class="card-body p-2 d-flex align-items-center justify-content-center">
+                <div class="chart-wrapper">
+                    <canvas id="chartBuilding"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let charts = {};
+
+const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false
+};
+
+function destroyCharts() {
+    Object.values(charts).forEach(chart => chart.destroy());
+    charts = {};
+}
+
+function getDashboardParams() {
+    const params = new URLSearchParams();
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const days = document.getElementById('daysFilter').value;
+
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+
+    if (!dateFrom && !dateTo) {
+        params.set('days', days);
+    }
+
+    return params;
+}
+
+function updateScopeLabel(data) {
+    document.getElementById('dashboardScope').textContent = `Mostrando: ${data.filter_label}`;
+}
+
+function buildDailyChart(data) {
+    const dailyItems = Array.isArray(data.daily) && data.daily.length > 0
+        ? data.daily
+        : [{ date: 'Sin datos', count: 0 }];
+
+    charts.daily = new Chart(document.getElementById('chartDaily'), {
+        type: 'bar',
+        data: {
+            labels: dailyItems.map(d => d.date),
+            datasets: [{
+                label: 'Chequeos',
+                data: dailyItems.map(d => d.count),
+                backgroundColor: 'rgba(180,35,24,0.75)',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+}
+
+function buildReceptionistChart(data) {
+    const items = Array.isArray(data.by_receptionist) && data.by_receptionist.length > 0
+        ? data.by_receptionist
+        : [{ name: 'Sin datos', count: 1 }];
+
+    const recColors = ['#B42318', '#D92D20', '#F04438', '#FDA29B', '#7A271A', '#912018', '#FECDCA', '#B54708', '#E31B54', '#BE123C'];
+    charts.receptionist = new Chart(document.getElementById('chartReceptionist'), {
+        type: 'doughnut',
+        data: {
+            labels: items.map(r => r.name),
+            datasets: [{
+                data: items.map(r => r.count),
+                backgroundColor: recColors.slice(0, Math.max(items.length, 1))
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+function buildIssuesChart(data) {
+    const rawIssueEntries = Object.entries(data.issues || {});
+    const nonZeroIssues = rawIssueEntries.filter(([, value]) => value > 0);
+    const issueEntries = nonZeroIssues.length > 0
+        ? nonZeroIssues
+        : (rawIssueEntries.length > 0 ? rawIssueEntries : [['Sin datos', 0]]);
+
+    document.getElementById('issuesEmpty').classList.toggle('d-none', nonZeroIssues.length > 0);
+
+    charts.issues = new Chart(document.getElementById('chartIssues'), {
+        type: 'bar',
+        data: {
+            labels: issueEntries.map(([label]) => label),
+            datasets: [{
+                label: 'Novedades (X)',
+                data: issueEntries.map(([, value]) => value),
+                backgroundColor: 'rgba(217,45,32,0.78)',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { beginAtZero: true, ticks: { stepSize: 1 } },
+                y: { ticks: { font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+function buildBuildingChart(data) {
+    const items = Array.isArray(data.by_building) && data.by_building.length > 0
+        ? data.by_building
+        : [{ building: 'Sin datos', count: 0 }];
+
+    charts.building = new Chart(document.getElementById('chartBuilding'), {
+        type: 'bar',
+        data: {
+            labels: items.map(b => b.building),
+            datasets: [{
+                label: 'Chequeos',
+                data: items.map(b => b.count),
+                backgroundColor: 'rgba(145,32,24,0.75)',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                x: { ticks: { font: { size: 9 }, maxRotation: 90, minRotation: 45 } }
+            }
+        }
+    });
+}
+
+async function loadDashboard() {
+    const params = getDashboardParams();
+    const resp = await fetch(`{{ request.script_root }}/api/dashboard/stats?${params.toString()}`);
+    const data = await resp.json();
+
+    document.getElementById('kpiTotal').textContent = data.total_checklists;
+    document.getElementById('kpiRooms').textContent = data.rooms_checked;
+    document.getElementById('kpiTotalRooms').textContent = data.total_rooms;
+    const coverage = data.total_rooms > 0
+        ? Math.round((data.rooms_checked / data.total_rooms) * 100) + '%'
+        : '0%';
+    document.getElementById('kpiCoverage').textContent = coverage;
+    updateScopeLabel(data);
+
+    destroyCharts();
+    buildDailyChart(data);
+    buildReceptionistChart(data);
+    buildIssuesChart(data);
+    buildBuildingChart(data);
+}
+
+function clearCustomRange() {
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+}
+
+document.getElementById('daysFilter').addEventListener('change', () => {
+    clearCustomRange();
+    loadDashboard();
+});
+
+document.getElementById('btnApplyRange').addEventListener('click', loadDashboard);
+document.getElementById('btnClearRange').addEventListener('click', () => {
+    clearCustomRange();
+    document.getElementById('daysFilter').value = '7';
+    loadDashboard();
+});
+
+document.getElementById('dateFrom').addEventListener('change', loadDashboard);
+document.getElementById('dateTo').addEventListener('change', loadDashboard);
+
+loadDashboard();
+</script>
+{% endblock %}

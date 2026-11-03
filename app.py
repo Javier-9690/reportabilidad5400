@@ -3409,12 +3409,13 @@ app=create_app()
 # aplicación y comparte DATABASE_URL, SECRET_KEY, cabecera y navegación.
 from gestion5s.web import app as gestion5s_app
 
+from camp_checklist.app import app as checklist_app
 from security import install_security
-install_security(app, gestion5s_app)
+install_security(app, gestion5s_app, checklist_app)
 
 app.wsgi_app = DispatcherMiddleware(
     app.wsgi_app,
-    {"/gestion-5s": gestion5s_app},
+    {"/gestion-5s": gestion5s_app, "/camp-checklist": checklist_app},
 )
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT',5000)), debug=os.getenv('FLASK_DEBUG')=='1')

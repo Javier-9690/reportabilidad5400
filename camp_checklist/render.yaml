@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: camp-checklist
+    plan: free
+    runtime: python
+    buildCommand: pip install -r requirements.txt && python seed_db.py
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kpi-db
+          property: connectionURI
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production

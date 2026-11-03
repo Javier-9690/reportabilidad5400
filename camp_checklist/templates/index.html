@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}CampCheck - Inicio{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-xl-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-4">
+                    <i class="bi bi-clipboard-check text-primary"></i> Nuevo Chequeo
+                </h4>
+
+                {% if receptionists|length == 0 %}
+                <div class="alert alert-warning mb-0">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    No hay recepcionistas registrados.
+                    <a href="{{ request.script_root }}/receptionists" class="alert-link">Crear uno primero</a>.
+                </div>
+                {% else %}
+                <form id="startForm">
+                    <div class="mb-4">
+                        <label for="receptionist" class="form-label fw-semibold">Recepcionista</label>
+                        <select id="receptionist" class="form-select form-select-lg" required>
+                            <option value="">Seleccionar...</option>
+                            {% for r in receptionists %}
+                            <option value="{{ r.id }}">{{ r.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <label class="form-label fw-semibold mb-0">Módulos disponibles</label>
+                        <span class="badge rounded-pill text-bg-light border">{{ modules|length }} módulo(s)</span>
+                    </div>
+
+                    {% if modules|length == 0 %}
+                    <div class="alert alert-light border mb-0">
+                        Aún no hay módulos con habitaciones. Crea uno en el panel lateral.
+                    </div>
+                    {% else %}
+                    <div class="module-grid">
+                        {% for module in modules %}
+                        <article class="module-card" data-building="{{ module.building }}">
+                            <div class="module-card-main">
+                                <div class="module-name">{{ module.building }}</div>
+                                <div class="module-meta">{{ module.room_count }} habitación(es)</div>
+                            </div>
+                            <div class="module-actions">
+                                <button type="button" class="btn btn-primary btn-sm start-module-btn" data-building="{{ module.building }}">
+                                    <i class="bi bi-play-circle"></i> Aplicar checklist
+                                </button>
+                                <button type="button" class="btn btn-outline-danger btn-sm delete-module-btn" data-building="{{ module.building }}">
+                                    <i class="bi bi-trash"></i> Eliminar
+                                </button>
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-3">
+                    <i class="bi bi-grid-3x3-gap text-primary"></i> Gestionar módulos
+                </h5>
+                <p class="text-muted small mb-3">
+                    Crea un módulo nuevo indicando su nombre y cuántas habitaciones tendrá. Las habitaciones se generan automáticamente y aparecerán de inmediato en el inicio.
+                </p>
+
+                <form id="moduleForm" class="row g-3">
+                    <div class="col-12">
+                        <label for="moduleName" class="form-label fw-semibold">Nombre del módulo</label>
+                        <input type="text" id="moduleName" class="form-control" placeholder="Ej: 15F" maxlength="20" required>
+                        <div class="form-text">Usa letras, números o guion. Ejemplos: 1F, 2F, MOD-A.</div>
+                    </div>
+                    <div class="col-12">
+                        <label for="roomCount" class="form-label fw-semibold">Cantidad de habitaciones</label>
+                        <input type="number" id="roomCount" class="form-control" min="1" max="500" placeholder="Ej: 48" required>
+                    </div>
+                    <div class="col-12 d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Crear módulo
+                        </button>
+                    </div>
+                </form>
+
+                <hr>
+
+                <div class="small text-muted">
+                    Para eliminar un módulo se solicitará la misma clave usada para borrar registros del historial.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getSelectedReceptionist() {
+    return document.getElementById('receptionist')?.value || '';
+}
+
+document.querySelectorAll('.start-module-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const recId = getSelectedReceptionist();
+        if (!recId) {
+            alert('Seleccione un recepcionista primero');
+            return;
+        }
+        const building = this.dataset.building;
+        window.location.href = `{{ request.script_root }}/checklist/${building}?receptionist_id=${recId}`;
+    });
+});
+
+document.getElementById('moduleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const building = document.getElementById('moduleName').value.trim();
+    const roomCount = document.getElementById('roomCount').value;
+
+    const resp = await fetch('{{ request.script_root }}/api/modules', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            building,
+            room_count: roomCount
+        })
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+        alert(data.error || 'No se pudo crear el módulo');
+        return;
+    }
+
+    document.getElementById('moduleForm').reset();
+    alert(`Módulo ${data.building} creado con ${data.room_count} habitaciones.`);
+    window.location.reload();
+});
+
+document.querySelectorAll('.delete-module-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const building = this.dataset.building;
+        const confirmed = confirm(`¿Seguro que deseas eliminar el módulo ${building}? Se borrarán también sus checklist asociados.`);
+        if (!confirmed) return;
+
+        const password = prompt(`Ingrese la clave para eliminar el módulo ${building}:`);
+        if (password === null) return;
+
+        const resp = await fetch(`{{ request.script_root }}/api/modules/${encodeURIComponent(building)}`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password})
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+            alert(data.error || 'No se pudo eliminar el módulo');
+            return;
+        }
+
+        alert(`Módulo ${building} eliminado.`);
+        window.location.reload();
+    });
+});
+</script>
+{% endblock %}

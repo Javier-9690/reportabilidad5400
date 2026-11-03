@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Historial{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-clock-history"></i> Historial de Chequeos</h4>
+        <small class="text-muted" id="historySummary">Cargando registros...</small>
+    </div>
+    <button id="btnExport" class="btn btn-sm btn-success">
+        <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+    </button>
+</div>
+
+<!-- Filters -->
+<div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form id="filterForm" class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Desde</label>
+                <input type="date" id="dateFrom" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Hasta</label>
+                <input type="date" id="dateTo" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Sector</label>
+                <select id="filterBuilding" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Recepcionista</label>
+                <select id="filterRec" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Results -->
+<div class="table-responsive">
+    <table class="table table-sm table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Fecha</th>
+                <th>Habitación</th>
+                <th>Recepcionista</th>
+                <th>Cupos</th>
+                <th class="d-none d-md-table-cell">Limp.</th>
+                <th class="d-none d-md-table-cell">Baños</th>
+                <th class="d-none d-md-table-cell">Insum.</th>
+                <th class="d-none d-md-table-cell">Ilum.</th>
+                <th class="d-none d-md-table-cell">Agua</th>
+                <th class="d-none d-md-table-cell">Vent.</th>
+                <th class="d-none d-md-table-cell">Cort.</th>
+                <th class="d-none d-md-table-cell">Estuf.</th>
+                <th class="d-none d-md-table-cell">Mob.</th>
+                <th class="d-none d-md-table-cell">Chap.</th>
+                <th class="d-none d-md-table-cell">P. acceso mód.</th>
+                <th class="d-none d-md-table-cell">Sáb.</th>
+                <th>Casill.</th>
+                <th>Obs.</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+    </table>
+</div>
+
+<nav id="pagination" class="d-flex justify-content-center"></nav>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">Eliminar registro</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small mb-2">Ingrese la clave para eliminar el registro <strong id="deleteRoomCode"></strong>:</p>
+                <input type="password" id="deletePassword" class="form-control form-control-sm" placeholder="Clave">
+                <div id="deleteError" class="text-danger small mt-1 d-none"></div>
+            </div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-sm btn-danger" id="btnConfirmDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+let deleteId = null;
+
+async function loadReceptionists() {
+    const resp = await fetch('{{ request.script_root }}/api/receptionists');
+    const data = await resp.json();
+    const sel = document.getElementById('filterRec');
+    data.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = r.name;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadBuildings() {
+    const resp = await fetch('{{ request.script_root }}/api/modules');
+    const data = await resp.json();
+    const sel = document.getElementById('filterBuilding');
+    sel.innerHTML = '<option value="">Todos</option>';
+    data.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.building;
+        opt.textContent = `${item.building} (${item.room_count})`;
+        sel.appendChild(opt);
+    });
+}
+
+function getFilterParams() {
+    const params = new URLSearchParams();
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const building = document.getElementById('filterBuilding').value;
+    const rec = document.getElementById('filterRec').value;
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    if (building) params.set('building', building);
+    if (rec) params.set('receptionist_id', rec);
+    return params;
+}
+
+function updateHistorySummary(data) {
+    const summary = document.getElementById('historySummary');
+    if (!data.total) {
+        summary.textContent = 'Sin registros para los filtros seleccionados';
+        return;
+    }
+
+    const from = ((data.page - 1) * data.per_page) + 1;
+    const to = Math.min(data.page * data.per_page, data.total);
+    summary.textContent = `Mostrando ${from}-${to} de ${data.total} registros | Página ${data.page} de ${data.pages}`;
+}
+
+function paginationItem(label, page, disabled = false, active = false) {
+    const disabledClass = disabled ? ' disabled' : '';
+    const activeClass = active ? ' active' : '';
+    const tabindex = disabled ? ' tabindex="-1" aria-disabled="true"' : '';
+    const href = disabled ? '#' : `#page-${page}`;
+    const onclick = disabled ? 'return false' : `loadHistory(${page});return false`;
+
+    return `<li class="page-item${disabledClass}${activeClass}">
+        <a class="page-link" href="${href}" onclick="${onclick}"${tabindex}>${label}</a>
+    </li>`;
+}
+
+function buildPagination(data) {
+    const nav = document.getElementById('pagination');
+    const totalPages = data.pages || 0;
+    const page = data.page || 1;
+
+    if (totalPages <= 1) {
+        nav.innerHTML = '';
+        return;
+    }
+
+    const pages = new Set([1, totalPages]);
+    const windowSize = 2;
+
+    for (let i = page - windowSize; i <= page + windowSize; i++) {
+        if (i >= 1 && i <= totalPages) {
+            pages.add(i);
+        }
+    }
+
+    const orderedPages = Array.from(pages).sort((a, b) => a - b);
+    let html = '<ul class="pagination pagination-sm flex-wrap">';
+    html += paginationItem('&laquo;', 1, page === 1);
+    html += paginationItem('Anterior', page - 1, page === 1);
+
+    let lastPage = 0;
+    orderedPages.forEach(p => {
+        if (lastPage && p - lastPage > 1) {
+            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+        html += paginationItem(p, p, false, p === page);
+        lastPage = p;
+    });
+
+    html += paginationItem('Siguiente', page + 1, page === totalPages);
+    html += paginationItem('&raquo;', totalPages, page === totalPages);
+    html += '</ul>';
+    nav.innerHTML = html;
+}
+
+async function loadHistory(page) {
+    currentPage = page || 1;
+    const params = getFilterParams();
+    params.set('page', currentPage);
+    params.set('per_page', 50);
+
+    const resp = await fetch(`{{ request.script_root }}/api/history?${params.toString()}`);
+    const data = await resp.json();
+    currentPage = data.page || currentPage;
+
+    const tbody = document.getElementById('historyBody');
+    tbody.innerHTML = '';
+
+    if (data.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="19" class="text-center text-muted">Sin registros</td></tr>';
+    }
+
+    data.items.forEach(c => {
+        const badge = v => v === 'ok'
+            ? '<span class="badge bg-success">OK</span>'
+            : v === 'x'
+            ? '<span class="badge bg-danger">X</span>'
+            : v ? `<span class="badge bg-info">${v}</span>` : '-';
+
+        tbody.innerHTML += `<tr>
+            <td class="small text-nowrap">${c.created_at}</td>
+            <td class="fw-bold">${c.room_code}</td>
+            <td>${c.receptionist_name}</td>
+            <td>${badge(c.disponibilidad_cupos)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.limpieza_general)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.limpieza_banos)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.insumos_basicos)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.iluminacion)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.agua)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.ventanas)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.cortinas)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.estufas)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.mobiliario)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.chapas)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.puertas_acceso_modulo)}</td>
+            <td class="d-none d-md-table-cell">${badge(c.cambio_sabanas)}</td>
+            <td>${badge(c.casilleros)}</td>
+            <td class="small">${c.observaciones || '-'}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger p-0 px-1 btn-delete"
+                    data-id="${c.id}" data-room="${c.room_code}" title="Eliminar">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>`;
+    });
+
+    document.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', function() {
+            deleteId = this.dataset.id;
+            document.getElementById('deleteRoomCode').textContent = this.dataset.room;
+            document.getElementById('deletePassword').value = '';
+            document.getElementById('deleteError').classList.add('d-none');
+            new bootstrap.Modal(document.getElementById('deleteModal')).show();
+        });
+    });
+
+    updateHistorySummary(data);
+    buildPagination(data);
+}
+
+document.getElementById('btnConfirmDelete').addEventListener('click', async () => {
+    const password = document.getElementById('deletePassword').value;
+    if (!password) return;
+
+    const resp = await fetch(`{{ request.script_root }}/api/checklist/${deleteId}`, {
+        method: 'DELETE',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password})
+    });
+
+    if (resp.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+        loadHistory(currentPage);
+    } else {
+        const data = await resp.json();
+        const err = document.getElementById('deleteError');
+        err.textContent = data.error || 'Error al eliminar';
+        err.classList.remove('d-none');
+    }
+});
+
+document.getElementById('btnExport').addEventListener('click', () => {
+    const params = getFilterParams();
+    window.location.href = `{{ request.script_root }}/api/history/export?${params.toString()}`;
+});
+
+Promise.all([loadReceptionists(), loadBuildings()]).then(() => loadHistory(1));
+
+['dateFrom','dateTo','filterBuilding','filterRec'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => loadHistory(1));
+});
+</script>
+{% endblock %}

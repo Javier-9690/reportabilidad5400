@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Recepcionistas{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <h4 class="mb-3"><i class="bi bi-people"></i> Gestión de Recepcionistas</h4>
+
+        <!-- Add form -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <form id="addForm" class="d-flex gap-2">
+                    <input type="text" id="newName" class="form-control" placeholder="Nombre del recepcionista" required>
+                    <button type="submit" class="btn btn-primary text-nowrap">
+                        <i class="bi bi-plus-lg"></i> Agregar
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- List -->
+        <div class="list-group" id="recList">
+            {% for r in receptionists %}
+            <div class="list-group-item d-flex justify-content-between align-items-center {% if not r.active %}opacity-50{% endif %}"
+                 data-id="{{ r.id }}">
+                <div>
+                    <span class="rec-name">{{ r.name }}</span>
+                    {% if not r.active %}
+                    <span class="badge bg-secondary ms-1">Inactivo</span>
+                    {% endif %}
+                </div>
+                <div class="d-flex gap-1">
+                    {% if r.active %}
+                    <button class="btn btn-sm btn-outline-warning btn-edit" title="Editar">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-deactivate" title="Desactivar">
+                        <i class="bi bi-person-x"></i>
+                    </button>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-success btn-reactivate" title="Reactivar">
+                        <i class="bi bi-person-check"></i>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('newName').value.trim();
+    if (!name) return;
+    const resp = await fetch('{{ request.script_root }}/api/receptionists', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json();
+        alert(data.error || 'Error');
+    }
+});
+
+document.querySelectorAll('.btn-deactivate').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const id = this.closest('[data-id]').dataset.id;
+        if (!confirm('¿Desactivar este recepcionista?')) return;
+        const password = prompt('Clave de administrador para desactivar al recepcionista:');
+        if (password === null) return;
+        const resp = await fetch(`{{ request.script_root }}/api/receptionists/${id}`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password})
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            alert(data.error || 'No se pudo desactivar al recepcionista');
+            return;
+        }
+        location.reload();
+    });
+});
+
+document.querySelectorAll('.btn-reactivate').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const id = this.closest('[data-id]').dataset.id;
+        await fetch(`{{ request.script_root }}/api/receptionists/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({active: true})
+        });
+        location.reload();
+    });
+});
+
+document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const item = this.closest('[data-id]');
+        const id = item.dataset.id;
+        const current = item.querySelector('.rec-name').textContent;
+        const newName = prompt('Nuevo nombre:', current);
+        if (!newName || newName.trim() === current) return;
+        const resp = await fetch(`{{ request.script_root }}/api/receptionists/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: newName.trim()})
+        });
+        if (resp.ok) location.reload();
+        else alert('Error al actualizar');
+    });
+});
+</script>
+{% endblock %}
