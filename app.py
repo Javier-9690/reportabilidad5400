@@ -3409,6 +3409,9 @@ app=create_app()
 # aplicación y comparte DATABASE_URL, SECRET_KEY, cabecera y navegación.
 from gestion5s.web import app as gestion5s_app
 
+from security import install_security
+install_security(app, gestion5s_app)
+
 app.wsgi_app = DispatcherMiddleware(
     app.wsgi_app,
     {"/gestion-5s": gestion5s_app},

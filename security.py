@@ -4,7 +4,7 @@ import os
 import re
 import secrets
 from datetime import timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 
 from flask import abort, redirect, render_template, request, session, url_for
 
@@ -66,7 +66,11 @@ def install_security(main_app, hotel_app):
                 if not session.get(ADMIN_SESSION_KEY):
                     if request.method == 'GET':
                         destination = request.full_path.rstrip('?')
-                        return redirect(url_for('admin_login', next=destination))
+                        # El endpoint admin_login vive en la app principal, no en hotel_app.
+                        # Usar ruta absoluta también preserva /gestion-5s en el retorno.
+                        if app_instance is hotel_app:
+                            destination = '/gestion-5s' + destination
+                        return redirect('/login?next=' + quote(destination, safe=''))
                     abort(401, description='Inicia sesión para continuar.')
                 if request.method == 'POST' and destructive_path(request.path):
                     if not verify_password(request.form.get('admin_password', '')):
@@ -79,6 +83,8 @@ def install_security(main_app, hotel_app):
     @main_app.route('/login', methods=['GET', 'POST'])
     def admin_login():
         destination = safe_next(request.values.get('next'))
+        if destination.startswith('/login') or destination.startswith('/logout'):
+            destination = '/'
         if 'r5400_login_csrf' not in session:
             session['r5400_login_csrf'] = secrets.token_urlsafe(32)
         error = None
@@ -106,7 +112,7 @@ def install_security(main_app, hotel_app):
         if not hmac.compare_digest(token, session.get('r5400_logout_csrf', '')):
             abort(400, description='Solicitud inválida.')
         session.clear()
-        return redirect(url_for('admin_login'))
+        return redirect('/login')
 
     @main_app.context_processor
     def inject_logout_token():
