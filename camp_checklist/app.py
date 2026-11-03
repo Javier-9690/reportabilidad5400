@@ -26,9 +26,11 @@ load_dotenv()
 app = Flask(__name__)
 
 # Database config
-database_url = os.environ.get('CHECKLIST_DATABASE_URL', '').strip()
+# Permite una sola base PostgreSQL (kpi-db) si ambas apps comparten DATABASE_URL.
+# Si existen dos conexiones, CHECKLIST_DATABASE_URL conserva la prioridad.
+database_url = (os.environ.get('CHECKLIST_DATABASE_URL') or os.environ.get('DATABASE_URL') or '').strip()
 if not database_url:
-    raise RuntimeError('Falta CHECKLIST_DATABASE_URL: usa la URL de la base de datos ACTUAL de camp-checklist para conservar todos sus registros.')
+    raise RuntimeError('Configura DATABASE_URL con la conexión PostgreSQL kpi-db, o CHECKLIST_DATABASE_URL para una base separada.')
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
 

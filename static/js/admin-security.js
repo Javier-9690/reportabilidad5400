@@ -8,7 +8,8 @@
       .replace(/^\/gestion-5s(?=\/)/, '');
     return /^\/api\/files\/\d+\/delete$/.test(pathname) ||
       /^\/delete\/[^/]+\/(?:\d+|bulk)$/.test(pathname) ||
-      pathname === '/import/ordenes/confirm';
+      pathname === '/import/ordenes/confirm' ||
+      /^\/(?:encuestas|sugerencias|onboarding)\/registros\/\d+\/eliminar$/.test(pathname);
   };
 
   const dialog = document.createElement('dialog');
