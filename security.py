@@ -37,7 +37,7 @@ def destructive_path(path):
     )
 
 
-def install_security(main_app, hotel_app):
+def install_security(main_app, hotel_app, checklist_app=None):
     if not os.getenv('ADMIN_PASSWORD'):
         raise RuntimeError('ADMIN_PASSWORD es obligatorio; no se inicia sin esa variable.')
     if main_app.secret_key in ('dev-change-me', 'dev-secret', None, ''):
@@ -45,8 +45,13 @@ def install_security(main_app, hotel_app):
 
     # La cookie debe ser idéntica para las dos aplicaciones (ambas montadas en el mismo dominio).
     hotel_app.secret_key = main_app.secret_key
+    if checklist_app is not None:
+        checklist_app.secret_key = main_app.secret_key
 
-    for application in (main_app, hotel_app):
+    applications = [main_app, hotel_app]
+    if checklist_app is not None:
+        applications.append(checklist_app)
+    for application in applications:
         application.config.update(
             SESSION_COOKIE_NAME='r5400_session',
             SESSION_COOKIE_HTTPONLY=True,
@@ -70,6 +75,8 @@ def install_security(main_app, hotel_app):
                         # Usar ruta absoluta también preserva /gestion-5s en el retorno.
                         if app_instance is hotel_app:
                             destination = '/gestion-5s' + destination
+                        elif app_instance is checklist_app:
+                            destination = '/camp-checklist' + destination
                         return redirect('/login?next=' + quote(destination, safe=''))
                     abort(401, description='Inicia sesión para continuar.')
                 if request.method == 'POST' and destructive_path(request.path):
@@ -125,5 +132,12 @@ def install_security(main_app, hotel_app):
         if 'r5400_logout_csrf' not in session:
             session['r5400_logout_csrf'] = secrets.token_urlsafe(32)
         return {'admin_logout_csrf': session['r5400_logout_csrf']}
+
+    if checklist_app is not None:
+        @checklist_app.context_processor
+        def inject_checklist_logout_token():
+            if 'r5400_logout_csrf' not in session:
+                session['r5400_logout_csrf'] = secrets.token_urlsafe(32)
+            return {'admin_logout_csrf': session['r5400_logout_csrf']}
 
     return main_app
