@@ -1,0 +1,274 @@
+{% extends "encuesta_admin/base.html" %}
+{% macro report_block(m, titulo, prefix) %}
+<section class="report-block">
+  <div class="report-heading">
+    <h2>{{ titulo }}</h2>
+    <p>{{ m.week_rule_note }}</p>
+  </div>
+
+  {% if m.has_data %}
+  <section class="section-title">1. Resumen Ejecutivo (Macrométricas)</section>
+  <section class="kpi-grid four">
+    <article class="kpi-card">
+      <span>TOTAL DE EVALUACIONES</span>
+      <strong>{{ m.total }}</strong>
+      <small>Muestra analizada</small>
+    </article>
+    <article class="kpi-card">
+      <span>SATISFACCIÓN GLOBAL</span>
+      <strong>{{ '%.2f'|format(m.global_score) }} <em>/ 5.0</em></strong>
+      <small class="{{ status_class(m.global_status) }}">{{ m.global_status }}</small>
+    </article>
+    <article class="kpi-card">
+      <span>CUMPLIMIENTO</span>
+      <strong>{{ '%.1f'|format(m.cumplimiento) }}%</strong>
+      <small>Promedio ≥ 4.5 = 100%</small>
+    </article>
+    <article class="kpi-card">
+      <span>ÍNDICE DE EXCELENCIA</span>
+      <strong>{{ '%.1f'|format(m.excelencia) }}%</strong>
+      <small>Usuarios Promotores</small>
+    </article>
+  </section>
+
+  <section class="scale-card">
+    <h3>Escala de Cumplimiento y Excelencia</h3>
+    <div class="scale-grid">
+      <div class="scale-item danger">
+        <strong>1.0 a 3.9</strong>
+        <span>Riesgo operativo</span>
+      </div>
+      <div class="scale-item warn">
+        <strong>4.0 a 4.49</strong>
+        <span>Bajo estándar</span>
+      </div>
+      <div class="scale-item ok">
+        <strong>4.5 a 4.79</strong>
+        <span>Cumple estándar operativo</span>
+      </div>
+      <div class="scale-item neutral-text">
+        <strong>4.8 a 5.0</strong>
+        <span>Excelencia / Promotor</span>
+      </div>
+    </div>
+    <p><strong>Cumplimiento:</strong> promedio ≥ 4.5 = 100%. <strong>Excelencia:</strong> promedio ≥ 4.8.</p>
+  </section>
+
+  <section class="section-title">2. Distribución del Cumplimiento Operativo</section>
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Categoría</th>
+          <th>Criterio de cumplimiento</th>
+          <th>Volumen</th>
+          <th>Representación</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in m.risk %}
+        <tr>
+          <td><strong>{{ item.categoria }}</strong></td>
+          <td>{{ item.criterio }}</td>
+          <td>{{ item.volumen }}</td>
+          <td class="{{ item.kind }}"><strong>{{ item.representacion }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section class="section-title">3. La Voz del Usuario y Observaciones</section>
+  <section class="two-col">
+    <div class="panel">
+      <h2>Comentarios Recientes Destacados</h2>
+      {% for comment in m.comments[:4] %}
+        <blockquote>“{{ comment }}”</blockquote>
+      {% else %}
+        <p class="muted">Sin comentarios registrados.</p>
+      {% endfor %}
+    </div>
+    <div class="panel">
+      <h2>Análisis Cualitativo</h2>
+      <ul class="analysis-list">
+        {% for item in m.analysis %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section class="section-title">4. Evolución Histórica / Rango Seleccionado (Últimas 10 Semanas con Datos)</section>
+  <div class="chart-card">
+    <canvas id="trendChart_{{ prefix }}" height="130"></canvas>
+  </div>
+
+  <section class="section-title">5. Resumen Semanas Recientes</section>
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Semana</th>
+          <th>N° Encuestas</th>
+          <th>Nota Promedio</th>
+          <th>Cumplimiento</th>
+          <th>Estado / Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in m.recent_weeks %}
+        <tr>
+          <td>{{ row.periodo }}</td>
+          <td>{{ row.n_encuestas }}</td>
+          <td>
+            <strong>
+              {{ 'Sin datos' if row.promedio is none else '%.2f'|format(row.promedio) }}
+            </strong>
+          </td>
+          <td>
+            <strong>
+              {{ '-' if row.promedio is none else ('%.1f'|format(row.cumplimiento) ~ '%') }}
+            </strong>
+          </td>
+          <td class="{{ status_class(row.estado) }}"><strong>{{ row.estado }}</strong></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">No existen semanas con encuestas para mostrar.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section class="section-title">6. Desempeño Específico por Dimensiones ({{ m.latest_label }})</section>
+  <p class="note">Una calificación por debajo de 4.70 se considera foco de atención preventivo. El cumplimiento se calcula con regla operativa: promedio ≥ 4.5 equivale a 100%; bajo 4.5 se calcula proporcionalmente.</p>
+  <section class="two-col radar-layout">
+    <div class="chart-card">
+      <canvas id="radarChart_{{ prefix }}" height="260"></canvas>
+    </div>
+    <div class="panel dimensions">
+      {% for item in m.dimensions %}
+        <div class="dimension-row">
+          <span>{{ item.label }}</span>
+          <strong class="{{ 'danger' if item.foco else 'ok' }}">
+            {{ '-' if item.score is none else '%.2f'|format(item.score) }}{% if item.foco %} (Foco){% endif %}
+          </strong>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <script>
+  (function () {
+    const trendLabels = {{ json_dumps(m.chart_labels) | safe }};
+    const trendValues = {{ json_dumps(m.chart_values) | safe }};
+    const radarLabels = {{ json_dumps(m.radar_labels) | safe }};
+    const radarValues = {{ json_dumps(m.radar_values) | safe }};
+
+    new Chart(document.getElementById('trendChart_{{ prefix }}'), {
+      type: 'line',
+      data: {
+        labels: trendLabels,
+        datasets: [{
+          label: 'Promedio semanal',
+          data: trendValues,
+          borderColor: '#ed1b2e',
+          backgroundColor: 'rgba(237, 27, 46, 0.12)',
+          tension: 0.25,
+          fill: false,
+          pointRadius: 5,
+          pointHoverRadius: 7
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { min: 1, max: 5, ticks: { stepSize: 0.5 } } }
+      }
+    });
+
+    new Chart(document.getElementById('radarChart_{{ prefix }}'), {
+      type: 'radar',
+      data: {
+        labels: radarLabels,
+        datasets: [{
+          label: 'Promedio última semana',
+          data: radarValues,
+          borderColor: '#ed1b2e',
+          backgroundColor: 'rgba(237, 27, 46, 0.20)',
+          pointBackgroundColor: '#ed1b2e'
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { r: { min: 0, max: 5, ticks: { stepSize: 1 } } }
+      }
+    });
+  })();
+  </script>
+  {% else %}
+  <section class="empty-state compact">
+    <h2>Sin datos en este rango</h2>
+    <p>No hay encuestas para el período seleccionado.</p>
+  </section>
+  {% endif %}
+</section>
+{% endmacro %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>REPORTE EJECUTIVO DE CALIDAD</h1>
+    <p>Evaluación de Satisfacción e Impacto del Factor Humano en la Operación</p>
+  </div>
+  <form class="import-card" action="{{ url_for('admin5400.importar') }}" method="post" enctype="multipart/form-data">
+    <label>Importar pestaña “Encuesta de Satisfacción” (agrega sin borrar los registros existentes)</label><input type="hidden" name="csrf_token" value="{{ import_csrf }}">
+    <input type="file" name="archivo" accept=".xlsx" required>
+    <div class="row">
+      <select name="modo">
+        
+        <option value="append">Agregar al histórico</option>
+      </select>
+      <button type="submit">Importar</button>
+    </div>
+    <a href="{{ url_for('admin5400.plantilla') }}">Descargar plantilla</a>
+  </form>
+</section>
+
+{% if metrics.has_data %}
+<section class="filter-card">
+  <form method="get" action="{{ url_for('admin5400.dashboard') }}">
+    <div>
+      <label>Fecha inicio</label>
+      <input type="date" name="fecha_inicio" value="{{ filter_start }}">
+    </div>
+    <div>
+      <label>Fecha final</label>
+      <input type="date" name="fecha_fin" value="{{ filter_end }}">
+    </div>
+    <button type="submit">Ver reporte por fecha</button>
+    <a class="btn secondary" href="{{ url_for('admin5400.dashboard') }}">Limpiar filtro</a>
+  </form>
+  <p>El reporte histórico termina en la última semana cerrada. La nueva semana se incorpora automáticamente cada domingo y se presenta desde la más reciente hacia atrás.</p>
+</section>
+
+<section class="actions">
+  <a class="btn" href="{{ url_for('admin5400.exportar_pdf', fecha_inicio=filter_start, fecha_fin=filter_end) }}">Exportar PDF</a>
+  <a class="btn secondary" href="{{ url_for('admin5400.exportar_excel', fecha_inicio=filter_start, fecha_fin=filter_end) }}">Exportar Excel</a>
+  <a class="btn secondary" href="{{ url_for('admin5400.exportar_csv') }}">Exportar CSV histórico</a>
+</section>
+
+{{ report_block(metrics, 'REPORTE HISTÓRICO', 'hist') }}
+
+{% if filter_active %}
+{{ report_block(filtered_metrics, 'REPORTE POR FECHA SELECCIONADA: ' ~ filter_label, 'filter') }}
+{% endif %}
+{% else %}
+<section class="empty-state">
+  <h2>Sin datos importados</h2>
+  <p>Sube el Excel que contiene la pestaña <strong>Encuesta de Satisfacción</strong>. La aplicación calculará automáticamente el resumen ejecutivo, cumplimiento operativo, tendencia semanal, comentarios y dimensiones Q1 a Q5.</p>
+</section>
+{% endif %}
+{% endblock %}

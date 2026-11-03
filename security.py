@@ -29,6 +29,8 @@ def safe_next(target):
 
 
 def destructive_path(path):
+    if re.fullmatch(r'/(encuestas|sugerencias|onboarding)/registros/\d+/eliminar', path):
+        return True
     # Las rutas de hotelería llegan sin el prefijo /gestion-5s a su sub-app.
     return bool(
         re.fullmatch(r'/api/files/\d+/delete', path) or
@@ -64,6 +66,8 @@ def install_security(main_app, hotel_app, checklist_app=None):
 
         def make_guard(app_instance):
             def guard():
+                if app_instance is main_app and request.path in ('/encuesta','/sugerencias','/onboarding') and request.method in ('GET','POST'):
+                    return None
                 if app_instance is main_app and request.path == '/login':
                     return None
                 if request.path.startswith('/static/'):

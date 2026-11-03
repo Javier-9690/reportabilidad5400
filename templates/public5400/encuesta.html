@@ -1,0 +1,6 @@
+{% extends 'public5400/base.html' %}{% block title %}Encuesta de satisfacción{% endblock %}{% block content %}
+<h1 class="h3 mb-2">Encuesta de satisfacción</h1><p class="meta">Servicio de Custodia 5400. Por favor, selecciona tu nivel de satisfacción en cada pregunta.</p>
+<form method="post" action="/encuesta"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input name="website" class="d-none" tabindex="-1" autocomplete="off">
+{% for question in questions %}{% set qindex = loop.index %}<section class="question"><h2 class="h6">{{ loop.index }}. {{ question }}</h2><div class="row g-2">{% for key, label in labels.items() %}<div class="col"><label class="emoji-option"><input type="radio" name="q{{ qindex }}" value="{{ key }}" required><span>{{ ['😡','🙁','😐','🙂','🤩'][key-1] }}</span><small class="text-center">{{ key }}</small></label></div>{% endfor %}</div></section>{% endfor %}
+<div class="my-4"><label for="comentarios" class="form-label">Comentarios adicionales (opcional)</label><textarea class="form-control" maxlength="2000" name="comentarios" id="comentarios"></textarea></div>
+<button class="btn btn-danger w-100 btn-lg" type="submit">Enviar respuestas</button></form>{% endblock %}

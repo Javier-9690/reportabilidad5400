@@ -167,6 +167,9 @@ def create_app():
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_CONTENT_LENGTH_MB", "80")) * 1024 * 1024
     db.init_app(app)
+    from public_modules import shared_db
+    shared_db.db = db
+    from public_modules import models as public_models  # register new isolated models
     with app.app_context():
         db.create_all()
     register_routes(app)
@@ -174,6 +177,9 @@ def create_app():
     app.register_blueprint(user_reports_bp)
     from gestion5s.operations_report_routes import bp as operations_reports_bp
     app.register_blueprint(operations_reports_bp)
+    from public_modules.routes import public as public_bp, admin as admin_bp
+    app.register_blueprint(public_bp)
+    app.register_blueprint(admin_bp)
     return app
 
 

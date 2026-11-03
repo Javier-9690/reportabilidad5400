@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='encuestas/styles.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand brand-left">
+      <img src="{{ url_for('static', filename='encuestas/img/logo_aramark.png') }}" alt="Aramark">
+    </div>
+    <div class="brand brand-right">
+      <img src="{{ url_for('static', filename='encuestas/img/logo_campamento_5400.png') }}" alt="Escondida BHP">
+    </div>
+  </header>
+  <nav style="text-align:center;padding:10px"><a href="/">← Reportabilidad 5400</a> | <a href="/encuestas/registros">Respuestas</a> | <a href="/sugerencias/registros">Reclamos</a> | <a href="/onboarding/registros">Onboarding</a></nav><main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="messages">
+          {% for category, message in messages %}
+            <div class="message {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    Generado automáticamente a partir de datos operacionales • Evaluación Interna • Campamento 5400
+  </footer>
+</body>
+</html>
